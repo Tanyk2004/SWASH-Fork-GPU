@@ -225,7 +225,7 @@ For more details, consult the [Implementation manual](https://swash.sourceforge.
 See
 1. the [Implementation Manual](https://swash.sourceforge.io/online_doc/swashimp/swashimp.html) that describes in detail the installation and the usage of the SWASH model
 1. the [User Manual](https://swash.sourceforge.io/online_doc/swashuse/swashuse.html) that provides the specifications for the input of the SWASH model
-1. a bunch of scientifc documents that can be found [here](https://swash.sourceforge.io/online_doc/online_doc.htm)
+1. a bunch of scientific documents that can be found [here](https://swash.sourceforge.io/online_doc/online_doc.htm)
 
 ## Bugs and questions
 
