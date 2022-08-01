@@ -134,7 +134,7 @@ The build can be (re)configured by passing one or more options to the CMake comm
 $ cmake .. -D<option>=<value>
 ```
 
-where `<value>` is a string or an boolean, depending on the specified option. The table below provides an overview of the non-required options that can be used.
+where `<value>` is a string or a boolean, depending on the specified option. The table below provides an overview of the non-required options that can be used.
 
 |  option                  | value type |               description                 | default value           |
 |:------------------------:|:-----------|:------------------------------------------|:-----------------------:|
