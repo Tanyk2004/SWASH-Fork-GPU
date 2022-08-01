@@ -184,7 +184,7 @@ $ cmake -P clobber.cmake
 Chapters [2](https://swash.sourceforge.io/online_doc/swashuse/node2.html#ch:defin) and
 [3](https://swash.sourceforge.io/online_doc/swashuse/node21.html#ch:inout)
 of the [SWASH's User Guide](https://swash.sourceforge.io/online_doc/swashuse/swashuse.html).
-Also, CHAPTER [5](https://swash.sourceforge.io/online_doc/swashuse/node41.html#ch:yourcom) is recommended.*
+Also, Chapter [5](https://swash.sourceforge.io/online_doc/swashuse/node41.html#ch:yourcom) is recommended.*
 
 #### run modes
 
