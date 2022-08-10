@@ -21,7 +21,7 @@ It is permitted to copy, reuse, adapt and distribute the SWASH source code provi
 
 To install SWASH on your local system, CMake and Ninja (or GNU make) need to be installed first.
 We recommend to use [CMake 3.12+](https://cmake.org/) for building SWASH.
-CMake is an build system and makes use of scripts (or configuration files) that control the build process.
+CMake is a build system and makes use of scripts (or configuration files) that control the build process.
 There are installers available for Windows, Linux and macOS. See the
 [download](https://cmake.org/download/) page for CMake installation instructions.
 
@@ -29,7 +29,12 @@ There are installers available for Windows, Linux and macOS. See the
 The way it works is very similar to GNU make (or NMAKE for Windows); for example, it does not rebuild things that are already up to date.
 Ninja can be downloaded from its [git repository](https://github.com/ninja-build/ninja/releases).
 
-SWASH also requires a Fortran90 compiler to be present in your environment.
+In addition to the build tools, a Perl package must be available on your local computer.
+Usually, it is available for macOS, Linux and a UNIX-like operating system. Check it by typing `perl -v`.
+Otherwise, you can download Perl from [ActiveState](https://www.activestate.com/products/perl/).
+The Perl version should be at least 5.0.0 or higher.
+
+Finally, SWASH also requires a Fortran90 compiler to be present in your environment.
 Popular Fortran compilers are [gfortran](https://gcc.gnu.org/fortran/) and
 [Intel<sup>&reg;</sup> Fortran Compiler Classic](https://www.intel.com/content/www/us/en/developer/articles/tool/oneapi-standalone-components.html#fortran)
 (as part of the Intel<sup>&reg;</sup> oneAPI HPC Toolkit) and both support the OpenMP standard.
