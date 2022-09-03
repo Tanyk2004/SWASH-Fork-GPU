@@ -1,0 +1,208 @@
+subroutine SwashUpdateUDepths ( u )
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmer: Marcel Zijlema                                |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2022  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: Marcel Zijlema
+!
+!   Updates
+!
+!    1.00, February 2020: New subroutine
+!
+!   Purpose
+!
+!   Initialize / update water depths in both cells and faces
+!
+!   Modules used
+!
+    use ocpcomm4
+    use SwashCommdata3
+    use SwashFlowdata
+    use outp_data, only: hrunp
+    use SwanGriddata
+    use SwanGridobjects
+!
+    implicit none
+!
+!   Argument variables
+!
+    real, dimension(nfaces), intent(in) :: u ! flow velocity at faces
+!
+!   Local variables
+!
+    integer            :: icell    ! loop counter over cells
+    integer            :: icelll   ! left cell of present face
+    integer            :: icellr   ! right cell of present face
+    integer, save      :: ient = 0 ! number of entries in this subroutine
+    integer            :: iface    ! loop counter over faces
+    !
+    real               :: finp     ! interpolation factor
+    real               :: h        ! local water depth
+    !
+    logical            :: adapted  ! true if value of epsdry has been changed
+    !
+    character(80)      :: msgstr   ! string to pass message
+    !
+    type(facetype), dimension(:), pointer  :: face ! datastructure for faces with their attributes
+!
+!   Structure
+!
+!   Description of the pseudo code
+!
+!   Source text
+!
+    if (ltrace) call strace (ient,'SwashUpdateUDepths')
+    !
+    ! point to face object
+    !
+    face => gridobject%face_grid
+    !
+    ! compute and check water depth in cells
+    !
+    adapted = .false.
+    !
+    do icell = 1, ncells
+       !
+       hs(icell) = s1(icell) + dps(icell)
+       !
+       if ( hs(icell) < 0. ) then
+          !
+          if ( hs(icell) < -epsdry ) then
+             !
+             write (msgstr,'(a,i8,a,f8.2,a)') 'water depth is negative in cell=',icell,'; water depth = ',1000.*hs(icell),' mm'
+             call msgerr (1, trim(msgstr) )
+             !
+             s1(icell) = 0.99*epsdry - dps(icell)
+             epsdry  = -1.01*hs(icell)
+             adapted = .true.
+             !
+          else
+             s1(icell) = 0.99*epsdry - dps(icell)
+          endif
+          !
+          hs(icell) = s1(icell) + dps(icell)
+          !
+       endif
+       !
+    enddo
+    !
+    if ( adapted ) then
+       write (msgstr,'(a,e12.4)') 'new minimal depth for checking drying and flooding: DEPMIN = ',epsdry
+       call msgerr (1, trim(msgstr) )
+    endif
+    !
+    ! check minimal depth for drying and flooding (at most 1 cm)
+    !
+    if ( epsdry > 0.01 ) then
+       !
+       call msgerr ( 4, 'INSTABLE: water level is too far below the bottom level!' )
+       call msgerr ( 0, '          Please reduce the time step!' )
+       return
+       !
+    endif
+    !
+    ! compute the water depth at faces based on averaging
+    !
+    do iface = 1, nfaces
+       !
+       finp = face(iface)%attr(FACELINPF)
+       !
+       ! consider left and right cells of current face
+       !
+       icelll = face(iface)%atti(FACECL)
+       icellr = face(iface)%atti(FACECR)
+       !
+       if ( icelll /= 0 .and. icellr /= 0 ) then
+          !
+          h = finp * hs(icelll) + (1.-finp) * hs(icellr)
+          !
+       else if ( icelll == 0 ) then
+          !
+          h = hs(icellr)
+          !
+       else
+          !
+          h = hs(icelll)
+          !
+       endif
+       !
+       hum(iface) = h
+       !
+    enddo
+    !
+    ! compute the water depth at faces based on upwinding
+    !
+    if ( .not.depcds ) then
+       !
+       do iface = 1, nfaces
+          !
+          ! consider left and right cells of current face
+          !
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          if ( icelll == 0 .or. icellr == 0 ) then   ! boundary cell
+             !
+             if ( icelll /= 0 ) then
+                h = s1(icelll) + dpu(iface)
+             else
+                h = s1(icellr) + dpu(iface)
+             endif
+             !
+          else if ( u(iface) > 1.0e-5 ) then
+             !
+             h = s1(icelll) + dpu(iface)
+             !
+          else if ( u(iface) < -1.0e-5 ) then
+             !
+             h = s1(icellr) + dpu(iface)
+             !
+          else
+             !
+             h = max( s1(icelll), s1(icellr) ) + dpu(iface)
+             !
+          endif
+          !
+          hu(iface) = h
+          !
+       enddo
+       !
+    else
+       !
+       hu = hum
+       !
+    endif
+    !
+    ! compute inundation depth
+    !
+    do icell = 1, ncells
+       if ( hindun(icell) /= 1. .and. hs(icell) > hrunp ) hindun(icell) = 1.
+    enddo
+    !
+end subroutine SwashUpdateUDepths
