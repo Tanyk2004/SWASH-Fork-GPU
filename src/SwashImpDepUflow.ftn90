@@ -1,0 +1,1175 @@
+subroutine SwashImpDepUflow ( u1, u0, uvc, quf, q, dq, gmat )
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmer: Marcel Zijlema                                |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2022  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: Marcel Zijlema
+!
+!   Updates
+!
+!    1.00, January 2020: New subroutine
+!
+!   Purpose
+!
+!   Performs the time integration for the non-hydrostatic, depth-averaged shallow water equations on triangular mesh
+!
+!   Method
+!
+!   The time integration with respect to the continuity equation and the water level gradient of the
+!   u-momentum equation is based on a theta-scheme. Only a value of 0.5 <= theta <= 1 will be taken.
+!
+!   The time integration with respect to the advective and viscous terms and bottom friction is based
+!   on Euler implicit.
+!
+!   The space discretization of the advective term is momentum conservative and is approximated by
+!   first order upwind.
+!
+!   The w-momentum equation only contains the z-gradient of the non-hydrostatic pressure and is
+!   discretized by means of the Keller-box scheme.
+!
+!   The non-hydrostatic pressure is obtained by means of the second order accurate pressure correction technique.
+!
+!   Modules used
+!
+    use ocpcomm4
+    use m_genarr, only: wlimp
+    use SwashCommdata3
+    use SwashTimecomm
+    use SwashFlowdata, u1tmp  => u1 , &
+                       u0tmp  => u0 , &
+                       uvctmp => uvc, &
+                       quftmp => quf, &
+                       qtmp   => q  , &
+                       dqtmp  => dq
+    use SwanGriddata
+    use SwanGridobjects
+!
+    implicit none
+!
+!   Argument variables
+!
+    real, dimension(ncells)  , intent(out)   :: dq         ! non-hydrostatic pressure correction
+    real, dimension(nfaces,2), intent(out)   :: gmat       ! gradient matrix for pressure at face
+    real, dimension(ncells)  , intent(inout) :: q          ! non-hydrostatic pressure
+    real, dimension(ncells,3), intent(out)   :: quf        ! discharge per face width in flow direction
+    real, dimension(nfaces)  , intent(in)    :: u0         ! face velocity at previous time level
+    real, dimension(nfaces)  , intent(inout) :: u1         ! face velocity at current time level
+    real, dimension(ncells,2), intent(out)   :: uvc        ! velocity components in cell circumcenter
+!
+!   Local variables
+!
+    integer                                :: FC           ! cell number containing present face
+    integer                                :: bcell        ! boundary cell index for sponge layer
+    integer                                :: bface        ! boundary face index for sponge layer
+    integer                                :: icell        ! cell index / loop counter over cells
+    integer                                :: icella       ! upwind cell for cell-based advection vector
+    integer                                :: icellb       ! boundary cell
+    integer                                :: icelll       ! left cell of present face
+    integer                                :: icellr       ! right cell of present face
+    integer                                :: icellu       ! cell index of upwind cell
+    integer, save                          :: ient = 0     ! number of entries in this subroutine
+    integer                                :: iface        ! face index / loop counter over faces
+    integer                                :: ifacel       ! local face
+    integer                                :: ifaceu       ! face index of upwind cell
+    integer                                :: j            ! loop counter
+    integer                                :: jf           ! loop counter
+    !
+    real                                   :: area         ! area of present cell
+    real                                   :: cfl          ! CFL number
+    real                                   :: contrib      ! total contribution of momentum equation
+    real                                   :: ctrs         ! contribution to system of water level equations
+    real                                   :: cvisc        ! contribution to viscosity term
+    real                                   :: dbs          ! change in water level at boundary face over time
+    real                                   :: denom        ! a denominator
+    real                                   :: dpx          ! x-component of bottom gradient
+    real                                   :: dpy          ! y-component of bottom gradient
+    real                                   :: fac          ! a factor
+    real                                   :: faca         ! weighting factor for advection term
+    real                                   :: finp         ! interpolation factor
+    real                                   :: gamma        ! relaxation parameter for sponge layer
+    real                                   :: hf           ! arithmetic average of water depth at face
+    real                                   :: lf           ! length of face
+    real                                   :: moutf        ! net mass outflow
+    real                                   :: nx           ! x-component of normal to face
+    real                                   :: ny           ! y-component of normal to face
+    real                                   :: qf           ! sum of mass fluxes over faces of present cell
+    real                                   :: rdx          ! reciprocal of distance between circumcenters adjacent to face
+    real                                   :: rsgn         ! sign for indicating face orientation
+    real                                   :: theta        ! implicitness factor for time integration of continuity equation
+    real                                   :: theta2       ! implicitness factor for water level gradient
+    real                                   :: theta3       ! implicitness factor for non-hydrostatic pressure gradient
+    real                                   :: ut           ! tangential velocity component
+    real                                   :: utot         ! velocity magnitude
+    real                                   :: vol          ! total displaced volume of water
+    real                                   :: xc           ! x-coordinate of cell circumcenter
+    real                                   :: xf           ! x-coordinate of face center
+    real                                   :: yc           ! y-coordinate of cell circumcenter
+    real                                   :: yf           ! y-coordinate of face center
+    real                                   :: zgrad        ! water level gradient term
+    !
+    logical                                :: STPNOW       ! indicates that program must stop
+    !
+    type(celltype), dimension(:), pointer  :: cell         ! datastructure for cells with their attributes
+    type(facetype), dimension(:), pointer  :: face         ! datastructure for faces with their attributes
+!
+!   Structure
+!
+!   Description of the pseudo code
+!
+!   Source text
+!
+    if (ltrace) call strace (ient,'SwashImpDepUflow')
+    !
+    ! point to cell and face objects
+    !
+    cell => gridobject%cell_grid
+    face => gridobject%face_grid
+    !
+    theta  = pnums(1)
+    theta2 = pnums(4)
+    theta3 = pnums(5)
+    !
+    ! compute the mass flux
+    !
+    do icell = 1, ncells
+       !
+       ! loop over faces of the cell
+       !
+       do jf = 1, cell(icell)%nof
+          !
+          ! face identifier
+          !
+          iface = cell(icell)%face(jf)%atti(FACEID)
+          !
+          ! get length of current face
+          !
+          lf = face(iface)%attr(FACELEN)
+          !
+          ! consider left and right cells of current face
+          !
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          ! take into account orientation of the current face
+          !
+          if ( icell == icelll ) then
+             rsgn =  1.
+          else if ( icell == icellr ) then
+             rsgn = -1.
+          endif
+          !
+          ! compute mass flux at current face
+          !
+          quf(icell,jf) = rsgn * lf * hu(iface) * u0(iface)
+          !
+       enddo
+       !
+    enddo
+    !
+    ! build gradient matrix for non-hydrostatic pressure
+    !
+    if ( ihydro == 1 ) then
+       !
+       do iface = 1, nfaces
+          !
+          rdx = face(iface)%attr(FACEDISTC)
+          !
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+             !
+             finp = face(iface)%attr(FACELINPF)
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             gmat(iface,1) = -rdx * ( (0.5-finp)*dps(icelll) + 0.5*s0(icelll) +      finp * dps(icellr) )
+             gmat(iface,2) =  rdx * ( (finp-0.5)*dps(icellr) + 0.5*s0(icellr) + (1.-finp) * dps(icelll) )
+             !
+          else if ( wlimp(iface) .and. wetu(iface) == 1 ) then   ! described water level at boundary face
+             !
+             ! consider boundary cell of current face
+             !
+             icellb = face(iface)%atti(FACEC1)
+             !
+             gmat(iface,1) = -rdx * hs(icellb)
+             gmat(iface,2) = 0.
+             !
+          else
+             !
+             gmat(iface,1) = 0.
+             gmat(iface,2) = 0.
+             !
+          endif
+          !
+       enddo
+       !
+    endif
+    !
+    ! compute gradient of non-hydrostatic pressure in momentum equation
+    !
+    if ( ihydro == 1 ) then
+       !
+       do iface = 1, nfaces
+          !
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             qgrad(iface) = gmat(iface,1) * q(icelll) + gmat(iface,2) * q(icellr)
+             !
+          else if ( wlimp(iface) .and. wetu(iface) == 1 ) then   ! described water level at boundary face
+             !
+             ! consider boundary cell of current face
+             !
+             icellb = face(iface)%atti(FACEC1)
+             !
+             qgrad(iface) = gmat(iface,1) * q(icellb)
+             !
+          endif
+          !
+       enddo
+       !
+       if ( iproj == 2 ) qgrad = (1.-theta3) * qgrad
+       !
+    else
+       !
+       qgrad = 0.
+       !
+    endif
+    !
+    ! compute cell-based velocity vector
+    !
+    call perot ( u0, 1, 1 )
+    !
+    ! compute bottom friction term, if appropriate
+    !
+    if ( irough == 11 ) then
+       !
+       ! linear bottom friction
+       !
+       do iface = 1, nfaces
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             cbot(iface) = cfricu(iface) / hum(iface)
+             !
+          endif
+          !
+       enddo
+       !
+    else if ( irough /= 0 ) then
+       !
+       ! quadratic bottom friction
+       !
+       do iface = 1, nfaces
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             finp = face(iface)%attr(FACELINPF)
+             !
+             nx = face(iface)%attr(FACENORMX)
+             ny = face(iface)%attr(FACENORMY)
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             ! compute tangential velocity component
+             !
+             if ( icelll /= 0 .and. icellr /= 0 ) then
+                !
+                ut = nx * ( finp * uvc(icelll,2) + (1.-finp) * uvc(icellr,2) ) - ny * ( finp * uvc(icelll,1) + (1.-finp) * uvc(icellr,1) )
+                !
+             else if ( icelll == 0 ) then
+                !
+                ut = nx * uvc(icellr,2) - ny * uvc(icellr,1)
+                !
+             else
+                !
+                ut = nx * uvc(icelll,2) - ny * uvc(icelll,1)
+                !
+             endif
+             !
+             ! compute velocity magnitude
+             !
+             utot = sqrt( u0(iface)*u0(iface) + ut*ut )
+             !
+             ! compute contribution to bottom friction
+             !
+             cbot(iface) = cfricu(iface) * utot / hum(iface)
+             !
+          endif
+          !
+       enddo
+       !
+    else
+       !
+       cbot = 0.
+       !
+    endif
+    !
+    ! - loop over boundary faces where the water level is prescribed, if appropriate
+    !
+    do iface = 1, nfaces
+       !
+       if ( wlimp(iface) ) then   ! described water level at boundary face
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             rdx = face(iface)%attr(FACEDISTC)
+             !
+             ! consider boundary cell of current face
+             !
+             icellb = face(iface)%atti(FACEC1)
+             !
+             ! compute water depth at boundary face
+             !
+             hf = 0.5 * ( s0(icellb) + bcso(iface) ) + dps(icellb)
+             !
+             ! compute water level gradient
+             !
+             zgrad = grav * rdx * hf * ( bcso(iface) - s0(icellb) )
+             !
+             ! compute total contributions of the momentum equation
+             !
+             contrib = ( zgrad + qgrad(iface) ) / hum(iface)
+             !
+             denom = 1. + dt * cbot(iface)
+             !
+             ! update normal component of flow velocity at boundary face
+             !
+             u1(iface) = ( u0(iface) - dt * contrib ) / denom
+             !
+          else
+             !
+             u1(iface) = 0.
+             !
+          endif
+          !
+       endif
+       !
+    enddo
+    !
+    ! compute advection term (momentum conservative)
+    !
+    do iface = 1, nfaces
+       !
+       if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+          !
+          finp = face(iface)%attr(FACELINPF)
+          !
+          nx = face(iface)%attr(FACENORMX)
+          ny = face(iface)%attr(FACENORMY)
+          !
+          ! consider left and right cells of current face
+          !
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          if ( u0(iface) > 0. ) then
+             !
+             icella = icelll
+             FC     = FACECL
+             faca   = finp
+             !
+          else
+             !
+             icella = icellr
+             FC     = FACECR
+             faca   = 1. - finp
+             !
+          endif
+          !
+          advec(iface) = 0.
+          !
+          ! loop over faces of the cell under consideration
+          !
+          do jf = 1, cell(icella)%nof
+             !
+             ! consider upwind cell of the current face
+             !
+             ifaceu = cell(icella)%face(jf)%atti(FACEID)
+             !
+             if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
+                !
+                icellu = face(ifaceu)%atti(FC)
+                !
+                !  update for ingoing flux
+                !
+                if ( quf(icella,jf) < 0. ) advec(iface) = advec(iface) + quf(icella,jf) * ( nx * uvc(icellu,1) + ny * uvc(icellu,2) - u0(iface) )
+                !
+             endif
+             !
+          enddo
+          !
+          area = cell(icella)%attr(CELLAREA)
+          !
+          advec(iface) = faca * advec(iface) / area
+          !
+       endif
+       !
+    enddo
+    !
+    ! compute viscosity term
+    !
+    if ( ihvisc /= 0 ) then
+       !
+       do iface = 1, nfaces
+          !
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+             !
+             finp = face(iface)%attr(FACELINPF)
+             !
+             nx = face(iface)%attr(FACENORMX)
+             ny = face(iface)%attr(FACENORMY)
+             !
+             ! consider left cell of current face
+             !
+             icell = face(iface)%atti(FACECL)
+             !
+             cvisc = 0.
+             !
+             ! loop over faces of the cell under consideration
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! local face
+                !
+                ifacel = cell(icell)%face(jf)%atti(FACEID)
+                !
+                if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
+                   !
+                   ! get length and normal distance of local face
+                   !
+                   lf  = face(ifacel)%attr(FACELEN)
+                   rdx = face(ifacel)%attr(FACEDISTC)
+                   !
+                   ! consider left and right cells of local face
+                   !
+                   icelll = face(ifacel)%atti(FACECL)
+                   icellr = face(ifacel)%atti(FACECR)
+                   !
+                   ! take into account orientation of local face
+                   !
+                   if ( icell == icelll ) then
+                      rsgn =  1.
+                   else if ( icell == icellr ) then
+                      rsgn = -1.
+                   endif
+                   !
+                   ! compute contribution to viscosity term
+                   !
+                   cvisc = cvisc + rsgn * vnu2d(ifacel) * hum(ifacel) * lf * rdx * ( nx * ( uvc(icellr,1) - uvc(icelll,1) ) + ny * ( uvc(icellr,2) - uvc(icelll,2) ) )
+                   !
+                endif
+                !
+             enddo
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             visc(iface) = finp * cvisc / area
+             !
+             ! consider right cell of current face
+             !
+             icell = face(iface)%atti(FACECR)
+             !
+             cvisc = 0.
+             !
+             ! loop over faces of the cell under consideration
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! local face
+                !
+                ifacel = cell(icell)%face(jf)%atti(FACEID)
+                !
+                if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
+                   !
+                   ! get length and normal distance of local face
+                   !
+                   lf  = face(ifacel)%attr(FACELEN)
+                   rdx = face(ifacel)%attr(FACEDISTC)
+                   !
+                   ! consider left and right cells of local face
+                   !
+                   icelll = face(ifacel)%atti(FACECL)
+                   icellr = face(ifacel)%atti(FACECR)
+                   !
+                   ! take into account orientation of local face
+                   !
+                   if ( icell == icelll ) then
+                      rsgn =  1.
+                   else if ( icell == icellr ) then
+                      rsgn = -1.
+                   endif
+                   !
+                   ! compute contribution to viscosity term
+                   !
+                   cvisc = cvisc + rsgn * vnu2d(ifacel) * hum(ifacel) * lf * rdx * ( nx * ( uvc(icellr,1) - uvc(icelll,1) ) + ny * ( uvc(icellr,2) - uvc(icelll,2) ) )
+                   !
+                endif
+                !
+             enddo
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             visc(iface) = visc(iface) + (1.-finp) * cvisc / area
+             !
+          endif
+          !
+       enddo
+       !
+    else
+       !
+       visc = 0.
+       !
+    endif
+    !
+    ! compute the flow velocity
+    !
+    ! - loop over internal faces
+    !
+    do iface = 1, nfaces
+       !
+       if ( face(iface)%atti(FMARKER) == 0 ) then   ! internal face
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             rdx = face(iface)%attr(FACEDISTC)
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             ! compute arithmetic average water depth at present face
+             !
+             hf = 0.5 * ( hs(icelll) + hs(icellr) )
+             !
+             ! compute water level gradient
+             !
+             zgrad = grav * rdx * hf * ( s0(icellr) - s0(icelll) )
+             !
+             ! compute total contributions of the momentum equation
+             !
+             contrib = ( advec(iface) + zgrad + qgrad(iface) - visc(iface) ) / hum(iface)
+             !
+             denom = 1. + dt * cbot(iface)
+             !
+             ! update flow velocity at face
+             !
+             u1(iface) = ( u0(iface) - dt * contrib ) / denom
+             !
+          else
+             !
+             u1(iface) = 0.
+             !
+          endif
+          !
+       endif
+       !
+    enddo
+    !
+    ! compute the water level
+    !
+    fac = grav * theta * theta2 * dt * dt
+    !
+    ! first, build the equation for water level correction
+    !
+    do icell = 1, ncells
+       !
+       amat(icell,0) = cell(icell)%attr(CELLAREA)
+       rhs (icell  ) = 0.
+       !
+       ! loop over faces of the cell
+       !
+       do jf = 1, cell(icell)%nof
+          !
+          ! face identifier
+          !
+          iface = cell(icell)%face(jf)%atti(FACEID)
+          !
+          lf  = face(iface)%attr(FACELEN)
+          rdx = face(iface)%attr(FACEDISTC)
+          !
+          ! get the necessary cells
+          !
+          icellb = face(iface)%atti(FACEC1)
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          ! build matrix and right-hand side
+          !
+          if ( face(iface)%atti(FMARKER) == 0 ) then   ! internal face
+             !
+             hf             = 0.5 * ( hs(icelll) + hs(icellr) )
+             ctrs           = -fac * lf * hu(iface) * rdx * hf / hum(iface)
+             amat(icell,jf) = ctrs
+             !
+          else if ( wlimp(iface) ) then   ! described water level at boundary face
+             !
+             hf         = 0.5 * ( s0(icellb) + bcso(iface) ) + dps(icellb)
+             ctrs       = -fac * lf * hu(iface) * abs(rdx) * hf / hum(iface)
+             dbs        = bcs(iface) - bcso(iface)
+             rhs(icell) = rhs(icell) - ctrs * dbs
+             !
+          else
+             !
+             ctrs = 0.
+             !
+          endif
+          !
+          amat(icell,0) = amat(icell,0) - ctrs
+          !
+          ! take into account orientation of the current face
+          !
+          if ( icell == icelll ) then
+             rsgn =  1.
+          else if ( icell == icellr ) then
+             rsgn = -1.
+          endif
+          !
+          rhs(icell) = rhs(icell) - dt * rsgn * lf * hu(iface) * ( theta*u1(iface) + (1.-theta)*u0(iface) )
+          !
+       enddo
+       !
+    enddo
+    !
+    ! add mass source due to internal wave generation
+    !
+    if ( iwvgen /= 0 ) then
+       !
+       do icell = 1, ncells
+          !
+          area = cell(icell)%attr(CELLAREA)
+          !
+          rhs(icell) = rhs(icell) + dt * area * srcm(icell)
+          !
+       enddo
+       !
+    endif
+    !
+    ! next, solve the equation for water level correction
+    !
+    call pcgu( amat, rhs, ds )
+    if (STPNOW()) return
+    !
+    ! correct flow velocity
+    !
+    do iface = 1, nfaces
+       !
+       if ( wlimp(iface) ) then   ! described water level at boundary face
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             rdx = face(iface)%attr(FACEDISTC)
+             !
+             ! consider boundary cell of current face
+             !
+             icellb = face(iface)%atti(FACEC1)
+             !
+             ! compute water depth at boundary face
+             !
+             hf = 0.5 * ( s0(icellb) + bcso(iface) ) + dps(icellb)
+             !
+             ! get change in boundary water level over time
+             !
+             dbs = bcs(iface) - bcso(iface)
+             !
+             u1(iface) = u1(iface) - grav * theta2 * dt * rdx * hf * ( dbs - ds(icellb) ) / hum(iface)
+             !
+          endif
+          !
+       endif
+       !
+    enddo
+    !
+    do iface = 1, nfaces
+       !
+       if ( face(iface)%atti(FMARKER) == 0 ) then   ! internal face
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             rdx = face(iface)%attr(FACEDISTC)
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             ! compute arithmetic average water depth at present face
+             !
+             hf = 0.5 * ( hs(icelll) + hs(icellr) )
+             !
+             u1(iface) = u1(iface) - grav * theta2 * dt * rdx * hf * ( ds(icellr) - ds(icelll) ) / hum(iface)
+             !
+          endif
+          !
+       endif
+       !
+    enddo
+    !
+    ! update water level
+    !
+    s1 = s0 + ds
+    !
+    ! compute intermediate w-velocity
+    !
+    if ( ihydro == 1 ) then
+       !
+       if ( iproj == 1 ) then
+          fac = 1.
+       else if ( iproj == 2 ) then
+          fac = 1. - theta3
+       endif
+       !
+       ! compute cell-based velocity vector
+       !
+       call perot ( u1, 1, 1 )
+       !
+       do icell = 1, ncells
+          !
+          if ( wets(icell) == 1 ) then
+             !
+             w1bot(icell) = 0.
+             !
+             ! loop over faces of the cell
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! face identifier
+                !
+                iface = cell(icell)%face(jf)%atti(FACEID)
+                !
+                ! get length of current face
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                nx = face(iface)%attr(FACENORMX)
+                ny = face(iface)%attr(FACENORMY)
+                !
+                ! consider left and right cells of current face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                ! take into account orientation of the current face
+                !
+                if ( icell == icelll ) then
+                   rsgn =  1.
+                else if ( icell == icellr ) then
+                   rsgn = -1.
+                endif
+                !
+                ! compute kinematic condition
+                !
+                w1bot(icell) = w1bot(icell) - rsgn * lf * dpu(iface) * ( nx * uvc(icell,1) + ny * uvc(icell,2) )
+                !
+             enddo
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             w1bot(icell) = w1bot(icell) / area
+             !
+             w1top(icell) = w0top(icell) + w0bot(icell) - w1bot(icell) + 2.*dt*fac*q(icell)/hs(icell)
+             !
+          else
+             !
+             w1bot(icell) = 0.
+             w1top(icell) = 0.
+             !
+          endif
+          !
+       enddo
+       !
+    endif
+    !
+    ! compute the non-hydrostatic pressure correction
+    !
+    if ( ihydro == 1 ) then
+       !
+       ! build the Poisson equation
+       !
+       do icell = 1, ncells
+          !
+          if ( wets(icell) == 1 ) then
+             !
+             ! get coordinates of the cell circumcenter and cell area
+             !
+             xc = cell(icell)%attr(CELLCCX)
+             yc = cell(icell)%attr(CELLCCY)
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             ! compute bottom gradient
+             !
+             dpx = 0.
+             dpy = 0.
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! face identifier
+                !
+                iface = cell(icell)%face(jf)%atti(FACEID)
+                !
+                ! get length of the face
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                nx = face(iface)%attr(FACENORMX)
+                ny = face(iface)%attr(FACENORMY)
+                !
+                ! consider left and right cells of the face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                ! take into account orientation of the face
+                !
+                if ( icell == icelll ) then
+                   rsgn =  1.
+                else if ( icell == icellr ) then
+                   rsgn = -1.
+                endif
+                !
+                dpx = dpx + rsgn * lf * dpu(iface) * nx
+                dpy = dpy + rsgn * lf * dpu(iface) * ny
+                !
+             enddo
+             !
+             dpx = 2. * dpx / hs(icell) / area
+             dpy = 2. * dpy / hs(icell) / area
+             !
+             amat(icell,0) = -2.*area / (hs(icell)*hs(icell))
+             rhs (icell  ) = area * ( w1top(icell) + w1bot(icell) ) / hs(icell)
+             !
+             ! loop over faces of the cell
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! face identifier
+                !
+                iface = cell(icell)%face(jf)%atti(FACEID)
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                ! get coordinates of the midface
+                !
+                xf = face(iface)%attr(FACEMX)
+                yf = face(iface)%attr(FACEMY)
+                !
+                ! consider left and right cells of the face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                fac = lf * ( 1. + dpx * ( xf - xc ) + dpy * ( yf - yc ) )
+                !
+                ! build matrix and right-hand side
+                !
+                if ( icell == icelll ) then
+                   !
+                   if ( face(iface)%atti(FMARKER) == 0 ) then   ! internal face
+                      !
+                      amat(icell, 0) = amat(icell,0) + fac * gmat(iface,1) / hum(iface)
+                      amat(icell,jf) =                 fac * gmat(iface,2) / hum(iface)
+                      !
+                   else if ( wlimp(iface) ) then   ! described water level at boundary face
+                      !
+                      amat(icell,0) = amat(icell,0) + fac * gmat(iface,1) / hum(iface)
+                      !
+                   endif
+                   !
+                   rhs(icell) = rhs(icell) + fac * u1(iface)
+                   !
+                else if ( icell == icellr ) then
+                   !
+                   if ( face(iface)%atti(FMARKER) == 0 ) then   ! internal face
+                      !
+                      amat(icell,0 ) = amat(icell,0) - fac * gmat(iface,2) / hum(iface)
+                      amat(icell,jf) =               - fac * gmat(iface,1) / hum(iface)
+                      !
+                   else if ( wlimp(iface) ) then   ! described water level at boundary face
+                      !
+                      amat(icell,0) = amat(icell,0) - fac * gmat(iface,1) / hum(iface)
+                      !
+                   endif
+                   !
+                   rhs(icell) = rhs(icell) - fac * u1(iface)
+                   !
+                endif
+                !
+             enddo
+             !
+             rhs(icell) = rhs(icell) / (dt*theta3)
+             !
+          else
+             !
+             amat(icell,0  ) = 1.
+             amat(icell,1:3) = 0.
+             rhs (icell    ) = 0.
+             !
+          endif
+          !
+       enddo
+       !
+       ! solve the Poisson equation
+       !
+       call pcgstab ( amat, rhs, dq )
+       if (STPNOW()) return
+       !
+    endif
+    !
+    ! update the non-hydrostatic pressure
+    !
+    if ( ihydro == 1 ) then
+       if ( iproj == 1 ) then
+          q = q + dq
+       else if ( iproj == 2 ) then
+          q = dq
+       endif
+    endif
+    !
+    ! correct the flow velocities
+    !
+    if ( ihydro == 1 ) then
+       !
+       ! u-velocity
+       !
+       do iface = 1, nfaces
+          !
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             u1(iface) = u1(iface) - dt*theta3*( gmat(iface,1) * dq(icelll) + gmat(iface,2) * dq(icellr) ) / hum(iface)
+             !
+          else if ( wlimp(iface) .and. wetu(iface) == 1 ) then   ! described water level at boundary face
+             !
+             ! consider boundary cell of current face
+             !
+             icellb = face(iface)%atti(FACEC1)
+             !
+             u1(iface) = u1(iface) - dt*theta3* gmat(iface,1) * dq(icellb) / hum(iface)
+             !
+          endif
+          !
+       enddo
+       !
+       ! compute cell-based velocity vector
+       !
+       call perot ( u1, 1, 1 )
+       !
+       ! w-velocity
+       !
+       do icell = 1, ncells
+          !
+          if ( wets(icell) == 1 ) then
+             !
+             w1top(icell) = w1top(icell) + w1bot(icell) + 2.*dt*theta3*dq(icell)/hs(icell)
+             !
+             w1bot(icell) = 0.
+             !
+             ! loop over faces of the cell
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! face identifier
+                !
+                iface = cell(icell)%face(jf)%atti(FACEID)
+                !
+                ! get length of current face
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                nx = face(iface)%attr(FACENORMX)
+                ny = face(iface)%attr(FACENORMY)
+                !
+                ! consider left and right cells of current face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                ! take into account orientation of the current face
+                !
+                if ( icell == icelll ) then
+                   rsgn =  1.
+                else if ( icell == icellr ) then
+                   rsgn = -1.
+                endif
+                !
+                ! compute kinematic condition
+                !
+                w1bot(icell) = w1bot(icell) - rsgn * lf * dpu(iface) * ( nx * uvc(icell,1) + ny * uvc(icell,2) )
+                !
+             enddo
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             w1bot(icell) = w1bot(icell) / area
+             !
+             w1top(icell) = w1top(icell) - w1bot(icell)
+             !
+          endif
+          !
+       enddo
+       !
+    endif
+    !
+    ! calculate net mass outflow based on local continuity equation
+    !
+    if ( ITEST >= 30 .and. ihydro == 1 ) then
+       !
+       moutf = 0.
+       !
+       do icell = 1, ncells
+          !
+          ! loop over faces of the cell
+          !
+          do jf = 1, cell(icell)%nof
+             !
+             ! face identifier
+             !
+             iface = cell(icell)%face(jf)%atti(FACEID)
+             !
+             ! get length of current face
+             !
+             lf = face(iface)%attr(FACELEN)
+             !
+             ! consider left and right cells of current face
+             !
+             icelll = face(iface)%atti(FACECL)
+             icellr = face(iface)%atti(FACECR)
+             !
+             ! take into account orientation of the current face
+             !
+             if ( icell == icelll ) then
+                rsgn =  1.
+             else if ( icell == icellr ) then
+                rsgn = -1.
+             endif
+             !
+             moutf = moutf + rsgn * lf * u1(iface)
+             !
+          enddo
+          !
+          area = cell(icell)%attr(CELLAREA)
+          !
+          moutf = moutf + area * ( w1top(icell) - w1bot(icell) ) / hs(icell)
+          !
+       enddo
+       !
+       write(PRINTF,101) moutf
+       !
+    endif
+    !
+    ! calculate total displaced volume of water (reference is at z = 0)
+    ! Note: this testing is appropriate for a closed domain with reflective boundaries
+    !
+    if ( ITEST >= 30 ) then
+       !
+       vol = 0.
+       !
+       do icell = 1, ncells
+          !
+          ! compute displaced volume in the cell center
+          vol = vol + s1(icell)
+          !
+       enddo
+       !
+       write(PRINTF,102) vol
+       !
+    endif
+    !
+    ! apply wave absorption by means of sponge layer, if appropriate
+    !
+    do j = 1, nspl
+       !
+       do iface = 1, nfaces
+          !
+          gamma = sponu(iface,j)%gamma
+          bface = sponu(iface,j)%bface
+          !
+          if ( wetu(iface) == 1 ) then
+             !
+             u1(iface) = (1.-gamma) * u1(iface) + gamma * u1(bface)
+             !
+          endif
+          !
+       enddo
+       !
+       do icell = 1, ncells
+          !
+          gamma = spons(icell,j)%gamma
+          bcell = spons(icell,j)%bcell
+          !
+          if ( wets(icell) == 1 ) then
+             !
+             s1(icell) = (1.-gamma) * s1(icell) + gamma * s1(bcell)
+             !
+          endif
+          !
+       enddo
+       !
+    enddo
+    !
+    ! compute the maximum CFL number
+    !
+    cflmax = -999.
+    !
+    do iface = 1, nfaces
+       !
+       rdx = face(iface)%attr(FACEDISTG)
+       !
+       cfl = rdx * dt * abs(u1(iface))
+       if ( cfl > cflmax ) cflmax = cfl
+       !
+    enddo
+    !
+    ! give warning in case of CFL > 1
+    !
+    if ( .not. cflmax < 1. ) then
+       !
+       call msgerr ( 1, 'CFL condition is violated!')
+       call msgerr ( 0, 'It is advised to reduce the time step!' )
+       !
+    endif
+    !
+ 101 format (2x,'the net mass outflow is ',e14.8e2)
+ 102 format (2x,'the total displaced volume of water is ',e14.8e2)
+    !
+end subroutine SwashImpDepUflow

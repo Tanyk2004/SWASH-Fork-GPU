@@ -1,0 +1,123 @@
+subroutine SwashComputStruc
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmers: The SWASH team                               |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2022  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: Marcel Zijlema
+!
+!   Updates
+!
+!    1.00, March 2010: New subroutine
+!
+!   Purpose
+!
+!   Performs one full simulation step with structured grid
+!
+!   Modules used
+!
+    use ocpcomm4
+    use SwashCommdata3
+    use SwashFlowdata
+!
+    implicit none
+!
+!   Local variables
+!
+    integer, save :: ient = 0 ! number of entries in this subroutine
+    !
+    logical       :: STPNOW   ! indicates that program must stop
+!
+!   Structure
+!
+!   Description of the pseudo code
+!
+!   Source text
+!
+    if (ltrace) call strace (ient,'SwashComputStruc')
+    !
+    ! compute flow
+    !
+!TIMG    call SWTSTA(51)
+    if ( .not.momskip ) call SwashComputFlow
+!TIMG    call SWTSTO(51)
+    if (STPNOW()) return
+    !
+    ! update water depths
+    !
+!TIMG    call SWTSTA(52)
+    if ( kmax == 1 ) then
+       call SwashUpdateDepths (   u1,   v1 )
+    else
+       call SwashUpdateDepths ( udep, vdep )
+    endif
+!TIMG    call SWTSTO(52)
+    if (STPNOW()) return
+    !
+    ! update layer interfaces
+    !
+!TIMG    call SWTSTA(53)
+    if ( kmax > 1 ) call SwashLayerIntfaces
+!TIMG    call SWTSTO(53)
+    !
+    ! update mask arrays for wetting and drying
+    !
+!TIMG    call SWTSTA(54)
+    call SwashDryWet
+!TIMG    call SWTSTO(54)
+    if (STPNOW()) return
+    !
+    ! update mask arrays for free surface / pressurized flow
+    !
+!TIMG    call SWTSTA(54)
+    if ( ifloat /= 0 ) call SwashPresFlow
+!TIMG    call SWTSTO(54)
+    if (STPNOW()) return
+    !
+    ! update mask array for wave breaking
+    !
+!TIMG    call SWTSTA(54)
+    if ( isurf /= 0 ) call SwashBreakPoint
+!TIMG    call SWTSTO(54)
+    if (STPNOW()) return
+    !
+    ! compute transport
+    !
+!TIMG    call SWTSTA(101)
+    if ( itrans /= 0 ) call SwashComputTrans
+!TIMG    call SWTSTO(101)
+    if (STPNOW()) return
+    !
+    ! compute 3D turbulence
+    !
+!TIMG    call SWTSTA(102)
+    if ( iturb /= 0 ) call SwashComputTurb
+!TIMG    call SWTSTO(102)
+    if (STPNOW()) return
+    !
+end subroutine SwashComputStruc
