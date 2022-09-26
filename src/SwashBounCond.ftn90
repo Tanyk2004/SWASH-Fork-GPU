@@ -91,9 +91,11 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer, dimension(:), allocatable           :: iarr1            ! array containing boundary vertices of unstructured mesh
     integer, dimension(:), allocatable           :: iarr2            ! shifted array containing boundary vertices of unstructured mesh
     integer, save                                :: ient = 0         ! number of entries in this subroutine
+    integer, dimension(:), allocatable           :: io               ! array storing the order of sorted array indices (Fourier series)
     integer                                      :: iiopt            ! time coding option
     integer                                      :: ish              ! shift index
     integer                                      :: iside            ! selected side of domain where boundary values are imposed
+    integer                                      :: itmp             ! temporary stored integer
     integer                                      :: ix               ! index of point in x-direction
     integer                                      :: ix1              ! index of first endpoint in x-direction
     integer                                      :: ix2              ! index of second endpoint in x-direction
@@ -103,7 +105,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer                                      :: iy               ! index of point in y-direction
     integer                                      :: iy1              ! index of first endpoint in y-direction
     integer                                      :: iy2              ! index of second endpoint in y-direction
-    integer                                      :: j                ! index
+    integer                                      :: j                ! index / loop counter
     integer                                      :: jbg              ! type of boundary polygon in unstructured mesh
                                                                      ! =1; sea/mainland boundary
                                                                      ! >1; island boundary
@@ -121,6 +123,9 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer                                      :: vm               ! boundary marker
     !
     real                                         :: ampl             ! amplitude of a Fourier component
+    real, dimension(:), allocatable              :: arra             ! auxiliary array to store amplitudes of Fourier series temporarily
+    real, dimension(:), allocatable              :: arrf             ! auxiliary array to store frequencies of Fourier series temporarily
+    real, dimension(:), allocatable              :: arrp             ! auxiliary array to store phases of Fourier series temporarily
     real                                         :: azero            ! amplitude at zero frequency in Fourier series
     real                                         :: cosdir           ! cosine of a direction
     real                                         :: crdm             ! largest crdp resulting in a side to be selected
@@ -140,6 +145,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     real                                         :: rdist            ! distance between two points
     real                                         :: rlen1            ! auxiliary real to store rlen2 from previous variable part of segment / side
     real                                         :: rlen2            ! user-defined distance from a point of segment / side to next point
+    real                                         :: rtmp             ! temporary stored real
     real                                         :: sindir           ! sine of a direction
     real, dimension(5)                           :: spparm           ! parameters used for computation of incident spectrum and subsequent Fourier series
                                                                      ! =1; wave height (significant or rms)
@@ -929,6 +935,12 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
           ibound = 0
        endif
        !
+       if ( blayk /= -1 .and.  ibound == 1 ) then
+          call msgerr (0, 'the vertical hyperbolic cosine profile for velocity at the boundary will be assumed')
+          blayk   = -1
+          verwinc = .true.
+       endif
+       !
        ! boundary condition given as Fourier series, spectrum or time series (from file)
        !
        curr => frst%nextxy
@@ -982,19 +994,54 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              !
              if ( nfreq > 0 ) then
                 !
+                allocate(arra(nfreq))
+                allocate(arrf(nfreq))
+                allocate(arrp(nfreq))
                 currf => frstf%nextfs
+                do i = 1, nfreq
+                   arra(i) = currf%ampl
+                   arrf(i) = currf%omega
+                   arrp(i) = currf%phase
+                   currf => currf%nextfs
+                enddo
+                deallocate(tmpf)
+                !
+                ! initialize the order of array indices
+                !
+                allocate(io(nfreq))
+                do i = 1, nfreq
+                   io(i) = i
+                enddo
+                !
+                ! in case of bound long wave, sort the frequencies
+                !
+                if ( ibound == 1 ) then
+                   do i = 1, nfreq-1
+                      do j = i+1, nfreq
+                         if ( arrf(i) > arrf(j) ) then
+                            rtmp    = arrf(j)
+                            itmp    = io(j)
+                            arrf(j) = arrf(i)
+                            io(j)   = io(i)
+                            arrf(i) = rtmp
+                            io(i)   = itmp
+                         endif
+                      enddo
+                   enddo
+                endif
+                !
                 allocate(bfstmp%ampl (nfreq))
                 allocate(bfstmp%omega(nfreq))
                 allocate(bfstmp%phase(nfreq))
                 allocate(bfstmp%theta(nfreq))
                 do i = 1, nfreq
-                   bfstmp%ampl (i) = currf%ampl
-                   bfstmp%omega(i) = currf%omega
-                   bfstmp%phase(i) = currf%phase
+                   bfstmp%ampl (i) = arra(io(i))
+                   bfstmp%omega(i) = arrf(i)
+                   bfstmp%phase(i) = arrp(io(i))
                    bfstmp%theta(i) = 0.
-                   currf => currf%nextfs
                 enddo
-                deallocate(tmpf)
+                !
+                deallocate(arra,arrf,arrp,io)
                 !
              endif
              !
@@ -1338,19 +1385,54 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                       !
                       if ( nfreq > 0 ) then
                          !
+                         allocate(arra(nfreq))
+                         allocate(arrf(nfreq))
+                         allocate(arrp(nfreq))
                          currf => frstf%nextfs
+                         do i = 1, nfreq
+                            arra(i) = currf%ampl
+                            arrf(i) = currf%omega
+                            arrp(i) = currf%phase
+                            currf => currf%nextfs
+                         enddo
+                         deallocate(tmpf)
+                         !
+                         ! initialize the order of array indices
+                         !
+                         allocate(io(nfreq))
+                         do i = 1, nfreq
+                            io(i) = i
+                         enddo
+                         !
+                         ! in case of bound long wave, sort the frequencies
+                         !
+                         if ( ibound == 1 ) then
+                            do i = 1, nfreq-1
+                               do j = i+1, nfreq
+                                  if ( arrf(i) > arrf(j) ) then
+                                     rtmp    = arrf(j)
+                                     itmp    = io(j)
+                                     arrf(j) = arrf(i)
+                                     io(j)   = io(i)
+                                     arrf(i) = rtmp
+                                     io(i)   = itmp
+                                  endif
+                               enddo
+                            enddo
+                         endif
+                         !
                          allocate(bfstmp%ampl (nfreq))
                          allocate(bfstmp%omega(nfreq))
                          allocate(bfstmp%phase(nfreq))
                          allocate(bfstmp%theta(nfreq))
                          do i = 1, nfreq
-                            bfstmp%ampl (i) = currf%ampl
-                            bfstmp%omega(i) = currf%omega
-                            bfstmp%phase(i) = currf%phase
+                            bfstmp%ampl (i) = arra(io(i))
+                            bfstmp%omega(i) = arrf(i)
+                            bfstmp%phase(i) = arrp(io(i))
                             bfstmp%theta(i) = 0.
-                            currf => currf%nextfs
                          enddo
-                         deallocate(tmpf)
+                         !
+                         deallocate(arra,arrf,arrp,io)
                          !
                       endif
                       !

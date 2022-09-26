@@ -304,7 +304,7 @@ subroutine SwashMain
                 if ( .not. real(timco) > real(tfinc) ) then
                    if ( ITEST >= 1 ) write (PRINTF, 204) chtime, timco
                    if (SCREEN /= PRINTF .and. INODE == MASTER ) then
-                      fac   = 100. * timco/tfinc
+                      fac   = 100. * (timco-tinic) / (tfinc-tinic)
                       iprog = nint(fac)
                       chars(1) = INTSTR(iprog)
                       call TXPBLA(chars(1),if(1),il(1))
