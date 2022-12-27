@@ -11,7 +11,7 @@ subroutine SwashPrintSettings
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -44,6 +44,7 @@ subroutine SwashPrintSettings
     use ocpcomm4
     use SwashCommdata3
     use SwashCommdata4
+    use SwashRigBoddata
 !
     implicit none
 !
@@ -333,12 +334,27 @@ subroutine SwashPrintSettings
        endif
     endif
     !
-    if ( optg /= 5 ) then
-       write (PRINTF, 248) spwidl, spwidr
-       write (PRINTF, 249) spwidb, spwidt
+    if ( ifloat == 2 ) then
+       if ( mfoti == 1 ) then
+          write (PRINTF,*) 'Newmark scheme is employed'
+       else if ( mfoti == 2 ) then
+          write (PRINTF,*) 'Chung-Hulbert scheme is employed'
+       else if ( mfoti == 3 ) then
+          write (PRINTF,*) 'Hilber-Hughes-Taylor scheme is employed'
+       else if ( mfoti == 4 ) then
+          write (PRINTF,*) 'Wood-Bossak-Zienkiewicz scheme is employed'
+       endif
+       write (PRINTF, 248) alfam   , alfaf
+       write (PRINTF, 249) pship(3), pship(4)
+       write (PRINTF, 250) pship(8), nint(pship(9))
     endif
     !
-    if ( ITMOPT /= 7 ) write (PRINTF, 250) DTTIWR(ITMOPT, 0.)
+    if ( optg /= 5 ) then
+       write (PRINTF, 251) spwidl, spwidr
+       write (PRINTF, 252) spwidb, spwidt
+    endif
+    !
+    if ( ITMOPT /= 7 ) write (PRINTF, 253) DTTIWR(ITMOPT, 0.)
     !
  201 format (/,                                                          &
      '----------------------------------------------------------------'  &
@@ -393,8 +409,11 @@ subroutine SwashPrintSettings
  245 format (' Vert advection trans : PROPSC ',i12  ,' KAPPA ',e12.4)
  246 format ('                      : M      ',e12.4,' PHI   ',e12.4)
  247 format (' Iterative process    : ACCUR  ',e12.4,' MAXIT ',i12)
- 248 format (' Sponge layer widths  : LEFT   ',e12.4,' RIGHT ',e12.4)
- 249 format ('                      : LOWER  ',e12.4,' UPPER ',e12.4)
- 250 format (' Reference date and time         ',a15)
+ 248 format (' Rigid body solver    : ALFAM  ',e12.4,' ALFAF ',e12.4)
+ 249 format ('                      : BETA   ',e12.4,' GAMMA ',e12.4)
+ 250 format ('                      : ACCUR  ',e12.4,' MAXIT ',i12)
+ 251 format (' Sponge layer widths  : LEFT   ',e12.4,' RIGHT ',e12.4)
+ 252 format ('                      : LOWER  ',e12.4,' UPPER ',e12.4)
+ 253 format (' Reference date and time         ',a15)
     !
 end subroutine SwashPrintSettings

@@ -11,7 +11,7 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -96,9 +96,9 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
     !            |          |
     !            | WX       |
     !            |          |
-    ! INPgrid  (<  WY        >) &
+    !            | WY       |
     !            |          |
-    !            | PRessure |
+    ! INPgrid  (<  PRessure  >) &
     !            |          |
     !            | POROsity |
     !            |          |
@@ -114,7 +114,9 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
     !            |          |
     !            | NPLAnts  |
     !            |          |
-    !            | FLOAT    |
+    !            | DRAFt    |
+    !            |          |
+    !            | LABel    |
     !
     !
     !    | REGular [xpinp] [ypinp] [alpinp] [mxinp] [myinp] [dxinp] [dyinp] |
@@ -255,7 +257,8 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
        if ( igrid1 == 1  .or. igrid1 == 8  .or.                   &
             igrid1 == 10 .or. igrid1 == 11 .or. igrid1 == 12 .or. &
             igrid1 == 14 .or.                                     &
-            igrid1 == 15 .or. igrid1 == 16 .or. igrid1 == 17      ) call msgerr (2, 'nonstationary input field not allowed in this case')
+            igrid1 == 15 .or. igrid1 == 16 .or. igrid1 == 17 .or. &
+            igrid1 == 19                                          ) call msgerr (2, 'nonstationary input field not allowed in this case')
        call INCTIM (ITMOPT,'TBEGINP',iflbeg(igrid1),'REQ',0d0)
        call INITVD ('DELTINP', iflint(igrid1), 'REQ', 0d0)
        call INCTIM (ITMOPT,'TENDINP',iflend(igrid1),'STA',1.d20)

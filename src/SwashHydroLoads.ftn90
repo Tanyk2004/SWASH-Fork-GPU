@@ -1,4 +1,4 @@
-subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
+subroutine SwashHydroLoads ( nflob, forx, fory, forz, momx, momy, momz )
 !
 !   --|-----------------------------------------------------------|--
 !     | Delft University of Technology                            |
@@ -11,7 +11,7 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -33,51 +33,56 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
 !
 !   Updates
 !
-!    1.00,   February 2018: New subroutine
+!    1.00, February 2018: New subroutine
+!    9.01,  October 2022: revised
 !
 !   Purpose
 !
-!   Calculates hydrodynamic loads acting on floating body for the purpose of output
+!   Calculates hydrodynamic loads acting on floating body
 !
 !   Method
 !
 !   Integration of the total pressure over the wet surface of the body
-!   to obtain the hydrodynamic forces
+!   to obtain the hydrodynamic (Froude-Krylov) forces
 !
 !   The moments of total pressure around the center of mass acting on the
 !   body surface is integrated in the same manner
 !
-!   For the integration we assume a linear distribution of both hydrostatic
-!   and non-hydrostatic pressure over the vertical
+!   For the integration we assume a linear distribution of non-hydrostatic
+!   pressure over each vertical layer
 !
 !   The contribution to the integration consists of two parts: a rectangle
 !   and a triangle, of which the center of mass is 1/2 and 2/3 of the height,
-!   respectively
+!   respectively, and is thus the point of action
 !
 !   Modules used
 !
     use ocpcomm4
-    use SwashCommdata1
     use SwashCommdata3
-    use SwashTimeComm, only: timco
-    use outp_data, only: cogx, cogy, cogz, alpobj
+    use outp_data, only: alpobj
     use m_genarr, only: kgrpnt, guu, gvv, xcgrid, ycgrid
     use m_parall
     use SwashFlowdata
+    use SwashRigBoddata
 !
     implicit none
 !
 !   Argument variables
 !
-    integer, intent(in)                     :: nvoqp  ! number of quantities
-    integer, dimension(nmovar), intent(in)  :: voqr   ! place of each output quantity
-    real   , dimension(nvoqp) , intent(out) :: voq    ! output quantity at request
-    logical, dimension(nmovar), intent(in)  :: oqproc ! indicates whether or not an output quantity must be processed
+    integer,                intent(in ) :: nflob ! number of floating objects
+    !
+    real, dimension(nflob), intent(out) :: forx  ! hydrodynamic force in x-direction
+    real, dimension(nflob), intent(out) :: fory  ! hydrodynamic force in y-direction
+    real, dimension(nflob), intent(out) :: forz  ! hydrodynamic force in z-direction
+    real, dimension(nflob), intent(out) :: momx  ! hydrodynamic moment in x-direction
+    real, dimension(nflob), intent(out) :: momy  ! hydrodynamic moment in y-direction
+    real, dimension(nflob), intent(out) :: momz  ! hydrodynamic moment in z-direction
 !
 !   Local variables
 !
     integer, save :: ient = 0 ! number of entries in this subroutine
     integer       :: k        ! loop counter of vertical layers
+    integer       :: l        ! label of body
     integer       :: m        ! loop counter
     integer       :: mend     ! end index of loop over u-points
     integer       :: md       ! index of point m-1
@@ -97,67 +102,25 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
     real          :: cbeta    ! cosine of beta
     real          :: dxl      ! local mesh size in x-direction
     real          :: dyl      ! local mesh size in y-direction
-    real          :: dz       ! height of part of hull at pressure point meant for integration
+    real          :: dz       ! height of part of hull
+    real          :: frc1     ! force contribution - part 1 (rectangle)
+    real          :: frc2     ! force contribution - part 2 (triangle)
+    real          :: frc1_rx  ! x-component of force contribution relative to rotated body - part 1 (rectangle)
+    real          :: frc2_rx  ! x-component of force contribution relative to rotated body - part 2 (triangle)
+    real          :: frc1_ry  ! y-component of force contribution relative to rotated body - part 1 (rectangle)
+    real          :: frc2_ry  ! y-component of force contribution relative to rotated body - part 2 (triangle)
+    real          :: qd       ! =q(:,k-1) if layer k-1 exists otherwise 0.
     real          :: qh       ! non-hydrostatic pressure at hull
+    real          :: rx       ! x-component of the moment arm vector
+    real          :: rxr      ! x-component of the moment arm vector relative to coordinate system of floating object
+    real          :: ry       ! y-component of the moment arm vector
+    real          :: ryr      ! y-component of the moment arm vector relative to coordinate system of floating object
+    real          :: rz1      ! z-component of the moment arm vector - part 1 (rectangle)
+    real          :: rz2      ! z-component of the moment arm vector - part 2 (triangle)
     real          :: salpo    ! sine of alpobj
     real          :: sbeta    ! sine of beta
-    real          :: zloc     ! local layer interface
-    !
-    real          :: Fh       ! local hydrostatic force
-    real          :: Fh_rx    ! x-component of local hydrostatic force relative to rotated body
-    real          :: Fh_ry    ! y-component of local hydrostatic force relative to rotated body
-    real          :: Fh1      ! local hydrostatic force - part 1 (rectangle)
-    real          :: Fh2      ! local hydrostatic force - part 2 (triangle)
-    real          :: Fh1_rx   ! x-component of local hydrostatic force relative to rotated body - part 1 (rectangle)
-    real          :: Fh2_rx   ! x-component of local hydrostatic force relative to rotated body - part 2 (triangle)
-    real          :: Fh1_ry   ! y-component of local hydrostatic force relative to rotated body - part 1 (rectangle)
-    real          :: Fh2_ry   ! y-component of local hydrostatic force relative to rotated body - part 2 (triangle)
-    real          :: Fnh      ! local non-hydrostatic force
-    real          :: Fnh_rx   ! x-component of local non-hydrostatic force relative to rotated body
-    real          :: Fnh_ry   ! y-component of local non-hydrostatic force relative to rotated body
-    real          :: Fnh1     ! local non-hydrostatic force - part 1 (rectangle)
-    real          :: Fnh2     ! local non-hydrostatic force - part 2 (triangle)
-    real          :: Fnh1_rx  ! x-component of local non-hydrostatic force relative to rotated body - part 1 (rectangle)
-    real          :: Fnh2_rx  ! x-component of local non-hydrostatic force relative to rotated body - part 2 (triangle)
-    real          :: Fnh1_ry  ! y-component of local non-hydrostatic force relative to rotated body - part 1 (rectangle)
-    real          :: Fnh2_ry  ! y-component of local non-hydrostatic force relative to rotated body - part 2 (triangle)
-    real          :: rx       ! displacement vector x-component
-    real          :: rxr      ! displacement vector x-component relative to coordinate system of floating object
-    real          :: ry       ! displacement vector y-component
-    real          :: ryr      ! displacement vector y-component relative to coordinate system of floating object
-    real          :: rz1      ! displacement vector z-component - part 1 (rectangle)
-    real          :: rz2      ! displacement vector z-component - part 2 (triangle)
-    real          :: rznh1    ! displacement vector z-component for non-hydrostatic pressure - part 1 (rectangle)
-    real          :: rznh2    ! displacement vector z-component for non-hydrostatic pressure - part 2 (triangle)
-    !
-    real          :: Fh_x     ! total hydrostatic force in x-direction
-    real          :: Fh_y     ! total hydrostatic force in y-direction
-    real          :: Fh_z     ! total hydrostatic force in z-direction
-    real          :: Fnh_x    ! total non-hydrostatic force in x-direction
-    real          :: Fnh_y    ! total non-hydrostatic force in y-direction
-    real          :: Fnh_z    ! total non-hydrostatic force in z-direction
-    !
-    real          :: F_x      ! total force in x-direction (surge)
-    real          :: F_y      ! total force in y-direction (sway)
-    real          :: F_z      ! total force in z-direction (heave)
-    !
-    real          :: Mh_x     ! total hydrostatic moment in x-direction
-    real          :: Mh_y     ! total hydrostatic moment in y-direction
-    real          :: Mh_z     ! total hydrostatic moment in z-direction
-    real          :: Mnh_x    ! total non-hydrostatic moment in x-direction
-    real          :: Mnh_y    ! total non-hydrostatic moment in y-direction
-    real          :: Mnh_z    ! total non-hydrostatic moment in z-direction
-    !
-    real          :: M_x      ! total moment in x-direction (roll)
-    real          :: M_y      ! total moment in y-direction (pitch)
-    real          :: M_z      ! total moment in z-direction (yaw)
-    !
-    real          :: M_xy
-    real          :: M_xz
-    real          :: M_yx
-    real          :: M_yz
-    real          :: M_zx
-    real          :: M_zy
+    real          :: sloc     ! local layer interface k-1
+    real          :: zloc     ! local layer interface k
 !
 !   Structure
 !
@@ -167,40 +130,17 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
 !
     if (ltrace) call strace (ient,'SwashHydroLoads')
     !
-    ! initialize forces and moments (hydrostatic, non-hydrostatic and total)
+    ! initialize forces and moments
     !
-    Fh_x  = 0.
-    Fh_y  = 0.
-    Fh_z  = 0.
+    forx = 0.
+    fory = 0.
+    forz = 0.
     !
-    Fnh_x = 0.
-    Fnh_y = 0.
-    Fnh_z = 0.
+    momx = 0.
+    momy = 0.
+    momz = 0.
     !
-    F_x   = 0.
-    F_y   = 0.
-    F_z   = 0.
-    !
-    Mh_x  = 0.
-    Mh_y  = 0.
-    Mh_z  = 0.
-    !
-    Mnh_x = 0.
-    Mnh_y = 0.
-    Mnh_z = 0.
-    !
-    M_x   = 0.
-    M_y   = 0.
-    M_z   = 0.
-    !
-    M_xy  = 0.
-    M_xz  = 0.
-    M_yx  = 0.
-    M_yz  = 0.
-    M_zx  = 0.
-    M_zy  = 0.
-    !
-    ! compute hydrodynamic loads acting on fixed body
+    ! compute hydrodynamic loads acting on (moving) rigid body
     !
     if ( oned ) then
        !
@@ -220,27 +160,31 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
           !
           ! vertical force and contribution to moment around y-axis
           !
-          if ( presp(nm) == 1 ) then
+  10      if ( presp(nm) == 1 ) then
+             !
+             l = lfbs(nm)
+             if ( l == 0 .or. ( .not.bdof(l,3,1) .and. .not.bdof(l,2,2) ) ) goto 20
              !
              ! hydrostatic force
              !
-             Fh   = rhow * grav * ( s1(nm) + flos(nm) ) * dx
+             frc1 = rhow * grav * ( s1(nm) + flos(nm) ) * dx
              !
-             rx   = 0.5 * ( xcgrid(m,1) + xcgrid(md,1) ) - cogx
+             ! point of action
              !
-             Fh_z = Fh_z  + Fh
-             Mh_y = Mh_y  - rx * Fh
-             M_yz = M_yz  - rx * Fh
+             rx = 0.5 * ( xcgrid(m,1) + xcgrid(md,1) ) - bcog(l,1)
+             !
+             if ( bdof(l,3,1) ) forz(l) = forz(l) +      frc1
+             if ( bdof(l,2,2) ) momy(l) = momy(l) - rx * frc1
              !
              ! non-hydrostatic force
              !
              if ( ihydro /= 0 ) then
                 !
-                Fnh   = rhow * q(nm,1) * dx
+                ! note: q is cell-centered
+                frc1 = rhow * q(nm,1) * dx
                 !
-                Fnh_z = Fnh_z + Fnh
-                Mnh_y = Mnh_y - rx * Fnh
-                M_yz  = M_yz  - rx * Fnh
+                if ( bdof(l,3,1) ) forz(l) = forz(l) +      frc1
+                if ( bdof(l,2,2) ) momy(l) = momy(l) - rx * frc1
                 !
              endif
              !
@@ -248,219 +192,178 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
           !
           ! horizontal force and contribution to moment around y-axis
           !
-          if ( presp(nm) == 0 .and. presp(nmu) == 1 ) then
+  20      if ( presp(nm) == 0 .and. presp(nmu) == 1 ) then
+             !
+             l = lfbs(nmu)
+             if ( l == 0 .or. ( .not.bdof(l,1,1) .and. .not.bdof(l,2,2) ) ) goto 30
+             !
+             dz = s1(nm) + flos(nmu)
              !
              ! hydrostatic force on the port side adjacent to body
              !
-             dz   = s1(nm) + flos(nmu)
+             frc2 = + rhow * grav * 0.5 * dz*dz
              !
-             Fh1  = 0.
-             Fh2  = + rhow * grav * 0.5 * dz*dz
+             ! point of action
              !
-             rz1  = - ( cogz + 1./2.*dz - s1(nm) )
-             rz2  = - ( cogz + 2./3.*dz - s1(nm) )
+             rz2 = s1(nm) - 2./3.*dz - bcog(l,3)
              !
-             Fh_x = Fh_x + Fh1 + Fh2
-             Mh_y = Mh_y + rz1 * Fh1 + rz2 * Fh2
-             M_yx = M_yx + rz1 * Fh1 + rz2 * Fh2
+             if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc2
+             if ( bdof(l,2,2) ) momy(l) = momy(l) + rz2 * frc2
              !
              ! non-hydrostatic force on the port side adjacent to body
              !
              if ( ihydro /= 0 ) then
                 !
-                ! total depth or top layer
+                ! for each layer
                 !
-                k = 1
-                !
-                if ( kmax == 1 ) then
-                   zloc = -dps(nm)
-                else
-                   zloc = zks(nm,k)
-                endif
-                !
-                if ( zloc > -flos(nmu) ) then
+                do k = 1, kmax
                    !
-                   dz    = hks(nm,1)
-                   !
-                   Fnh2  = + rhow * 0.5*q(nm,1) * dz
-                   !
-                   rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
-                   !
-                   Fnh_x = Fnh_x + Fnh2
-                   Mnh_y = Mnh_y + rznh2 * Fnh2
-                   M_yx  = M_yx  + rznh2 * Fnh2
-                   !
-                   ! following layers
-                   !
-                   do k = 2, kmax
-                      !
-                      if ( zks(nm,k) > -flos(nmu) ) then
-                         !
-                         dz = hks(nm,k)
-                         !
-                         Fnh1 = + rhow * q(nm,k-1) * dz
-                         Fnh2 = + rhow * 0.5*( q(nm,k) - q(nm,k-1) ) * dz
-                         !
-                         rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                         rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                         !
-                         Fnh_x = Fnh_x + Fnh1 + Fnh2
-                         Mnh_y = Mnh_y + rznh1 * Fnh1 + rznh2 * Fnh2
-                         M_yx  = M_yx  + rznh1 * Fnh1 + rznh2 * Fnh2
-                         !
-                      else
-                         !
-                         dz = zks(nm,k-1) + flos(nmu)
-                         !
-                         ! compute non-hydrostatic pressure at hull
-                         qh = q(nm,k) - ( q(nm,k-1) - q(nm,k) ) * ( zks(nm,k) + flos(nmu) ) / hks(nm,k)
-                         !
-                         Fnh1  = + rhow * q(nm,k-1) * dz
-                         Fnh2  = + rhow * 0.5*( qh - q(nm,k-1) ) * dz
-                         !
-                         rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                         rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                         !
-                         Fnh_x = Fnh_x + Fnh1 + Fnh2
-                         Mnh_y = Mnh_y + rznh1 * Fnh1 + rznh2 * Fnh2
-                         M_yx  = M_yx  + rznh1 * Fnh1 + rznh2 * Fnh2
-                         !
-                         exit
-                         !
-                      endif
-                      !
-                   enddo
-                   !
-                else
-                   !
-                   dz = s1(nm) + flos(nmu)
-                   !
-                   ! compute non-hydrostatic pressure at hull
-                   if ( kmax == 1 ) then
-                      qh = ( 1. - (  dps(nm)  -flos(nmu) ) / hs(nm)    ) * q(nm,1)
+                   ! note: q is defined at layer interface
+                   if ( k == 1 ) then
+                      qd = 0.
                    else
-                      qh = ( 1. - ( -zks(nm,1)-flos(nmu) ) / hks(nm,1) ) * q(nm,1)
+                      qd = q(nm,k-1)
                    endif
                    !
-                   Fnh2  = + rhow * 0.5*qh * dz
+                   ! total depth or layer
                    !
-                   rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
+                   if ( kmax == 1 ) then
+                      zloc = -dps(nm)
+                      sloc =   s1(nm)
+                   else
+                      zloc = zks(nm,k  )
+                      sloc = zks(nm,k-1)
+                   endif
                    !
-                   Fnh_x = Fnh_x + Fnh2
-                   Mnh_y = Mnh_y + rznh2 * Fnh2
-                   M_yx  = M_yx  + rznh2 * Fnh2
+                   if ( zloc > -flos(nmu) ) then
+                      !
+                      dz   = sloc - zloc
+                      !
+                      frc1 = + rhow * qd * dz
+                      frc2 = + rhow * 0.5*( qd + q(nm,k) ) * dz
+                      !
+                      rz1  = sloc - 1./2.*dz - bcog(l,3)
+                      rz2  = sloc - 2./3.*dz - bcog(l,3)
+                      !
+                      if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1 +       frc2
+                      if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1 + rz2 * frc2
+                      !
+                   else
+                      !
+                      ! remaining part of the hull
+                      !
+                      dz = sloc + flos(nmu)
+                      !
+                      ! compute non-hydrostatic pressure at hull
+                      qh = q(nm,k) - ( qd - q(nm,k) ) * ( zloc + flos(nmu) ) / ( sloc - zloc )
+                      !
+                      frc1 = + rhow * qd * dz
+                      frc2 = + rhow * 0.5*( qd + qh ) * dz
+                      !
+                      rz1  = sloc - 1./2.*dz - bcog(l,3)
+                      rz2  = sloc - 2./3.*dz - bcog(l,3)
+                      !
+                      if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1 +       frc2
+                      if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1 + rz2 * frc2
+                      !
+                      exit
+                      !
+                   endif
                    !
-                endif
+                enddo
                 !
              endif
              !
-          elseif ( presp(nm) == 0 .and. presp(nmd) == 1 ) then
+          endif
+          !
+  30      if ( presp(nm) == 0 .and. presp(nmd) == 1 ) then
              !
-             ! hydrostatic force on the starboard adjacent to body
+             l = lfbs(nmd)
+             if ( l == 0 .or. ( .not.bdof(l,1,1) .and. .not.bdof(l,2,2) ) ) goto 40
              !
-             dz   = s1(nm) + flos(nmd)
+             dz = s1(nm) + flos(nmd)
              !
-             Fh1  = 0.
-             Fh2  = - rhow * grav * 0.5 * dz*dz
+             ! hydrostatic force on the starboard side adjacent to body
              !
-             rz1  = - ( cogz + 1./2.*dz - s1(nm) )
-             rz2  = - ( cogz + 2./3.*dz - s1(nm) )
+             frc2 = - rhow * grav * 0.5 * dz*dz
              !
-             Fh_x = Fh_x + Fh1 + Fh2
-             Mh_y = Mh_y + rz1 * Fh1 + rz2 * Fh2
-             M_yx = M_yx + rz1 * Fh1 + rz2 * Fh2
+             ! point of action
              !
-             ! non-hydrostatic force on the starboard adjacent to body
+             rz2 = s1(nm) - 2./3.*dz - bcog(l,3)
+             !
+             if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc2
+             if ( bdof(l,2,2) ) momy(l) = momy(l) + rz2 * frc2
+             !
+             ! non-hydrostatic force on the starboard side adjacent to body
              !
              if ( ihydro /= 0 ) then
                 !
-                ! total depth or top layer
+                ! for each layer
                 !
-                k = 1
-                !
-                if ( kmax == 1 ) then
-                   zloc = -dps(nm)
-                else
-                   zloc = zks(nm,k)
-                endif
-                !
-                if ( zloc > -flos(nmd) ) then
+                do k = 1, kmax
                    !
-                   dz    = hks(nm,1)
-                   !
-                   Fnh2  = - rhow * 0.5*q(nm,1) * dz
-                   !
-                   rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
-                   !
-                   Fnh_x = Fnh_x + Fnh2
-                   Mnh_y = Mnh_y + rznh2 * Fnh2
-                   M_yx  = M_yx  + rznh2 * Fnh2
-                   !
-                   ! following layers
-                   !
-                   do k = 2, kmax
-                      !
-                      if ( zks(nm,k) > -flos(nmd) ) then
-                         !
-                         dz = hks(nm,k)
-                         !
-                         Fnh1  = - rhow * q(nm,k-1) * dz
-                         Fnh2  = - rhow * 0.5*( q(nm,k) - q(nm,k-1) ) * dz
-                         !
-                         rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                         rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                         !
-                         Fnh_x = Fnh_x + Fnh1 + Fnh2
-                         Mnh_y = Mnh_y + rznh1 * Fnh1 + rznh2 * Fnh2
-                         M_yx  = M_yx  + rznh1 * Fnh1 + rznh2 * Fnh2
-                         !
-                      else
-                         !
-                         dz = zks(nm,k-1) + flos(nmd)
-                         !
-                         ! compute non-hydrostatic pressure at hull
-                         qh = q(nm,k) - ( q(nm,k-1) - q(nm,k) ) * ( zks(nm,k) + flos(nmd) ) / hks(nm,k)
-                         !
-                         Fnh1  = - rhow * q(nm,k-1) * dz
-                         Fnh2  = - rhow * 0.5*( qh - q(nm,k-1) ) * dz
-                         !
-                         rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                         rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                         !
-                         Fnh_x = Fnh_x + Fnh1 + Fnh2
-                         Mnh_y = Mnh_y + rznh1 * Fnh1 + rznh2 * Fnh2
-                         M_yx  = M_yx  + rznh1 * Fnh1 + rznh2 * Fnh2
-                         !
-                         exit
-                         !
-                      endif
-                      !
-                   enddo
-                   !
-                else
-                   !
-                   dz = s1(nm) + flos(nmd)
-                   !
-                   ! compute non-hydrostatic pressure at hull
-                   if ( kmax == 1 ) then
-                      qh = ( 1. - (  dps(nm)  -flos(nmd) ) / hs(nm)    ) * q(nm,1)
+                   ! note: q is defined at layer interface
+                   if ( k == 1 ) then
+                      qd = 0.
                    else
-                      qh = ( 1. - ( -zks(nm,1)-flos(nmd) ) / hks(nm,1) ) * q(nm,1)
+                      qd = q(nm,k-1)
                    endif
                    !
-                   Fnh2  = - rhow * 0.5*qh * dz
+                   ! total depth or layer
                    !
-                   rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
+                   if ( kmax == 1 ) then
+                      zloc = -dps(nm)
+                      sloc =   s1(nm)
+                   else
+                      zloc = zks(nm,k  )
+                      sloc = zks(nm,k-1)
+                   endif
                    !
-                   Fnh_x = Fnh_x + Fnh2
-                   Mnh_y = Mnh_y + rznh2 * Fnh2
-                   M_yx  = M_yx  + rznh2 * Fnh2
+                   if ( zloc > -flos(nmd) ) then
+                      !
+                      dz   = sloc - zloc
+                      !
+                      frc1 = - rhow * qd * dz
+                      frc2 = - rhow * 0.5*( qd + q(nm,k) ) * dz
+                      !
+                      rz1  = sloc - 1./2.*dz - bcog(l,3)
+                      rz2  = sloc - 2./3.*dz - bcog(l,3)
+                      !
+                      if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1 +       frc2
+                      if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1 + rz2 * frc2
+                      !
+                   else
+                      !
+                      ! remaining part of the hull
+                      !
+                      dz = sloc + flos(nmd)
+                      !
+                      ! compute non-hydrostatic pressure at hull
+                      qh = q(nm,k) - ( qd - q(nm,k) ) * ( zloc + flos(nmd) ) / ( sloc - zloc )
+                      !
+                      frc1 = - rhow * qd * dz
+                      frc2 = - rhow * 0.5*( qd + qh ) * dz
+                      !
+                      rz1  = sloc - 1./2.*dz - bcog(l,3)
+                      rz2  = sloc - 2./3.*dz - bcog(l,3)
+                      !
+                      if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1 +       frc2
+                      if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1 + rz2 * frc2
+                      !
+                      exit
+                      !
+                   endif
                    !
-                endif
+                enddo
                 !
              endif
              !
-          elseif ( presp(nm) == 1 ) then
+          endif
+          !
+  40      if ( presp(nm) == 1 ) then
+             !
+             l = lfbs(nm)
+             if ( l == 0 .or. ( .not.bdof(l,1,1) .and. .not.bdof(l,2,2) ) ) goto 50
              !
              ! underneath floating object
              !
@@ -470,15 +373,14 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                 !
                 dz   = flos(nmu) - flos(nm)
                 !
-                Fh1  = + rhow * grav * dz  * ( s1(nm)+flos(nm) )
-                Fh2  = + rhow * grav * 0.5 * dz*dz
+                frc1 = + rhow * grav * ( s1(nm)+flos(nm) ) * dz
+                frc2 = + rhow * grav * 0.5 * dz*dz
                 !
-                rz1  = - ( cogz + flos(nm) + 1./2.*dz )
-                rz2  = - ( cogz + flos(nm) + 2./3.*dz )
+                rz1  = -flos(nm) - 1./2.*dz - bcog(l,3)
+                rz2  = -flos(nm) - 2./3.*dz - bcog(l,3)
                 !
-                Fh_x = Fh_x + Fh1 + Fh2
-                Mh_y = Mh_y + rz1 * Fh1 + rz2 * Fh2
-                M_yx = M_yx + rz1 * Fh1 + rz2 * Fh2
+                if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1 +       frc2
+                if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1 + rz2 * frc2
                 !
                 ! non-hydrostatic force on the port side
                 !
@@ -487,34 +389,35 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                    do k = 1, kmax
                       !
                       if ( kmax == 1 ) then
-                         zloc = -dps(nm)
+                         zloc = -dps (nm)
+                         sloc = -flos(nm)
                       else
-                         zloc = zks(nm,k)
+                         zloc = zks(nm,k  )
+                         sloc = zks(nm,k-1)
                       endif
                       !
                       if ( zloc > -flos(nmu) ) then
                          !
-                         dz    = hks(nm,k)
+                         dz   = sloc - zloc
                          !
-                         Fnh1  = + rhow * q(nm,1) * dz
+                         ! note: q is cell-centered
+                         frc1 = + rhow * q(nm,k) * dz
                          !
-                         rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                         rz1  = sloc - 1./2.*dz - bcog(l,3)
                          !
-                         Fnh_x = Fnh_x + Fnh1
-                         Mnh_y = Mnh_y + rznh1 * Fnh1
-                         M_yx  = M_yx  + rznh1 * Fnh1
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1
                          !
                       else
                          !
-                         dz    = flos(nmu) - flos(nm)
+                         dz   = sloc + flos(nmu)
                          !
-                         Fnh1  = + rhow * q(nm,1) * dz
+                         frc1 = + rhow * q(nm,k) * dz
                          !
-                         rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                         rz1  = sloc - 1./2.*dz - bcog(l,3)
                          !
-                         Fnh_x = Fnh_x + Fnh1
-                         Mnh_y = Mnh_y + rznh1 * Fnh1
-                         M_yx  = M_yx  + rznh1 * Fnh1
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1
                          !
                          exit
                          !
@@ -528,55 +431,55 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
              !
              if ( flos(nm) < flos(nmd) ) then
                 !
-                ! hydrostatic force on the starboard
+                ! hydrostatic force on the starboard side
                 !
                 dz   = flos(nmd) - flos(nm)
                 !
-                Fh1  = - rhow * grav * dz  * ( s1(nm)+flos(nm) )
-                Fh2  = - rhow * grav * 0.5 * dz*dz
+                frc1 = - rhow * grav * ( s1(nm)+flos(nm) ) * dz
+                frc2 = - rhow * grav * 0.5 * dz*dz
                 !
-                rz1  = - ( cogz + flos(nm) + 1./2.*dz )
-                rz2  = - ( cogz + flos(nm) + 2./3.*dz )
+                rz1  = -flos(nm) - 1./2.*dz - bcog(l,3)
+                rz2  = -flos(nm) - 2./3.*dz - bcog(l,3)
                 !
-                Fh_x = Fh_x + Fh1 + Fh2
-                Mh_y = Mh_y + rz1 * Fh1 + rz2 * Fh2
-                M_yx = M_yx + rz1 * Fh1 + rz2 * Fh2
+                if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1 +       frc2
+                if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1 + rz2 * frc2
                 !
-                ! non-hydrostatic force on the starboard
+                ! non-hydrostatic force on the starboard side
                 !
                 if ( ihydro /= 0 ) then
                    !
                    do k = 1, kmax
                       !
                       if ( kmax == 1 ) then
-                         zloc = -dps(nm)
+                         zloc = -dps (nm)
+                         sloc = -flos(nm)
                       else
-                         zloc = zks(nm,k)
+                         zloc = zks(nm,k  )
+                         sloc = zks(nm,k-1)
                       endif
                       !
                       if ( zloc > -flos(nmd) ) then
                          !
-                         dz    = hks(nm,k)
+                         dz   = sloc - zloc
                          !
-                         Fnh1  = - rhow * q(nm,1) * dz
+                         ! note: q is cell-centered
+                         frc1 = - rhow * q(nm,k) * dz
                          !
-                         rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                         rz1  = sloc - 1./2.*dz - bcog(l,3)
                          !
-                         Fnh_x = Fnh_x + Fnh1
-                         Mnh_y = Mnh_y + rznh1 * Fnh1
-                         M_yx  = M_yx  + rznh1 * Fnh1
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1
                          !
                       else
                          !
-                         dz = flos(nmd) - flos(nm)
+                         dz   = sloc + flos(nmd)
                          !
-                         Fnh1  = - rhow * q(nm,1) * dz
+                         frc1 = - rhow * q(nm,k) * dz
                          !
-                         rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                         rz1  = sloc - 1./2.*dz - bcog(l,3)
                          !
-                         Fnh_x = Fnh_x + Fnh1
-                         Mnh_y = Mnh_y + rznh1 * Fnh1
-                         M_yx  = M_yx  + rznh1 * Fnh1
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) +       frc1
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) + rz1 * frc1
                          !
                          exit
                          !
@@ -592,22 +495,35 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
           !
        enddo
        !
-       F_x = Fh_x + Fnh_x
-       F_z = Fh_z + Fnh_z
-       M_y = Mh_y + Mnh_y
-       !
     else
        !
-       if ( alpobj < 0. ) then
-          beta = -alpobj - PI
-       else
-          beta = PI - alpobj
-       endif
+       ! rotate grid of floating body
        !
-       calpo = cos(alpobj)
-       salpo = sin(alpobj)
-       cbeta = cos(beta)
-       sbeta = sin(beta)
+       if ( ifloat == 1 ) then
+          !
+          ! for output purposes
+          !
+          if ( alpobj < 0. ) then
+             beta = -alpobj - PI
+          else
+             beta = PI - alpobj
+          endif
+          !
+          calpo = cos(alpobj)
+          salpo = sin(alpobj)
+          cbeta = cos(beta)
+          sbeta = sin(beta)
+          !
+       else if ( ifloat == 2 ) then
+          !
+          ! in case of moving bodies, do not rotate!
+          !
+          calpo =  1.
+          salpo =  0.
+          cbeta = -1.
+          sbeta =  0.
+          !
+       endif
        !
        ! not computed for points ml and nl at subdomain interfaces since, these end points are owned by the neighbouring subdomains
        !
@@ -641,36 +557,37 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
              !
              ! vertical force and contribution to moments around x- and y-axis
              !
-             if ( presp(nm) == 1 ) then
+  50         if ( presp(nm) == 1 ) then
+                !
+                l = lfbs(nm)
+                if ( l == 0 .or. ( .not.bdof(l,3,1) .and. .not.bdof(l,1,2) .and. .not.bdof(l,2,2) ) ) goto 60
                 !
                 ! hydrostatic force
                 !
-                Fh = rhow * grav * ( s1(nm) + flos(nm) ) * dxl * dyl
+                frc1 = rhow * grav * ( s1(nm) + flos(nm) ) * dxl * dyl
                 !
-                rx = 0.5 * ( xcgrid(m,n) + xcgrid(md,n ) ) - cogx
-                ry = 0.5 * ( ycgrid(m,n) + ycgrid(m ,nd) ) - cogy
+                ! points of action
                 !
-                ! rotate rx/ry to coordinate system of floating object
+                rx = 0.5 * ( xcgrid(m,n) + xcgrid(md,n ) ) - bcog(l,1)
+                ry = 0.5 * ( ycgrid(m,n) + ycgrid(m ,nd) ) - bcog(l,2)
+                !
+                ! rotate these points to coordinate system of floating object
                 rxr =  rx*calpo + ry*salpo
                 ryr = -rx*salpo + ry*calpo
                 !
-                Fh_z = Fh_z  + Fh
-                Mh_y = Mh_y  - rxr * Fh
-                Mh_x = Mh_x  - ryr * Fh
-                M_yz = M_yz  - rxr * Fh
-                M_xz = M_xz  - ryr * Fh
+                if ( bdof(l,3,1) ) forz(l) = forz(l) +       frc1
+                if ( bdof(l,1,2) ) momx(l) = momx(l) + ryr * frc1
+                if ( bdof(l,2,2) ) momy(l) = momy(l) - rxr * frc1
                 !
                 ! non-hydrostatic force
                 !
                 if ( ihydro /= 0 ) then
                    !
-                   Fnh   = rhow * q(nm,1) * dxl * dyl
+                   frc1 = rhow * q(nm,1) * dxl * dyl
                    !
-                   Fnh_z = Fnh_z + Fnh
-                   Mnh_y = Mnh_y - rxr * Fnh
-                   Mnh_x = Mnh_x - ryr * Fnh
-                   M_yz  = M_yz  - rxr * Fnh
-                   M_xz  = M_xz  - ryr * Fnh
+                   if ( bdof(l,3,1) ) forz(l) = forz(l) +       frc1
+                   if ( bdof(l,1,2) ) momx(l) = momx(l) + ryr * frc1
+                   if ( bdof(l,2,2) ) momy(l) = momy(l) - rxr * frc1
                    !
                 endif
                 !
@@ -678,361 +595,244 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
              !
              ! horizontal force in x-direction and contribution to moments around y- and z-axis
              !
-             if ( presp(nm) == 0 .and. presp(nmu) == 1 ) then
+  60         if ( presp(nm) == 0 .and. presp(nmu) == 1 ) then
+                !
+                l = lfbs(nmu)
+                if ( l == 0 .or. ( .not.bdof(l,1,1) .and. .not.bdof(l,2,2) .and. .not.bdof(l,3,2) ) ) goto 70
+                !
+                dz = s1(nm) + flos(nmu)
                 !
                 ! hydrostatic force on the port side adjacent to body
                 !
-                dz   = s1(nm) + flos(nmu)
-                !
-                Fh1  = 0.
-                Fh2  = + rhow * grav * 0.5 * dz*dz * dyl
+                frc2 = + rhow * grav * 0.5 * dz*dz * dyl
                 !
                 ! rotate forces to grid of floating object
-                Fh1_rx = Fh1 * cbeta
-                Fh2_rx = Fh2 * cbeta
-                Fh1_ry = Fh1 * sbeta
-                Fh2_ry = Fh2 * sbeta
+                frc2_rx = frc2 * cbeta
+                frc2_ry = frc2 * sbeta
                 !
-                rz1  = - ( cogz + 1./2.*dz - s1(nm) )
-                rz2  = - ( cogz + 2./3.*dz - s1(nm) )
+                ! points of action
                 !
-                ry   = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                rz2 = s1(nm) - 2./3.*dz - bcog(l,3)
                 !
-                Fh_x = Fh_x - Fh1_rx - Fh2_rx
-                Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                 !
-                Mh_y = Mh_y - rz1 * Fh1_rx - rz2 * Fh2_rx
-                Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                Mh_z = Mh_z  + ry * Fh1    +  ry * Fh2
+                if ( bdof(l,1,1) ) forx(l) = forx(l) - frc2_rx
+                if ( bdof(l,1,1) ) fory(l) = fory(l) - frc2_ry
                 !
-                M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                M_yx = M_yx - rz1 * Fh1_rx - rz2 * Fh2_rx
-                M_zx = M_zx +  ry * Fh1    +  ry * Fh2
+                if ( bdof(l,2,2) ) momy(l) = momy(l) - rz2 * frc2_rx
+                if ( bdof(l,2,2) ) momx(l) = momx(l) - rz2 * frc2_ry
+                if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc2
                 !
                 ! non-hydrostatic force on the port side adjacent to body
                 !
                 if ( ihydro /= 0 ) then
                    !
-                   ! total depth or top layer
+                   ! for each layer
                    !
-                   k = 1
-                   !
-                   if ( kmax == 1 ) then
-                      zloc = -dps(nm)
-                   else
-                      zloc = zks(nm,k)
-                   endif
-                   !
-                   if ( zloc > -flos(nmu) ) then
+                   do k = 1, kmax
                       !
-                      dz    = hks(nm,1)
-                      !
-                      Fnh2  = + rhow * 0.5*q(nm,1) * dz * dyl
-                      !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * cbeta
-                      Fnh_ry = Fnh2 * sbeta
-                      !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
-                      !
-                      ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                      !
-                      Fnh_x = Fnh_x - Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y - rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z +    ry * Fnh2
-                      !
-                      M_xy = M_xy - rznh2 * Fnh_ry
-                      M_yx = M_yx - rznh2 * Fnh_rx
-                      M_zx = M_zx +    ry * Fnh2
-                      !
-                      ! following layers
-                      !
-                      do k = 2, kmax
-                         !
-                         if ( zks(nm,k) > -flos(nmu) ) then
-                            !
-                            dz = hks(nm,k)
-                            !
-                            Fnh1 = + rhow * q(nm,k-1) * dz * dyl
-                            Fnh2 = + rhow * 0.5*( q(nm,k) - q(nm,k-1) ) * dz * dyl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * cbeta
-                            Fnh1_ry = Fnh1 * sbeta
-                            Fnh2_rx = Fnh2 * cbeta
-                            Fnh2_ry = Fnh2 * sbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                            !
-                            Fnh_x = Fnh_x - Fnh1_rx - Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1    +    ry * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            M_zx  = M_zx  +    ry * Fnh1    +    ry * Fnh2
-                            !
-                         else
-                            !
-                            dz = zks(nm,k-1) + flos(nmu)
-                            !
-                            ! compute non-hydrostatic pressure at hull
-                            qh = q(nm,k) - ( q(nm,k-1) - q(nm,k) ) * ( zks(nm,k) + flos(nmu) ) / hks(nm,k)
-                            !
-                            Fnh1  = + rhow * q(nm,k-1) * dz * dyl
-                            Fnh2  = + rhow * 0.5*( qh - q(nm,k-1) ) * dz * dyl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * cbeta
-                            Fnh1_ry = Fnh1 * sbeta
-                            Fnh2_rx = Fnh2 * cbeta
-                            Fnh2_ry = Fnh2 * sbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                            !
-                            Fnh_x = Fnh_x - Fnh1_rx - Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1    +    ry * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            M_zx  = M_zx  +    ry * Fnh1    +    ry * Fnh2
-                            !
-                            exit
-                            !
-                         endif
-                         !
-                      enddo
-                      !
-                   else
-                      !
-                      dz = s1(nm) + flos(nmu)
-                      !
-                      ! compute non-hydrostatic pressure at hull
-                      if ( kmax == 1 ) then
-                         qh = ( 1. - (  dps(nm)  -flos(nmu) ) / hs(nm)    ) * q(nm,1)
+                      if ( k == 1 ) then
+                         qd = 0.
                       else
-                         qh = ( 1. - ( -zks(nm,1)-flos(nmu) ) / hks(nm,1) ) * q(nm,1)
+                         qd = q(nm,k-1)
                       endif
                       !
-                      Fnh2  = + rhow * 0.5*qh * dz * dyl
+                      ! total depth or layer
                       !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * cbeta
-                      Fnh_ry = Fnh2 * sbeta
+                      if ( kmax == 1 ) then
+                         zloc = -dps(nm)
+                         sloc =   s1(nm)
+                      else
+                         zloc = zks(nm,k  )
+                         sloc = zks(nm,k-1)
+                      endif
                       !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
+                      if ( zloc > -flos(nmu) ) then
+                         !
+                         dz   = sloc - zloc
+                         !
+                         frc1 = + rhow * qd * dz * dyl
+                         frc2 = + rhow * 0.5*( qd + q(nm,k) ) * dz * dyl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * cbeta
+                         frc1_ry = frc1 * sbeta
+                         frc2_rx = frc2 * cbeta
+                         frc2_ry = frc2 * sbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
+                         !
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx - frc2_rx
+                         if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx - rz2 * frc2_rx
+                         if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry - rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1    -  ry * frc2
+                         !
+                      else
+                         !
+                         ! remaining part of the hull
+                         !
+                         dz = sloc + flos(nmu)
+                         !
+                         ! compute non-hydrostatic pressure at hull
+                         qh = q(nm,k) - ( qd - q(nm,k) ) * ( zloc + flos(nmu) ) / ( sloc - zloc )
+                         !
+                         frc1 = + rhow * qd * dz * dyl
+                         frc2 = + rhow * 0.5*( qd + qh ) * dz * dyl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * cbeta
+                         frc1_ry = frc1 * sbeta
+                         frc2_rx = frc2 * cbeta
+                         frc2_ry = frc2 * sbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
+                         !
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx - frc2_rx
+                         if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx - rz2 * frc2_rx
+                         if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry - rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1    -  ry * frc2
+                         !
+                         exit
+                         !
+                      endif
                       !
-                      ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                      !
-                      Fnh_x = Fnh_x - Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y - rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z +    ry * Fnh2
-                      !
-                      M_xy  = M_xy  - rznh2 * Fnh_ry
-                      M_yx  = M_yx  - rznh2 * Fnh_rx
-                      M_zx  = M_zx  +    ry * Fnh2
-                      !
-                   endif
+                   enddo
                    !
                 endif
                 !
-             elseif ( presp(nm) == 0 .and. presp(nmd) == 1 ) then
+             endif
+             !
+  70         if ( presp(nm) == 0 .and. presp(nmd) == 1 ) then
                 !
-                ! hydrostatic force on the starboard adjacent to body
+                l = lfbs(nmd)
+                if ( l == 0 .or. ( .not.bdof(l,1,1) .and. .not.bdof(l,2,2) .and. .not.bdof(l,3,2) ) ) goto 80
                 !
-                dz   = s1(nm) + flos(nmd)
+                dz = s1(nm) + flos(nmd)
                 !
-                Fh1  = 0.
-                Fh2  = - rhow * grav * 0.5 * dz*dz * dyl
+                ! hydrostatic force on the starboard side adjacent to body
+                !
+                frc2 = - rhow * grav * 0.5 * dz*dz * dyl
                 !
                 ! rotate forces to grid of floating object
-                Fh1_rx = Fh1 * cbeta
-                Fh2_rx = Fh2 * cbeta
-                Fh1_ry = Fh1 * sbeta
-                Fh2_ry = Fh2 * sbeta
+                frc2_rx = frc2 * cbeta
+                frc2_ry = frc2 * sbeta
                 !
-                rz1  = - ( cogz + 1./2.*dz - s1(nm) )
-                rz2  = - ( cogz + 2./3.*dz - s1(nm) )
+                ! points of action
                 !
-                ry   = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                rz2 = s1(nm) - 2./3.*dz - bcog(l,3)
                 !
-                Fh_x = Fh_x - Fh1_rx - Fh2_rx
-                Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                 !
-                Mh_y = Mh_y - rz1 * Fh1_rx - rz2 * Fh2_rx
-                Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                Mh_z = Mh_z  + ry * Fh1    +  ry * Fh2
+                if ( bdof(l,1,1) ) forx(l) = forx(l) - frc2_rx
+                if ( bdof(l,1,1) ) fory(l) = fory(l) - frc2_ry
                 !
-                M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                M_yx = M_yx - rz1 * Fh1_rx - rz2 * Fh2_rx
-                M_zx = M_zx +  ry * Fh1    +  ry * Fh2
+                if ( bdof(l,2,2) ) momy(l) = momy(l) - rz2 * frc2_rx
+                if ( bdof(l,2,2) ) momx(l) = momx(l) - rz2 * frc2_ry
+                if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc2
                 !
-                ! non-hydrostatic force on the starboard adjacent to body
+                ! non-hydrostatic force on the starboard side adjacent to body
                 !
                 if ( ihydro /= 0 ) then
                    !
-                   ! total depth or top layer
+                   ! for each layer
                    !
-                   k = 1
-                   !
-                   if ( kmax == 1 ) then
-                      zloc = -dps(nm)
-                   else
-                      zloc = zks(nm,k)
-                   endif
-                   !
-                   if ( zloc > -flos(nmd) ) then
+                   do k = 1, kmax
                       !
-                      dz    = hks(nm,1)
-                      !
-                      Fnh2  = - rhow * 0.5*q(nm,1) * dz * dyl
-                      !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * cbeta
-                      Fnh_ry = Fnh2 * sbeta
-                      !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
-                      !
-                      ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                      !
-                      Fnh_x = Fnh_x - Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y - rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z +    ry * Fnh2
-                      !
-                      M_xy = M_xy - rznh2 * Fnh_ry
-                      M_yx = M_yx - rznh2 * Fnh_rx
-                      M_zx = M_zx +    ry * Fnh2
-                      !
-                      ! following layers
-                      !
-                      do k = 2, kmax
-                         !
-                         if ( zks(nm,k) > -flos(nmd) ) then
-                            !
-                            dz = hks(nm,k)
-                            !
-                            Fnh1 = - rhow * q(nm,k-1) * dz * dyl
-                            Fnh2 = - rhow * 0.5*( q(nm,k) - q(nm,k-1) ) * dz * dyl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * cbeta
-                            Fnh1_ry = Fnh1 * sbeta
-                            Fnh2_rx = Fnh2 * cbeta
-                            Fnh2_ry = Fnh2 * sbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                            !
-                            Fnh_x = Fnh_x - Fnh1_rx - Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1    +    ry * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            M_zx  = M_zx  +    ry * Fnh1    +    ry * Fnh2
-                            !
-                         else
-                            !
-                            dz = zks(nm,k-1) + flos(nmd)
-                            !
-                            ! compute non-hydrostatic pressure at hull
-                            qh = q(nm,k) - ( q(nm,k-1) - q(nm,k) ) * ( zks(nm,k) + flos(nmd) ) / hks(nm,k)
-                            !
-                            Fnh1  = - rhow * q(nm,k-1) * dz * dyl
-                            Fnh2  = - rhow * 0.5*( qh - q(nm,k-1) ) * dz * dyl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * cbeta
-                            Fnh1_ry = Fnh1 * sbeta
-                            Fnh2_rx = Fnh2 * cbeta
-                            Fnh2_ry = Fnh2 * sbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                            !
-                            Fnh_x = Fnh_x - Fnh1_rx - Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1    +    ry * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  - rznh1 * Fnh1_rx - rznh2 * Fnh2_rx
-                            M_zx  = M_zx  +    ry * Fnh1    +    ry * Fnh2
-                            !
-                            exit
-                            !
-                         endif
-                         !
-                      enddo
-                      !
-                   else
-                      !
-                      dz = s1(nm) + flos(nmd)
-                      !
-                      ! compute non-hydrostatic pressure at hull
-                      if ( kmax == 1 ) then
-                         qh = ( 1. - (  dps(nm)  -flos(nmd) ) / hs(nm)    ) * q(nm,1)
+                      if ( k == 1 ) then
+                         qd = 0.
                       else
-                         qh = ( 1. - ( -zks(nm,1)-flos(nmd) ) / hks(nm,1) ) * q(nm,1)
+                         qd = q(nm,k-1)
                       endif
                       !
-                      Fnh2  = - rhow * 0.5*qh * dz * dyl
+                      ! total depth or layer
                       !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * cbeta
-                      Fnh_ry = Fnh2 * sbeta
+                      if ( kmax == 1 ) then
+                         zloc = -dps(nm)
+                         sloc =   s1(nm)
+                      else
+                         zloc = zks(nm,k  )
+                         sloc = zks(nm,k-1)
+                      endif
                       !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
+                      if ( zloc > -flos(nmd) ) then
+                         !
+                         dz   = sloc - zloc
+                         !
+                         frc1 = - rhow * qd * dz * dyl
+                         frc2 = - rhow * 0.5*( qd + q(nm,k) ) * dz * dyl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * cbeta
+                         frc1_ry = frc1 * sbeta
+                         frc2_rx = frc2 * cbeta
+                         frc2_ry = frc2 * sbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
+                         !
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx - frc2_rx
+                         if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx - rz2 * frc2_rx
+                         if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry - rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1    -  ry * frc2
+                         !
+                      else
+                         !
+                         ! remaining part of the hull
+                         !
+                         dz = sloc + flos(nmd)
+                         !
+                         ! compute non-hydrostatic pressure at hull
+                         qh = q(nm,k) - ( qd - q(nm,k) ) * ( zloc + flos(nmd) ) / ( sloc - zloc )
+                         !
+                         frc1 = - rhow * qd * dz * dyl
+                         frc2 = - rhow * 0.5*( qd + qh ) * dz * dyl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * cbeta
+                         frc1_ry = frc1 * sbeta
+                         frc2_rx = frc2 * cbeta
+                         frc2_ry = frc2 * sbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
+                         !
+                         if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx - frc2_rx
+                         if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx - rz2 * frc2_rx
+                         if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry - rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1    -  ry * frc2
+                         !
+                         exit
+                         !
+                      endif
                       !
-                      ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
-                      !
-                      Fnh_x = Fnh_x - Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y - rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z +    ry * Fnh2
-                      !
-                      M_xy  = M_xy  - rznh2 * Fnh_ry
-                      M_yx  = M_yx  - rznh2 * Fnh_rx
-                      M_zx  = M_zx  +    ry * Fnh2
-                      !
-                   endif
+                   enddo
                    !
                 endif
                 !
-             elseif ( presp(nm) == 1 ) then
+             endif
+             !
+  80         if ( presp(nm) == 1 ) then
+                !
+                l = lfbs(nm)
+                if ( l == 0 .or. ( .not.bdof(l,1,1) .and. .not.bdof(l,2,2) .and. .not.bdof(l,3,2) ) ) goto 90
                 !
                 ! underneath floating object
                 !
@@ -1042,30 +842,26 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                    !
                    dz   = flos(nmu) - flos(nm)
                    !
-                   Fh1  = + rhow * grav * dz  * dyl * ( s1(nm)+flos(nm) )
-                   Fh2  = + rhow * grav * 0.5 * dz*dz * dyl
+                   frc1 = + rhow * grav * ( s1(nm)+flos(nm) ) * dz * dyl
+                   frc2 = + rhow * grav * 0.5 * dz*dz * dyl
                    !
                    ! rotate forces to grid of floating object
-                   Fh1_rx = Fh1 * cbeta
-                   Fh2_rx = Fh2 * cbeta
-                   Fh1_ry = Fh1 * sbeta
-                   Fh2_ry = Fh2 * sbeta
+                   frc1_rx = frc1 * cbeta
+                   frc1_ry = frc1 * sbeta
+                   frc2_rx = frc2 * cbeta
+                   frc2_ry = frc2 * sbeta
                    !
-                   rz1  = - ( cogz + flos(nm) + 1./2.*dz )
-                   rz2  = - ( cogz + flos(nm) + 2./3.*dz )
+                   rz1 = -flos(nm) - 1./2.*dz - bcog(l,3)
+                   rz2 = -flos(nm) - 2./3.*dz - bcog(l,3)
                    !
-                   ry   = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                   ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                    !
-                   Fh_x = Fh_x - Fh1_rx - Fh2_rx
-                   Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                   if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx - frc2_rx
+                   if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
                    !
-                   Mh_y = Mh_y - rz1 * Fh1_rx - rz2 * Fh2_rx
-                   Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   Mh_z = Mh_z +  ry * Fh1    +  ry * Fh2
-                   !
-                   M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   M_yx = M_yx - rz1 * Fh1_rx - rz2 * Fh2_rx
-                   M_zx = M_zx  + ry * Fh1    +  ry * Fh2
+                   if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx - rz2 * frc2_rx
+                   if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry - rz2 * frc2_ry
+                   if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1    -  ry * frc2
                    !
                    ! non-hydrostatic force on the port side
                    !
@@ -1074,60 +870,54 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                       do k = 1, kmax
                          !
                          if ( kmax == 1 ) then
-                            zloc = -dps(nm)
+                            zloc = -dps (nm)
+                            sloc = -flos(nm)
                          else
-                            zloc = zks(nm,k)
+                            zloc = zks(nm,k  )
+                            sloc = zks(nm,k-1)
                          endif
                          !
                          if ( zloc > -flos(nmu) ) then
                             !
-                            dz    = hks(nm,k)
+                            dz   = sloc - zloc
                             !
-                            Fnh1  = + rhow * q(nm,1) * dz * dyl
+                            frc1 = + rhow * q(nm,k) * dz * dyl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * cbeta
-                            Fnh_ry = Fnh1 * sbeta
+                            frc1_rx = frc1 * cbeta
+                            frc1_ry = frc1 * sbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                            ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                             !
-                            Fnh_x = Fnh_x - Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx
+                            if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y - rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx - rznh1 * Fnh_rx
-                            M_zx  = M_zx +    ry * Fnh1
+                            if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx
+                            if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1
                             !
                          else
                             !
-                            dz    = flos(nmu) - flos(nm)
+                            dz   = sloc + flos(nmu)
                             !
-                            Fnh1  = + rhow * q(nm,1) * dz * dyl
+                            frc1 = + rhow * q(nm,k) * dz * dyl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * cbeta
-                            Fnh_ry = Fnh1 * sbeta
+                            frc1_rx = frc1 * cbeta
+                            frc1_ry = frc1 * sbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                            ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                             !
-                            Fnh_x = Fnh_x - Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx
+                            if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y - rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx - rznh1 * Fnh_rx
-                            M_zx  = M_zx +    ry * Fnh1
+                            if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx
+                            if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1
                             !
                             exit
                             !
@@ -1141,96 +931,86 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                 !
                 if ( flos(nm) < flos(nmd) ) then
                    !
-                   ! hydrostatic force on the starboard
+                   ! hydrostatic force on the starboard side
                    !
                    dz   = flos(nmd) - flos(nm)
                    !
-                   Fh1  = - rhow * grav * dz  * dyl * ( s1(nm)+flos(nm) )
-                   Fh2  = - rhow * grav * 0.5 * dz*dz * dyl
+                   frc1 = - rhow * grav * ( s1(nm)+flos(nm) ) * dz * dyl
+                   frc2 = - rhow * grav * 0.5 * dz*dz * dyl
                    !
                    ! rotate forces to grid of floating object
-                   Fh1_rx = Fh1 * cbeta
-                   Fh2_rx = Fh2 * cbeta
-                   Fh1_ry = Fh1 * sbeta
-                   Fh2_ry = Fh2 * sbeta
+                   frc1_rx = frc1 * cbeta
+                   frc1_ry = frc1 * sbeta
+                   frc2_rx = frc2 * cbeta
+                   frc2_ry = frc2 * sbeta
                    !
-                   rz1  = - ( cogz + flos(nm) + 1./2.*dz )
-                   rz2  = - ( cogz + flos(nm) + 2./3.*dz )
+                   rz1 = -flos(nm) - 1./2.*dz - bcog(l,3)
+                   rz2 = -flos(nm) - 2./3.*dz - bcog(l,3)
                    !
-                   ry   = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                   ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                    !
-                   Fh_x = Fh_x - Fh1_rx - Fh2_rx
-                   Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                   if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx - frc2_rx
+                   if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
                    !
-                   Mh_y = Mh_y - rz1 * Fh1_rx - rz2 * Fh2_rx
-                   Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   Mh_z = Mh_z +  ry * Fh1    +  ry * Fh2
+                   if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx - rz2 * frc2_rx
+                   if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry - rz2 * frc2_ry
+                   if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1    -  ry * frc2
                    !
-                   M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   M_yx = M_yx - rz1 * Fh1_rx - rz2 * Fh2_rx
-                   M_zx = M_zx  + ry * Fh1    +  ry * Fh2
-                   !
-                   ! non-hydrostatic force on the starboard
+                   ! non-hydrostatic force on the starboard side
                    !
                    if ( ihydro /= 0 ) then
                       !
                       do k = 1, kmax
                          !
                          if ( kmax == 1 ) then
-                            zloc = -dps(nm)
+                            zloc = -dps (nm)
+                            sloc = -flos(nm)
                          else
-                            zloc = zks(nm,k)
+                            zloc = zks(nm,k  )
+                            sloc = zks(nm,k-1)
                          endif
                          !
                          if ( zloc > -flos(nmd) ) then
                             !
-                            dz    = hks(nm,k)
+                            dz   = sloc - zloc
                             !
-                            Fnh1  = - rhow * q(nm,1) * dz * dyl
+                            frc1 = - rhow * q(nm,k) * dz * dyl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * cbeta
-                            Fnh_ry = Fnh1 * sbeta
+                            frc1_rx = frc1 * cbeta
+                            frc1_ry = frc1 * sbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                            ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                             !
-                            Fnh_x = Fnh_x - Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx
+                            if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y - rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx - rznh1 * Fnh_rx
-                            M_zx  = M_zx +    ry * Fnh1
+                            if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx
+                            if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1
                             !
                          else
                             !
-                            dz = flos(nmd) - flos(nm)
+                            dz   = sloc + flos(nmd)
                             !
-                            Fnh1  = - rhow * q(nm,1) * dz * dyl
+                            frc1 = - rhow * q(nm,k) * dz * dyl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * cbeta
-                            Fnh_ry = Fnh1 * sbeta
+                            frc1_rx = frc1 * cbeta
+                            frc1_ry = frc1 * sbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            ry    = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - cogy
+                            ry  = 0.5 * ( ycgrid(m,n) + ycgrid(m,nd) ) - bcog(l,2)
                             !
-                            Fnh_x = Fnh_x - Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,1,1) ) forx(l) = forx(l) - frc1_rx
+                            if ( bdof(l,1,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y - rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z +    ry * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx - rznh1 * Fnh_rx
-                            M_zx  = M_zx +    ry * Fnh1
+                            if ( bdof(l,2,2) ) momy(l) = momy(l) - rz1 * frc1_rx
+                            if ( bdof(l,2,2) ) momx(l) = momx(l) - rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) -  ry * frc1
                             !
                             exit
                             !
@@ -1246,361 +1026,244 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
              !
              ! horizontal force in y-direction and contribution to moments around x- and z-axis
              !
-             if ( presp(nm) == 0 .and. presp(num) == 1 ) then
+  90         if ( presp(nm) == 0 .and. presp(num) == 1 ) then
+                !
+                l = lfbs(num)
+                if ( l == 0 .or. ( .not.bdof(l,2,1) .and. .not.bdof(l,1,2) .and. .not.bdof(l,3,2) ) ) goto 100
+                !
+                dz = s1(nm) + flos(num)
                 !
                 ! hydrostatic force on the port side adjacent to body
                 !
-                dz   = s1(nm) + flos(num)
-                !
-                Fh1  = 0.
-                Fh2  = + rhow * grav * 0.5 * dz*dz * dxl
+                frc2 = + rhow * grav * 0.5 * dz*dz * dxl
                 !
                 ! rotate forces to grid of floating object
-                Fh1_rx = Fh1 * sbeta
-                Fh2_rx = Fh2 * sbeta
-                Fh1_ry = Fh1 * cbeta
-                Fh2_ry = Fh2 * cbeta
+                frc2_rx = frc2 * sbeta
+                frc2_ry = frc2 * cbeta
                 !
-                rz1  = - ( cogz + 1./2.*dz - s1(nm) )
-                rz2  = - ( cogz + 2./3.*dz - s1(nm) )
+                ! points of action
                 !
-                rx   = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                rz2 = s1(nm) - 2./3.*dz - bcog(l,3)
                 !
-                Fh_x = Fh_x + Fh1_rx + Fh2_rx
-                Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                 !
-                Mh_y = Mh_y + rz1 * Fh1_rx + rz2 * Fh2_rx
-                Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                Mh_z = Mh_z -  rx * Fh1    -  rx * Fh2
+                if ( bdof(l,2,1) ) forx(l) = forx(l) + frc2_rx
+                if ( bdof(l,2,1) ) fory(l) = fory(l) - frc2_ry
                 !
-                M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                M_yx = M_yx + rz1 * Fh1_rx + rz2 * Fh2_rx
-                M_zy = M_zy +  rx * Fh1    +  rx * Fh2
+                if ( bdof(l,1,2) ) momy(l) = momy(l) + rz2 * frc2_rx
+                if ( bdof(l,1,2) ) momx(l) = momx(l) + rz2 * frc2_ry
+                if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc2
                 !
                 ! non-hydrostatic force on the port side adjacent to body
                 !
                 if ( ihydro /= 0 ) then
                    !
-                   ! total depth or top layer
+                   ! for each layer
                    !
-                   k = 1
-                   !
-                   if ( kmax == 1 ) then
-                      zloc = -dps(nm)
-                   else
-                      zloc = zks(nm,k)
-                   endif
-                   !
-                   if ( zloc > -flos(num) ) then
+                   do k = 1, kmax
                       !
-                      dz    = hks(nm,1)
-                      !
-                      Fnh2  = + rhow * 0.5*q(nm,1) * dz * dxl
-                      !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * sbeta
-                      Fnh_ry = Fnh2 * cbeta
-                      !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
-                      !
-                      rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                      !
-                      Fnh_x = Fnh_x + Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y + rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z -    rx * Fnh2
-                      !
-                      M_xy = M_xy - rznh2 * Fnh_ry
-                      M_yx = M_yx + rznh2 * Fnh_rx
-                      M_zy = M_zy +    rx * Fnh2
-                      !
-                      ! following layers
-                      !
-                      do k = 2, kmax
-                         !
-                         if ( zks(nm,k) > -flos(num) ) then
-                            !
-                            dz = hks(nm,k)
-                            !
-                            Fnh1 = + rhow * q(nm,k-1) * dz * dxl
-                            Fnh2 = + rhow * 0.5*( q(nm,k) - q(nm,k-1) ) * dz * dxl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * sbeta
-                            Fnh1_ry = Fnh1 * cbeta
-                            Fnh2_rx = Fnh2 * sbeta
-                            Fnh2_ry = Fnh2 * cbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                            !
-                            Fnh_x = Fnh_x + Fnh1_rx + Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1    -    rx * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            M_zy  = M_zy  +    rx * Fnh1    +    rx * Fnh2
-                            !
-                         else
-                            !
-                            dz = zks(nm,k-1) + flos(num)
-                            !
-                            ! compute non-hydrostatic pressure at hull
-                            qh = q(nm,k) - ( q(nm,k-1) - q(nm,k) ) * ( zks(nm,k) + flos(num) ) / hks(nm,k)
-                            !
-                            Fnh1  = + rhow * q(nm,k-1) * dz * dxl
-                            Fnh2  = + rhow * 0.5*( qh - q(nm,k-1) ) * dz * dxl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * sbeta
-                            Fnh1_ry = Fnh1 * cbeta
-                            Fnh2_rx = Fnh2 * sbeta
-                            Fnh2_ry = Fnh2 * cbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                            !
-                            Fnh_x = Fnh_x + Fnh1_rx + Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1    -    rx * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            M_zy  = M_zy  +    rx * Fnh1    +    rx * Fnh2
-                            !
-                            exit
-                            !
-                         endif
-                         !
-                      enddo
-                      !
-                   else
-                      !
-                      dz = s1(nm) + flos(num)
-                      !
-                      ! compute non-hydrostatic pressure at hull
-                      if ( kmax == 1 ) then
-                         qh = ( 1. - (  dps(nm)  -flos(num) ) / hs(nm)    ) * q(nm,1)
+                      if ( k == 1 ) then
+                         qd = 0.
                       else
-                         qh = ( 1. - ( -zks(nm,1)-flos(num) ) / hks(nm,1) ) * q(nm,1)
+                         qd = q(nm,k-1)
                       endif
                       !
-                      Fnh2  = + rhow * 0.5*qh * dz * dxl
+                      ! total depth or layer
                       !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * sbeta
-                      Fnh_ry = Fnh2 * cbeta
+                      if ( kmax == 1 ) then
+                         zloc = -dps(nm)
+                         sloc =   s1(nm)
+                      else
+                         zloc = zks(nm,k  )
+                         sloc = zks(nm,k-1)
+                      endif
                       !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
+                      if ( zloc > -flos(num) ) then
+                         !
+                         dz   = sloc - zloc
+                         !
+                         frc1 = + rhow * qd * dz * dxl
+                         frc2 = + rhow * 0.5*( qd + q(nm,k) ) * dz * dxl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * sbeta
+                         frc1_ry = frc1 * cbeta
+                         frc2_rx = frc2 * sbeta
+                         frc2_ry = frc2 * cbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
+                         !
+                         if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx + frc2_rx
+                         if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx + rz2 * frc2_rx
+                         if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry + rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1    +  rx * frc2
+                         !
+                      else
+                         !
+                         ! remaining part of the hull
+                         !
+                         dz = sloc + flos(num)
+                         !
+                         ! compute non-hydrostatic pressure at hull
+                         qh = q(nm,k) - ( qd - q(nm,k) ) * ( zloc + flos(num) ) / ( sloc - zloc )
+                         !
+                         frc1 = + rhow * qd * dz * dxl
+                         frc2 = + rhow * 0.5*( qd + qh ) * dz * dxl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * sbeta
+                         frc1_ry = frc1 * cbeta
+                         frc2_rx = frc2 * sbeta
+                         frc2_ry = frc2 * cbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
+                         !
+                         if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx + frc2_rx
+                         if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx + rz2 * frc2_rx
+                         if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry + rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1    +  rx * frc2
+                         !
+                         exit
+                         !
+                      endif
                       !
-                      rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                      !
-                      Fnh_x = Fnh_x + Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y + rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z -    rx * Fnh2
-                      !
-                      M_xy  = M_xy  - rznh2 * Fnh_ry
-                      M_yx  = M_yx  + rznh2 * Fnh_rx
-                      M_zy  = M_zy  +    rx * Fnh2
-                      !
-                   endif
+                   enddo
                    !
                 endif
                 !
-             elseif ( presp(nm) == 0 .and. presp(ndm) == 1 ) then
+             endif
+             !
+ 100         if ( presp(nm) == 0 .and. presp(ndm) == 1 ) then
                 !
-                ! hydrostatic force on the starboard adjacent to body
+                l = lfbs(ndm)
+                if ( l == 0 .or. ( .not.bdof(l,2,1) .and. .not.bdof(l,1,2) .and. .not.bdof(l,3,2) ) ) goto 110
                 !
-                dz   = s1(nm) + flos(ndm)
+                dz = s1(nm) + flos(ndm)
                 !
-                Fh1  = 0.
-                Fh2  = - rhow * grav * 0.5 * dz*dz * dxl
+                ! hydrostatic force on the starboard side adjacent to body
+                !
+                frc2 = - rhow * grav * 0.5 * dz*dz * dxl
                 !
                 ! rotate forces to grid of floating object
-                Fh1_rx = Fh1 * sbeta
-                Fh2_rx = Fh2 * sbeta
-                Fh1_ry = Fh1 * cbeta
-                Fh2_ry = Fh2 * cbeta
+                frc2_rx = frc2 * sbeta
+                frc2_ry = frc2 * cbeta
                 !
-                rz1  = - ( cogz + 1./2.*dz - s1(nm) )
-                rz2  = - ( cogz + 2./3.*dz - s1(nm) )
+                ! points of action
                 !
-                rx   = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                rz2 = s1(nm) - 2./3.*dz - bcog(l,3)
                 !
-                Fh_x = Fh_x + Fh1_rx + Fh2_rx
-                Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                 !
-                Mh_y = Mh_y + rz1 * Fh1_rx + rz2 * Fh2_rx
-                Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                Mh_z = Mh_z -  rx * Fh1    -  rx * Fh2
+                if ( bdof(l,2,1) ) forx(l) = forx(l) + frc2_rx
+                if ( bdof(l,2,1) ) fory(l) = fory(l) - frc2_ry
                 !
-                M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                M_yx = M_yx + rz1 * Fh1_rx + rz2 * Fh2_rx
-                M_zy = M_zy +  rx * Fh1    +  rx * Fh2
+                if ( bdof(l,1,2) ) momy(l) = momy(l) + rz2 * frc2_rx
+                if ( bdof(l,1,2) ) momx(l) = momx(l) + rz2 * frc2_ry
+                if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc2
                 !
-                ! non-hydrostatic force on the starboard adjacent to body
+                ! non-hydrostatic force on the starboard side adjacent to body
                 !
                 if ( ihydro /= 0 ) then
                    !
-                   ! total depth or top layer
+                   ! for each layer
                    !
-                   k = 1
-                   !
-                   if ( kmax == 1 ) then
-                      zloc = -dps(nm)
-                   else
-                      zloc = zks(nm,k)
-                   endif
-                   !
-                   if ( zloc > -flos(ndm) ) then
+                   do k = 1, kmax
                       !
-                      dz    = hks(nm,1)
-                      !
-                      Fnh2  = - rhow * 0.5*q(nm,1) * dz * dxl
-                      !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * sbeta
-                      Fnh_ry = Fnh2 * cbeta
-                      !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
-                      !
-                      rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                      !
-                      Fnh_x = Fnh_x + Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y + rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z -    rx * Fnh2
-                      !
-                      M_xy  = M_xy  - rznh2 * Fnh_ry
-                      M_yx  = M_yx  + rznh2 * Fnh_rx
-                      M_zy  = M_zy  +    rx * Fnh2
-                      !
-                      ! following layers
-                      !
-                      do k = 2, kmax
-                         !
-                         if ( zks(nm,k) > -flos(ndm) ) then
-                            !
-                            dz = hks(nm,k)
-                            !
-                            Fnh1 = - rhow * q(nm,k-1) * dz * dxl
-                            Fnh2 = - rhow * 0.5*( q(nm,k) - q(nm,k-1) ) * dz * dxl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * sbeta
-                            Fnh1_ry = Fnh1 * cbeta
-                            Fnh2_rx = Fnh2 * sbeta
-                            Fnh2_ry = Fnh2 * cbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                            !
-                            Fnh_x = Fnh_x + Fnh1_rx + Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1    -    rx * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            M_zy  = M_zy  +    rx * Fnh1    +    rx * Fnh2
-                            !
-                         else
-                            !
-                            dz = zks(nm,k-1) + flos(ndm)
-                            !
-                            ! compute non-hydrostatic pressure at hull
-                            qh = q(nm,k) - ( q(nm,k-1) - q(nm,k) ) * ( zks(nm,k) + flos(ndm) ) / hks(nm,k)
-                            !
-                            Fnh1  = - rhow * q(nm,k-1) * dz * dxl
-                            Fnh2  = - rhow * 0.5*( qh - q(nm,k-1) ) * dz * dxl
-                            !
-                            ! rotate forces to grid of floating object
-                            Fnh1_rx = Fnh1 * sbeta
-                            Fnh1_ry = Fnh1 * cbeta
-                            Fnh2_rx = Fnh2 * sbeta
-                            Fnh2_ry = Fnh2 * cbeta
-                            !
-                            rznh1 = - ( cogz + 1./2.*dz - zks(nm,k-1) )
-                            rznh2 = - ( cogz + 2./3.*dz - zks(nm,k-1) )
-                            !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                            !
-                            Fnh_x = Fnh_x + Fnh1_rx + Fnh2_rx
-                            Fnh_y = Fnh_y - Fnh1_ry - Fnh2_ry
-                            !
-                            Mnh_y = Mnh_y + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1    -    rx * Fnh2
-                            !
-                            M_xy  = M_xy  - rznh1 * Fnh1_ry - rznh2 * Fnh2_ry
-                            M_yx  = M_yx  + rznh1 * Fnh1_rx + rznh2 * Fnh2_rx
-                            M_zy  = M_zy  +    rx * Fnh1    +    rx * Fnh2
-                            !
-                            exit
-                            !
-                         endif
-                         !
-                      enddo
-                      !
-                   else
-                      !
-                      dz = s1(nm) + flos(ndm)
-                      !
-                      ! compute non-hydrostatic pressure at hull
-                      if ( kmax == 1 ) then
-                         qh = ( 1. - (  dps(nm)  -flos(ndm) ) / hs(nm)    ) * q(nm,1)
+                      if ( k == 1 ) then
+                         qd = 0.
                       else
-                         qh = ( 1. - ( -zks(nm,1)-flos(ndm) ) / hks(nm,1) ) * q(nm,1)
+                         qd = q(nm,k-1)
                       endif
                       !
-                      Fnh2  = - rhow * 0.5*qh * dz * dxl
+                      ! total depth or layer
                       !
-                      ! rotate force to grid of floating object
-                      Fnh_rx = Fnh2 * sbeta
-                      Fnh_ry = Fnh2 * cbeta
+                      if ( kmax == 1 ) then
+                         zloc = -dps(nm)
+                         sloc =   s1(nm)
+                      else
+                         zloc = zks(nm,k  )
+                         sloc = zks(nm,k-1)
+                      endif
                       !
-                      rznh2 = - ( cogz + 2./3.*dz - s1(nm) )
+                      if ( zloc > -flos(ndm) ) then
+                         !
+                         dz   = sloc - zloc
+                         !
+                         frc1 = - rhow * qd * dz * dxl
+                         frc2 = - rhow * 0.5*( qd + q(nm,k) ) * dz * dxl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * sbeta
+                         frc1_ry = frc1 * cbeta
+                         frc2_rx = frc2 * sbeta
+                         frc2_ry = frc2 * cbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
+                         !
+                         if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx + frc2_rx
+                         if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx + rz2 * frc2_rx
+                         if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry + rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1    +  rx * frc2
+                         !
+                      else
+                         !
+                         ! remaining part of the hull
+                         !
+                         dz = sloc + flos(ndm)
+                         !
+                         ! compute non-hydrostatic pressure at hull
+                         qh = q(nm,k) - ( qd - q(nm,k) ) * ( zloc + flos(ndm) ) / ( sloc - zloc )
+                         !
+                         frc1 = - rhow * qd * dz * dxl
+                         frc2 = - rhow * 0.5*( qd + qh ) * dz * dxl
+                         !
+                         ! rotate forces to grid of floating object
+                         frc1_rx = frc1 * sbeta
+                         frc1_ry = frc1 * cbeta
+                         frc2_rx = frc2 * sbeta
+                         frc2_ry = frc2 * cbeta
+                         !
+                         rz1 = sloc - 1./2.*dz - bcog(l,3)
+                         rz2 = sloc - 2./3.*dz - bcog(l,3)
+                         !
+                         rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
+                         !
+                         if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx + frc2_rx
+                         if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
+                         !
+                         if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx + rz2 * frc2_rx
+                         if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry + rz2 * frc2_ry
+                         if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1    +  rx * frc2
+                         !
+                         exit
+                         !
+                      endif
                       !
-                      rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
-                      !
-                      Fnh_x = Fnh_x + Fnh_rx
-                      Fnh_y = Fnh_y - Fnh_ry
-                      !
-                      Mnh_y = Mnh_y + rznh2 * Fnh_rx
-                      Mnh_x = Mnh_x - rznh2 * Fnh_ry
-                      Mnh_z = Mnh_z -    rx * Fnh2
-                      !
-                      M_xy  = M_xy  - rznh2 * Fnh_ry
-                      M_yx  = M_yx  + rznh2 * Fnh_rx
-                      M_zy  = M_zy  +    rx * Fnh2
-                      !
-                   endif
+                   enddo
                    !
                 endif
                 !
-             elseif ( presp(nm) == 1 ) then
+             endif
+             !
+ 110         if ( presp(nm) == 1 ) then
+                !
+                l = lfbs(nm)
+                if ( l == 0 .or. ( .not.bdof(l,2,1) .and. .not.bdof(l,1,2) .and. .not.bdof(l,3,2) ) ) goto 120
                 !
                 ! underneath floating object
                 !
@@ -1610,30 +1273,26 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                    !
                    dz   = flos(num) - flos(nm)
                    !
-                   Fh1  = + rhow * grav * dz  * dxl * ( s1(nm)+flos(nm) )
-                   Fh2  = + rhow * grav * 0.5 * dz*dz * dxl
+                   frc1 = + rhow * grav * ( s1(nm)+flos(nm) ) * dz * dxl
+                   frc2 = + rhow * grav * 0.5 * dz*dz * dxl
                    !
                    ! rotate forces to grid of floating object
-                   Fh1_rx = Fh1 * sbeta
-                   Fh2_rx = Fh2 * sbeta
-                   Fh1_ry = Fh1 * cbeta
-                   Fh2_ry = Fh2 * cbeta
+                   frc1_rx = frc1 * sbeta
+                   frc1_ry = frc1 * cbeta
+                   frc2_rx = frc2 * sbeta
+                   frc2_ry = frc2 * cbeta
                    !
-                   rz1  = - ( cogz + flos(nm) + 1./2.*dz )
-                   rz2  = - ( cogz + flos(nm) + 2./3.*dz )
+                   rz1 = -flos(nm) - 1./2.*dz - bcog(l,3)
+                   rz2 = -flos(nm) - 2./3.*dz - bcog(l,3)
                    !
-                   rx   = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                   rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                    !
-                   Fh_x = Fh_x + Fh1_rx + Fh2_rx
-                   Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                   if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx + frc2_rx
+                   if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
                    !
-                   Mh_y = Mh_y + rz1 * Fh1_rx + rz2 * Fh2_rx
-                   Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   Mh_z = Mh_z -  rx * Fh1    -  rx * Fh2
-                   !
-                   M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   M_yx = M_yx + rz1 * Fh1_rx + rz2 * Fh2_rx
-                   M_zy = M_zy +  rx * Fh1    +  rx * Fh2
+                   if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx + rz2 * frc2_rx
+                   if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry + rz2 * frc2_ry
+                   if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1    +  rx * frc2
                    !
                    ! non-hydrostatic force on the port side
                    !
@@ -1642,60 +1301,54 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                       do k = 1, kmax
                          !
                          if ( kmax == 1 ) then
-                            zloc = -dps(nm)
+                            zloc = -dps (nm)
+                            sloc = -flos(nm)
                          else
-                            zloc = zks(nm,k)
+                            zloc = zks(nm,k  )
+                            sloc = zks(nm,k-1)
                          endif
                          !
                          if ( zloc > -flos(num) ) then
                             !
-                            dz    = hks(nm,k)
+                            dz   = sloc - zloc
                             !
-                            Fnh1  = + rhow * q(nm,1) * dz * dxl
+                            frc1 = + rhow * q(nm,k) * dz * dxl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * sbeta
-                            Fnh_ry = Fnh1 * cbeta
+                            frc1_rx = frc1 * sbeta
+                            frc1_ry = frc1 * cbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                            rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                             !
-                            Fnh_x = Fnh_x + Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx
+                            if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y + rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx + rznh1 * Fnh_rx
-                            M_zy  = M_zy +    rx * Fnh1
+                            if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx
+                            if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1
                             !
                          else
                             !
-                            dz    = flos(num) - flos(nm)
+                            dz   = sloc + flos(num)
                             !
-                            Fnh1  = + rhow * q(nm,1) * dz * dxl
+                            frc1 = + rhow * q(nm,k) * dz * dxl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * sbeta
-                            Fnh_ry = Fnh1 * cbeta
+                            frc1_rx = frc1 * sbeta
+                            frc1_ry = frc1 * cbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                            rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                             !
-                            Fnh_x = Fnh_x + Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx
+                            if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y + rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx + rznh1 * Fnh_rx
-                            M_zy  = M_zy +    rx * Fnh1
+                            if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx
+                            if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1
                             !
                             exit
                             !
@@ -1709,96 +1362,86 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                 !
                 if ( flos(nm) < flos(ndm) ) then
                    !
-                   ! hydrostatic force on the starboard
+                   ! hydrostatic force on the starboard side
                    !
                    dz   = flos(ndm) - flos(nm)
                    !
-                   Fh1  = - rhow * grav * dz  * dxl * ( s1(nm)+flos(nm) )
-                   Fh2  = - rhow * grav * 0.5 * dz*dz * dxl
+                   frc1 = - rhow * grav * ( s1(nm)+flos(nm) ) * dz * dxl
+                   frc2 = - rhow * grav * 0.5 * dz*dz * dxl
                    !
                    ! rotate forces to grid of floating object
-                   Fh1_rx = Fh1 * sbeta
-                   Fh2_rx = Fh2 * sbeta
-                   Fh1_ry = Fh1 * cbeta
-                   Fh2_ry = Fh2 * cbeta
+                   frc1_rx = frc1 * sbeta
+                   frc1_ry = frc1 * cbeta
+                   frc2_rx = frc2 * sbeta
+                   frc2_ry = frc2 * cbeta
                    !
-                   rz1  = - ( cogz + flos(nm) + 1./2.*dz )
-                   rz2  = - ( cogz + flos(nm) + 2./3.*dz )
+                   rz1 = -flos(nm) - 1./2.*dz - bcog(l,3)
+                   rz2 = -flos(nm) - 2./3.*dz - bcog(l,3)
                    !
-                   rx   = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                   rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                    !
-                   Fh_x = Fh_x + Fh1_rx + Fh2_rx
-                   Fh_y = Fh_y - Fh1_ry - Fh2_ry
+                   if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx + frc2_rx
+                   if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry - frc2_ry
                    !
-                   Mh_y = Mh_y + rz1 * Fh1_rx + rz2 * Fh2_rx
-                   Mh_x = Mh_x - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   Mh_z = Mh_z -  rx * Fh1    -  rx * Fh2
+                   if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx + rz2 * frc2_rx
+                   if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry + rz2 * frc2_ry
+                   if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1    +  rx * frc2
                    !
-                   M_xy = M_xy - rz1 * Fh1_ry - rz2 * Fh2_ry
-                   M_yx = M_yx + rz1 * Fh1_rx + rz2 * Fh2_rx
-                   M_zy = M_zy +  rx * Fh1    +  rx * Fh2
-                   !
-                   ! non-hydrostatic force on the starboard
+                   ! non-hydrostatic force on the starboard side
                    !
                    if ( ihydro /= 0 ) then
                       !
                       do k = 1, kmax
                          !
                          if ( kmax == 1 ) then
-                            zloc = -dps(nm)
+                            zloc = -dps (nm)
+                            sloc = -flos(nm)
                          else
-                            zloc = zks(nm,k)
+                            zloc = zks(nm,k  )
+                            sloc = zks(nm,k-1)
                          endif
                          !
                          if ( zloc > -flos(ndm) ) then
                             !
-                            dz    = hks(nm,k)
+                            dz   = sloc - zloc
                             !
-                            Fnh1  = - rhow * q(nm,1) * dz * dxl
+                            frc1 = - rhow * q(nm,k) * dz * dxl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * sbeta
-                            Fnh_ry = Fnh1 * cbeta
+                            frc1_rx = frc1 * sbeta
+                            frc1_ry = frc1 * cbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                            rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                             !
-                            Fnh_x = Fnh_x + Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx
+                            if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y + rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx + rznh1 * Fnh_rx
-                            M_zy  = M_zy +    rx * Fnh1
+                            if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx
+                            if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1
                             !
                          else
                             !
-                            dz = flos(ndm) - flos(nm)
+                            dz   = sloc + flos(ndm)
                             !
-                            Fnh1  = - rhow * q(nm,1) * dz * dxl
+                            frc1 = - rhow * q(nm,k) * dz * dxl
                             !
                             ! rotate force to grid of floating object
-                            Fnh_rx = Fnh1 * sbeta
-                            Fnh_ry = Fnh1 * cbeta
+                            frc1_rx = frc1 * sbeta
+                            frc1_ry = frc1 * cbeta
                             !
-                            rznh1 = - ( cogz + flos(nm) + 1./2.*dz )
+                            rz1 = sloc - 1./2.*dz - bcog(l,3)
                             !
-                            rx    = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - cogx
+                            rx  = 0.5 * ( xcgrid(m,n) + xcgrid(md,n) ) - bcog(l,1)
                             !
-                            Fnh_x = Fnh_x + Fnh_rx
-                            Fnh_y = Fnh_y - Fnh_ry
+                            if ( bdof(l,2,1) ) forx(l) = forx(l) + frc1_rx
+                            if ( bdof(l,2,1) ) fory(l) = fory(l) - frc1_ry
                             !
-                            Mnh_y = Mnh_y + rznh1 * Fnh_rx
-                            Mnh_x = Mnh_x - rznh1 * Fnh_ry
-                            Mnh_z = Mnh_z -    rx * Fnh1
-                            !
-                            M_xy  = M_xy - rznh1 * Fnh_ry
-                            M_yx  = M_yx + rznh1 * Fnh_rx
-                            M_zy  = M_zy +    rx * Fnh1
+                            if ( bdof(l,1,2) ) momy(l) = momy(l) + rz1 * frc1_rx
+                            if ( bdof(l,1,2) ) momx(l) = momx(l) + rz1 * frc1_ry
+                            if ( bdof(l,3,2) ) momz(l) = momz(l) +  rx * frc1
                             !
                             exit
                             !
@@ -1812,76 +1455,26 @@ subroutine SwashHydroLoads ( oqproc, nvoqp, voqr, voq )
                 !
              endif
              !
+ 120         continue
+             !
           enddo
           !
        enddo
-       !
-       F_x = Fh_x + Fnh_x
-       F_y = Fh_y + Fnh_y
-       F_z = Fh_z + Fnh_z
-       M_x = Mh_x + Mnh_x
-       M_y = Mh_y + Mnh_y
-       M_z = Mh_z + Mnh_z
        !
     endif
     !
     ! accumulate hydrodynamic loads over all subdomains
     !
-    call SWREDUCE ( F_x , 1, SWREAL, SWSUM )
-    call SWREDUCE ( F_z , 1, SWREAL, SWSUM )
-    call SWREDUCE ( M_y , 1, SWREAL, SWSUM )
-    !
-    call SWREDUCE ( M_yx, 1, SWREAL, SWSUM )
-    call SWREDUCE ( M_yz, 1, SWREAL, SWSUM )
+    call SWREDUCE ( forx , nflob, SWREAL, SWSUM )
+    call SWREDUCE ( forz , nflob, SWREAL, SWSUM )
+    call SWREDUCE ( momy , nflob, SWREAL, SWSUM )
     !
     if ( .not.oned ) then
        !
-       call SWREDUCE ( F_y , 1, SWREAL, SWSUM )
-       call SWREDUCE ( M_x , 1, SWREAL, SWSUM )
-       call SWREDUCE ( M_z , 1, SWREAL, SWSUM )
-       !
-       call SWREDUCE ( M_xy, 1, SWREAL, SWSUM )
-       call SWREDUCE ( M_xz, 1, SWREAL, SWSUM )
-       call SWREDUCE ( M_zx, 1, SWREAL, SWSUM )
-       call SWREDUCE ( M_zy, 1, SWREAL, SWSUM )
+       call SWREDUCE ( fory , nflob, SWREAL, SWSUM )
+       call SWREDUCE ( momx , nflob, SWREAL, SWSUM )
+       call SWREDUCE ( momz , nflob, SWREAL, SWSUM )
        !
     endif
-    !
-    ! store the requested output quantities
-    !
-    ! Tsec
-    !
-    if ( oqproc(41) ) voq(voqr(41)) = real(timco) - outpar(1)
-    !
-    ! Force_x (surge)
-    !
-    if ( oqproc(101) ) voq(voqr(101)) = F_x
-    !
-    ! Force_y (sway)
-    !
-    if ( oqproc(102) ) voq(voqr(102)) = F_y
-    !
-    ! Force_z (heave)
-    !
-    if ( oqproc(103) ) voq(voqr(103)) = F_z
-    !
-    ! Moment_x (roll)
-    !
-    if ( oqproc(104) ) voq(voqr(104)) = M_x
-    !
-    ! Moment_y (pitch)
-    !
-    if ( oqproc(105) ) voq(voqr(105)) = M_y
-    !
-    ! Moment_z (yaw)
-    !
-    if ( oqproc(106) ) voq(voqr(106)) = M_z
-    !
-    if ( oqproc(107) ) voq(voqr(107)) = M_xy
-    if ( oqproc(108) ) voq(voqr(108)) = M_xz
-    if ( oqproc(109) ) voq(voqr(109)) = M_yx
-    if ( oqproc(110) ) voq(voqr(110)) = M_yz
-    if ( oqproc(111) ) voq(voqr(111)) = M_zx
-    if ( oqproc(112) ) voq(voqr(112)) = M_zy
     !
 end subroutine SwashHydroLoads

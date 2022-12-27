@@ -35,7 +35,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -528,7 +528,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -753,7 +753,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -859,7 +859,7 @@
      &               WRITE (NREF) VOQ(IP+IXK,VOQR(IVTYPE))                40.51
                END DO                                                     40.51
             END DO                                                        40.51
-            IF ( OVSVTY(IVTYPE).GE.3 ) THEN
+            IF ( OVSVTY(IVTYPE).EQ.3 ) THEN
                DO IYK = 1, MYK                                            40.51
                   IP = (IYK-1)*MXK                                        40.51
                   DO IXK = 1, MXK                                         40.51
@@ -877,7 +877,7 @@
      &                           (VOQK(IP+IXK,K,VOQR(IVTYPE)), K=0,KMAX)
                END DO
             END DO
-            IF ( OVSVTY(IVTYPE).GE.3 ) THEN
+            IF ( OVSVTY(IVTYPE).EQ.3 ) THEN
                DO IYK = 1, MYK
                   IP = (IYK-1)*MXK
                   DO IXK = 1, MXK
@@ -896,7 +896,7 @@
      &                           (VOQK(IP+IXK,K,VOQR(IVTYPE)), K=1,KMAX)
                END DO
             END DO
-            IF ( OVSVTY(IVTYPE).GE.3 ) THEN
+            IF ( OVSVTY(IVTYPE).EQ.3 ) THEN
                DO IYK = 1, MYK
                   IP = (IYK-1)*MXK
                   DO IXK = 1, MXK
@@ -938,7 +938,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -1194,7 +1194,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -1410,16 +1410,27 @@
                 LFIELD = 13
               ENDIF
               IF (OVSVTY(IVTYPE).LE.2) THEN
+!               scalar
                 OUTLIN(LINKAR:LINKAR+LFIELD) =
      &                '     '//OVSNAM(IVTYPE)//'              '
+                LINKAR = LINKAR+LFIELD+1
+              ELSE IF (OVSVTY(IVTYPE).GT.4) THEN
+!               multiple scalar
+                NKOLS = OVSVTY(IVTYPE) - 4
+                DO N = 1, NKOLS
+                   OUTLIN(LINKAR:LINKAR+LFIELD) =
+     &                '     '//OVSNAM(IVTYPE)//'              '
+                   LINKAR = LINKAR+LFIELD+1
+                ENDDO
               ELSE
+!               vector
                 OUTLIN(LINKAR:LINKAR+LFIELD) =
      &                '   X-'//OVSNAM(IVTYPE)//'              '
                 LINKAR = LINKAR+LFIELD+1
                 OUTLIN(LINKAR:LINKAR+LFIELD) =
      &                '   Y-'//OVSNAM(IVTYPE)//'              '
+                LINKAR = LINKAR+LFIELD+1
               ENDIF
-              LINKAR = LINKAR+LFIELD+1
             ENDDO
             WRITE (NREF, '(A)') OUTLIN(1:LINKAR-1)
 !           write units of output quantities
@@ -1447,10 +1458,17 @@
               LSTR = 1
   51          OUTLIN(LINKAR:LINKAR+LFIELD) =
      &                '     ['//OVUNIT(IVTYPE)(1:LSTR)//']            '
-              IF (OVSVTY(IVTYPE).GT.2) THEN
+              IF (OVSVTY(IVTYPE).EQ.3) THEN
                 LINKAR = LINKAR+LFIELD+1
                 OUTLIN(LINKAR:LINKAR+LFIELD) =
      &                '     ['//OVUNIT(IVTYPE)(1:LSTR)//']            '
+              ELSE IF (OVSVTY(IVTYPE).GT.4) THEN
+                NKOLS = OVSVTY(IVTYPE) - 4
+                DO N = 1, NKOLS-1
+                   LINKAR = LINKAR+LFIELD+1
+                   OUTLIN(LINKAR:LINKAR+LFIELD) =
+     &                '     ['//OVUNIT(IVTYPE)(1:LSTR)//']            '
+                ENDDO
               ENDIF
               LINKAR = LINKAR+LFIELD+1
             ENDDO
@@ -1491,7 +1509,7 @@
             NKOLS = NVAR
             DO  JVAR = 1, NVAR
               IVTYPE = IVTYP(JVAR)                                        40.31
-              IF (OVSVTY(IVTYPE).GT.2) NKOLS = NKOLS + 1
+              IF (OVSVTY(IVTYPE).EQ.3) NKOLS = NKOLS + 1
             ENDDO
             WRITE (NREF, 103) NKOLS, 'number of quantities in table'
             DO  JVAR = 1, NVAR
@@ -1580,14 +1598,22 @@
                 WRITE (FSTR(6:6), '(I1)') NUMDEC                          40.00
               ENDIF
               IF ( IVTYPE.LE.50 .OR. IVTYPE.GE.100 ) THEN
-!                    write value into OUTLIN
+!               write value into OUTLIN
                 WRITE (OUTLIN(LINKAR:LINKAR+LFIELD-1), FMT=FSTR)
-     &                 VOQ(IP,VOQR(IVTYPE))
+     &                VOQ(IP,VOQR(IVTYPE))
                 IF (OVSVTY(IVTYPE).EQ.3) THEN
                   LINKAR = LINKAR + LFIELD + 1
-!                       write second component of a vectorial quantity
+!                 write second component of a vectorial quantity
                   WRITE (OUTLIN(LINKAR:LINKAR+LFIELD-1), FMT=FSTR)
-     &                   VOQ(IP,VOQR(IVTYPE)+1)
+     &                  VOQ(IP,VOQR(IVTYPE)+1)
+                ELSE IF (OVSVTY(IVTYPE).GT.4) THEN
+                  NKOLS = OVSVTY(IVTYPE) - 4
+!                 write other entries of a multiple quantity
+                  DO N = 1, NKOLS-1
+                     LINKAR = LINKAR + LFIELD + 1
+                     WRITE (OUTLIN(LINKAR:LINKAR+LFIELD-1), FMT=FSTR)
+     &                     VOQ(IP,VOQR(IVTYPE)+N)
+                  ENDDO
                 ENDIF
               ENDIF
             ELSE
@@ -1653,7 +1679,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -1949,7 +1975,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by

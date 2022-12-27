@@ -11,7 +11,7 @@ subroutine SwashImpLay2DHflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -83,7 +83,7 @@ subroutine SwashImpLay2DHflow
     use SwashTimecomm
     use m_genarr, only: kgrpnt, guu, guv, gvu, gvv, gsqs, gsqsu, gsqsv, msta, mend, nsta, nend, sbimp, slimp, srimp, stimp, work
     use m_parall
-    use SwashSolvedata, only: icond, newton
+    use SwashSolvedata, only: icond, newton, iamout
     use SwashFlowdata
 !
     implicit none
@@ -215,7 +215,7 @@ subroutine SwashImpLay2DHflow
     !
     ! adapt theta values underneath the floating object, if appropriate
     !
-    if ( ifloat == 1 ) then
+    if ( ifloat /= 0 ) then
        !
        do n = nfu, nl
           do m = mf, ml
@@ -992,7 +992,10 @@ subroutine SwashImpLay2DHflow
        do n = nfu, nl
           do m = mf, ml
              !
-             nm = kgrpnt(m,n)
+             mu = m + 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmu = kgrpnt(mu,n)
              !
              if ( presu(nm) == 1 ) then
                 !
@@ -1138,7 +1141,10 @@ subroutine SwashImpLay2DHflow
        do n = nfu, nl
           do m = mf, ml
              !
-             nm = kgrpnt(m,n)
+             mu = m + 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmu = kgrpnt(mu,n)
              !
              gmatu(nm,kmax,2) = gmatu(nm,kmax,2) + 2.*gmatu(nm,kmax,5)
              gmatu(nm,kmax,1) = gmatu(nm,kmax,1) -    gmatu(nm,kmax,5)
@@ -1962,6 +1968,8 @@ subroutine SwashImpLay2DHflow
           do n = nf, nl
              do m = mf+1, mlast
                 !
+                md  = m  - 1
+                mu  = m  + 1
                 nd  = n  - 1
                 nu  = n  + 1
                 nuu = nu + 1
@@ -1970,10 +1978,12 @@ subroutine SwashImpLay2DHflow
                 if ( LMYL .and. nu  > nl  ) nu  = nl
                 if ( LMYL .and. nuu > nl  ) nuu = nl
                 !
-                nm   = kgrpnt(m,n  )
-                ndm  = kgrpnt(m,nd )
-                num  = kgrpnt(m,nu )
-                nuum = kgrpnt(m,nuu)
+                nm   = kgrpnt(m ,n  )
+                nmd  = kgrpnt(md,n  )
+                nmu  = kgrpnt(mu,n  )
+                ndm  = kgrpnt(m ,nd )
+                num  = kgrpnt(m ,nu )
+                nuum = kgrpnt(m ,nuu)
                 !
                 if ( ( udep(nm) > udep(nmd) .or. stricthead ) .and. .not.strictmom ) then
                    !
@@ -2777,7 +2787,10 @@ subroutine SwashImpLay2DHflow
        do m = mfu, ml
           do n = nf, nl
              !
-             nm = kgrpnt(m,n)
+             nu = n + 1
+             !
+             nm  = kgrpnt(m,n )
+             num = kgrpnt(m,nu)
              !
              if ( presv(nm) == 1 ) then
                 !
@@ -2923,7 +2936,10 @@ subroutine SwashImpLay2DHflow
        do m = mfu, ml
           do n = nf, nl
              !
-             nm = kgrpnt(m,n)
+             nu = n + 1
+             !
+             nm  = kgrpnt(m,n )
+             num = kgrpnt(m,nu)
              !
              gmatv(nm,kmax,2) = gmatv(nm,kmax,2) + 2.*gmatv(nm,kmax,5)
              gmatv(nm,kmax,1) = gmatv(nm,kmax,1) -    gmatv(nm,kmax,5)
@@ -3691,15 +3707,19 @@ subroutine SwashImpLay2DHflow
                 md  = m  - 1
                 mu  = m  + 1
                 muu = mu + 1
+                nd  = n  - 1
+                nu  = n  + 1
                 !
                 if ( LMXF .and. md  < mfu ) md  = mfu
                 if ( LMXL .and. mu  > ml  ) mu  = ml
                 if ( LMXL .and. muu > ml  ) muu = ml
                 !
-                nm   = kgrpnt(m  ,n)
-                nmd  = kgrpnt(md ,n)
-                nmu  = kgrpnt(mu ,n)
-                nmuu = kgrpnt(muu,n)
+                nm   = kgrpnt(m  ,n )
+                nmd  = kgrpnt(md ,n )
+                nmu  = kgrpnt(mu ,n )
+                nmuu = kgrpnt(muu,n )
+                ndm  = kgrpnt(m  ,nd)
+                num  = kgrpnt(m  ,nu)
                 !
                 if ( ( vdep(nm) > vdep(ndm) .or. stricthead ) .and. .not.strictmom ) then
                    !
@@ -4043,6 +4063,10 @@ subroutine SwashImpLay2DHflow
                 !
                 rhs(nm) = rhs(nm) + dt * ( gvv(ndm) * fac1 - gvv(nm) * fac2 )
                 !
+                ! add contribution from rigid body motions
+                !
+                rhs(nm) = rhs(nm) - dt * gsqs(nm) * skc(nm)
+                !
              enddo
           enddo
           !
@@ -4055,7 +4079,7 @@ subroutine SwashImpLay2DHflow
                    !
                    nm = kgrpnt(m,n)
                    !
-                   rhs(nm) = rhs(nm) + dt * srcm(nm)
+                   rhs(nm) = rhs(nm) + dt * gsqs(nm) * srcm(nm)
                    !
                 enddo
              enddo
@@ -4066,8 +4090,22 @@ subroutine SwashImpLay2DHflow
           !
           if ( lpproj ) then
              !
-             do n = nfu, nl
-                do m = mfu, ml
+             ! not computed for point ml or nl at periodic boundary
+             !
+             if ( lreptx ) then
+                mlast = ml - 1
+             else
+                mlast = ml
+             endif
+             !
+             if ( lrepty ) then
+                nlast = nl - 1
+             else
+                nlast = nl
+             endif
+             !
+             do n = nfu, nlast
+                do m = mfu, mlast
                    !
                    md = m - 1
                    nd = n - 1
@@ -4263,6 +4301,10 @@ subroutine SwashImpLay2DHflow
                 !
                 rhsn(nm) = rhsn(nm) + dt * ( gvv(ndm) * fac1 - gvv(nm) * fac2 )
                 !
+                ! add contribution from rigid body motions
+                !
+                rhsn(nm) = rhsn(nm) - dt * gsqs(nm) * skc(nm)
+                !
                 amatn(nm,:) = amatn(nm,:) / gsqs(nm)
                 rhsn (nm  ) = rhsn (nm  ) / gsqs(nm)
                 !
@@ -4291,8 +4333,22 @@ subroutine SwashImpLay2DHflow
           !
           if ( lpproj ) then
              !
-             do n = nfu, nl
-                do m = mfu, ml
+             ! not computed for point ml or nl at periodic boundary
+             !
+             if ( lreptx ) then
+                mlast = ml - 1
+             else
+                mlast = ml
+             endif
+             !
+             if ( lrepty ) then
+                nlast = nl - 1
+             else
+                nlast = nl
+             endif
+             !
+             do n = nfu, nlast
+                do m = mfu, mlast
                    !
                    md = m - 1
                    nd = n - 1
@@ -4425,7 +4481,7 @@ subroutine SwashImpLay2DHflow
        rval = resm
        call SWREDUCE ( resm, 1, SWREAL, SWMAX )
        !
-       if ( ITEST >= 30 .and. EQREAL(resm,rval) .and. maxit > 1 ) then
+       if ( iamout == 2 .and. EQREAL(resm,rval) .and. maxit > 1 ) then
           !
           write (PRINTF,'(a,i4,a,e12.6,a,i5,a,i5,a)') ' ++ pressure projection: iter = ',jj,' res = ',resm,' in (m,n)=(',minf+MXF-2,',',ninf+MYF-2,')'
           !
@@ -5386,7 +5442,10 @@ subroutine SwashImpLay2DHflow
                    amatw(nm,0,3) = 0.
                    w1   (nm,0  ) = 0.25 * ( 3.*(u1(nm,1)+u1(nmd,1)) - u1(nm,2) - u1(nmd,2) ) * ( zku(nm,0) - zku(nmd,0) ) / dxl +  &
                                    0.25 * ( 3.*(v1(nm,1)+v1(ndm,1)) - v1(nm,2) - v1(ndm,2) ) * ( zkv(nm,0) - zkv(ndm,0) ) / dyl
-                   rhsw (nm,0  ) = w1(nm,0)
+                   !
+                   ! add body motion
+                   w1  (nm,0) = w1(nm,0) + skc(nm)
+                   rhsw(nm,0) = w1(nm,0)
                    !
                 endif
                 !
@@ -5477,16 +5536,22 @@ subroutine SwashImpLay2DHflow
              do m = mfu, ml
                 !
                 md = m - 1
+                mu = m + 1
                 nd = n - 1
+                nu = n + 1
                 !
                 nm  = kgrpnt(m ,n )
                 nmd = kgrpnt(md,n )
+                nmu = kgrpnt(mu,n )
                 ndm = kgrpnt(m ,nd)
+                num = kgrpnt(m ,nu)
                 !
                 ! for permanently dry neighbours, corresponding values will be mirrored
                 !
                 if ( nmd == 1 ) nmd = nm
+                if ( nmu == 1 ) nmu = nm
                 if ( ndm == 1 ) ndm = nm
+                if ( num == 1 ) num = nm
                 !
                 if ( wets(nm) == 1 ) then
                    !
@@ -5646,6 +5711,10 @@ subroutine SwashImpLay2DHflow
                                   dmat(nm,k,8)*v1(nm ,k ) + dmat(nm,k,10)*v1(ndm,k ) + dmat(nm,k, 7)*v1(nm ,kd) +  &
                                   dmat(nm,k,9)*v1(ndm,kd) + dmat(nm,k,11)*v1(nm ,ku) + dmat(nm,k,12)*v1(ndm,ku) +  &
                                   kwd*w1(nm,k-1) - kwu*w1(nm,k) ) / (dt*theta3)
+                   !
+                   ! add contribution from rigid body motions (top layer only)
+                   !
+                   if ( k == 1 ) rhsp(nm,k) = rhsp(nm,k) + skc(nm) / (dt*theta3)
                    !
                 enddo
                 !
@@ -5959,6 +6028,9 @@ subroutine SwashImpLay2DHflow
                 !
                 w1(nm,0) = 0.25 * ( 3.*(u1(nm,1)+u1(nmd,1)) - u1(nm,2) - u1(nmd,2) ) * ( zku(nm,0) - zku(nmd,0) ) / dxl +  &
                            0.25 * ( 3.*(v1(nm,1)+v1(ndm,1)) - v1(nm,2) - v1(ndm,2) ) * ( zkv(nm,0) - zkv(ndm,0) ) / dyl
+                !
+                ! add body motion
+                w1(nm,0) = w1(nm,0) + skc(nm)
                 !
              endif
              !

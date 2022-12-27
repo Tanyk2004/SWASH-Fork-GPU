@@ -5,7 +5,7 @@ tides, buoyancy and wind forces. It provides a general basis for describing wave
 flows, and density driven flows in coastal seas, estuaries, lakes and rivers.
 
 For more in-depth background and scientific documentation, the reader is referred to the [SWASH website](https://swash.sourceforge.io).
-Please also check the [release notes](https://swash.sourceforge.io/modifications/modifications.htm) for any additional information on the current version **8.01**.
+Please also check the [release notes](https://swash.sourceforge.io/modifications/modifications.htm) for any additional information on the current version **9.01**.
 
 This Readme provides a brief overview of software installation and configuration instructions for users and developers.
 Please see the [Implementation Manual](https://swash.sourceforge.io/online_doc/swashimp/swashimp.html) for additional documentation.
@@ -236,4 +236,4 @@ See
 For bug reports please use the [GitLab issue tracker](https://gitlab.tudelft.nl/citg/wavemodels/swash/issues).
 
 
-<small>&copy; Copyright 2022  Marcel Zijlema</small>
+<small>&copy; Copyright 2023  Marcel Zijlema</small>

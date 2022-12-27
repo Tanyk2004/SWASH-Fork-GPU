@@ -8,6 +8,7 @@ ${SRC}/SwanGridobjects.f90
 ${SRC}/SwanCompdata.f90
 ${SRC}/SwashFlowdata.f90
 ${SRC}/SwashSolvedata.f90
+${SRC}/SwashRigBoddata.f90
 ${SRC}/Swash.f90
 ${SRC}/SwashMain.f90
 ${SRC}/SwashInit.f90
@@ -119,6 +120,9 @@ ${SRC}/SwashAntiCreep1DH.f90
 ${SRC}/SwashAntiCreep2DH.f90
 ${SRC}/SwashHDiffZplane1DH.f90
 ${SRC}/SwashHDiffZplane2DH.f90
+${SRC}/SwashUpdKBCrigb.f90
+${SRC}/SwashForcesRigidBod.f90
+${SRC}/SwashMotionRigidBod.f90
 ${SRC}/SwanFindPoint.f90
 ${SRC}/SwanPointinMesh.f90
 ${SRC}/SwashOutput.f90
@@ -128,6 +132,7 @@ ${SRC}/SwashCoorOutp.f90
 ${SRC}/SwashQuanOutp.f90
 ${SRC}/SwashElemOutp.f90
 ${SRC}/SwashHydroLoads.f90
+${SRC}/SwashFlobjOutp.f90
 ${SRC}/SwashRunupHeight.f90
 ${SRC}/SwanInterpolatePoint.f90
 ${SRC}/SwanInterpolateOutput.f90

@@ -11,7 +11,7 @@ subroutine SwashUpdateDepths ( u, v )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -222,12 +222,13 @@ subroutine SwashUpdateDepths ( u, v )
                 !
              endif
              !
-             if ( ifloat /= 0 ) then
+             if ( ifloat == 1 ) then
                 !
                 hu(nm) = min( dpu(nm)-flou(nm), hu(nm) )
                 !
                 if ( .not. hu(nm) < dpu(nm) - flou(nm) ) then
                    !
+                   ! note: in free surface cell take averaging to prevent discontinuties
                    if ( hs(nm) < dps(nm) - flos(nm) ) then
                       !
                       hu(nm) = 0.5 * ( hs(nm) + hs(nmu) )
@@ -241,6 +242,10 @@ subroutine SwashUpdateDepths ( u, v )
                    endif
                    !
                 endif
+                !
+             else if ( ifloat == 2 ) then
+                !
+                hu(nm) = min( dpu(nm)-flou(nm), hu(nm) )
                 !
              endif
              !
@@ -275,7 +280,7 @@ subroutine SwashUpdateDepths ( u, v )
              nmu  = kgrpnt(mu ,1)
              nmuu = kgrpnt(muu,1)
              !
-             if ( ifloat /= 1 .or. hu(nm) < ( dpu(nm) - flou(nm) ) ) then
+             if ( ifloat == 0 .or. hu(nm) < ( dpu(nm) - flou(nm) ) ) then
                 !
                 if ( u(nm) > 1.0e-5 ) then
                    !
@@ -493,12 +498,13 @@ subroutine SwashUpdateDepths ( u, v )
                    !
                 endif
                 !
-                if ( ifloat /= 0 ) then
+                if ( ifloat == 1 ) then
                    !
                    hu(nm) = min( dpu(nm)-flou(nm), hu(nm) )
                    !
                    if ( .not. hu(nm) < dpu(nm) - flou(nm) ) then
                       !
+                      ! note: in free surface cell take averaging to prevent discontinuties
                       if ( hs(nm) < dps(nm) - flos(nm) ) then
                          !
                          hu(nm) = 0.5 * ( hs(nm) + hs(nmu) )
@@ -512,6 +518,10 @@ subroutine SwashUpdateDepths ( u, v )
                       endif
                       !
                    endif
+                   !
+                else if ( ifloat == 2 ) then
+                   !
+                   hu(nm) = min( dpu(nm)-flou(nm), hu(nm) )
                    !
                 endif
                 !
@@ -556,12 +566,13 @@ subroutine SwashUpdateDepths ( u, v )
                    !
                 endif
                 !
-                if ( ifloat /= 0 ) then
+                if ( ifloat == 1 ) then
                    !
                    hv(nm) = min( dpv(nm)-flov(nm), hv(nm) )
                    !
                    if ( .not. hv(nm) < dpv(nm) - flov(nm) ) then
                       !
+                      ! note: in free surface cell take averaging to prevent discontinuties
                       if ( hs(nm) < dps(nm) - flos(nm) ) then
                          !
                          hv(nm) = 0.5 * ( hs(nm) + hs(num) )
@@ -575,6 +586,10 @@ subroutine SwashUpdateDepths ( u, v )
                       endif
                       !
                    endif
+                   !
+                else if ( ifloat == 2 ) then
+                   !
+                   hv(nm) = min( dpv(nm)-flov(nm), hv(nm) )
                    !
                 endif
                 !
@@ -626,7 +641,7 @@ subroutine SwashUpdateDepths ( u, v )
                 if ( nmu  == 1 ) nmu  = nm
                 if ( nmuu == 1 ) nmuu = nmu
                 !
-                if ( ifloat /= 1 .or. hu(nm) < ( dpu(nm) - flou(nm) ) ) then
+                if ( ifloat == 0 .or. hu(nm) < ( dpu(nm) - flou(nm) ) ) then
                    !
                    if ( u(nm) > 1.0e-5 ) then
                       !
@@ -690,7 +705,7 @@ subroutine SwashUpdateDepths ( u, v )
                 if ( num  == 1 ) num  = nm
                 if ( nuum == 1 ) nuum = num
                 !
-                if ( ifloat /= 1 .or. hv(nm) < ( dpv(nm) - flov(nm) ) ) then
+                if ( ifloat == 0 .or. hv(nm) < ( dpv(nm) - flov(nm) ) ) then
                    !
                    if ( v(nm) > 1.0e-5 ) then
                       !

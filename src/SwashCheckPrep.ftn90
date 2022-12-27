@@ -11,7 +11,7 @@ subroutine SwashCheckPrep
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@ subroutine SwashCheckPrep
 !    6.01: Panagiotis Vasarmidis
 !    6.02: Tom Bogaard
 !    7.01: Marcel Zijlema
+!    9.01: Marcel Zijlema
 !
 !   Updates
 !
@@ -48,6 +49,7 @@ subroutine SwashCheckPrep
 !    6.01,      June 2019: extension internal wave generation
 !    6.02,      July 2019: extension 3D (non)linear k-eps model
 !    7.01,   January 2020: extension to unstructured grids
+!    9.01,   October 2022: extension moving rigid bodies
 !
 !   Purpose
 !
@@ -62,6 +64,7 @@ subroutine SwashCheckPrep
     use SwashCommdata4
     use SwashFlowdata
     use SwashSolvedata
+    use SwashRigBoddata
     use m_genarr
     use outp_data
     use m_bndspec
@@ -97,7 +100,10 @@ subroutine SwashCheckPrep
     integer                                     :: jupp        ! upper bound of input array
     integer                                     :: k           ! counter
     integer                                     :: l           ! counter
+    integer                                     :: m           ! body index
+    integer                                     :: nfen        ! number of fenders
     integer                                     :: nfreq       ! number of frequencies
+    integer                                     :: nmli        ! number of mooring lines
     integer                                     :: sumlay      ! sum of layer numbers
     !
     real                                        :: altmp       ! an auxiliary real to temporarily store a direction
@@ -108,12 +114,14 @@ subroutine SwashCheckPrep
     real                                        :: fac         ! a factor
     real                                        :: hlayp       ! layer thickness of pressure layer
     real                                        :: hps         ! porous structure height
+    real                                        :: labl        ! label of rigid body
     real*8                                      :: lambda      ! polynomial function of temperature and salinity (for sea water) in Eckart's formula
     real                                        :: n           ! volumetric porosity
     real                                        :: npl         ! local number of plants per square meter
     real                                        :: omega       ! Earth's angular velocity
     real                                        :: pp          ! local atmospheric pressure
     real*8                                      :: pf0         ! another polynomial function of temperature and salinity (for sea water) in Eckart's formula
+    real                                        :: rhoinf      ! spectral radius for infinite frequency to control generalized-alpha scheme
     real                                        :: ss          ! salinity/sediment
     real                                        :: sumh        ! sum of the layer thicknesses
     real                                        :: SVALQI      ! interpolated value of an input array for point given in problem coordinates
@@ -141,6 +149,7 @@ subroutine SwashCheckPrep
     !
     type(bfsdat), pointer                       :: curbfs      ! current item in list of Fourier series parameters
     type(bgpdat), pointer                       :: curbgp      ! current item in list of boundary grid points
+    type(ribdat), pointer                       :: currib      ! current item in list of rigid body parameters
     !
     type(facetype), dimension(:), pointer       :: face        ! datastructure for faces with their attributes
 !
@@ -273,6 +282,12 @@ subroutine SwashCheckPrep
        if ( leds(10) == 1 ) call msgerr (3, 'no porosity read')
        if ( leds(11) == 2 ) vargs = .true.
        if ( leds(12) == 2 ) varsh = .true.
+    endif
+    !
+    if ( ifloat == 2 ) then
+       if ( leds(19) == 2 ) then
+          if ( leds(18) /= 2 ) call msgerr (3, 'DRAFT not read, while LABEL has been read')
+       endif
     endif
     !
     if ( leds(13) == 2 ) svwp = .true.
@@ -612,7 +627,6 @@ subroutine SwashCheckPrep
     !
     if ( iwvgen /= 0 ) then
        if ( nbgrpt > 0 ) call msgerr (3, 'concurrent specification of boundary conditions and internal wave generation is not allowed')
-       if ( optg == 3 )  call msgerr (3, 'internal wave generation not supported in case of curvilinear grid')
     endif
     !
     ! check mimetic discretizations
@@ -784,12 +798,16 @@ subroutine SwashCheckPrep
     ! if no baroclinic forcing, recompute water density based on temperature and salinity according to the Eckart's formula (1958)
     ! Note: the computed density is the actual density and not a reference density!
     !
-    if ( idens == 0 ) then
+    if ( idens == 0 .and. .not. rhow /= -999. ) then
        !
        pf0    =  5890d0  + (  38d0  - 375d-3*dble(tempw))*dble(tempw) +                        3d0*dble(salw)
        lambda = 17795d-1 + (1125d-2 - 745d-4*dble(tempw))*dble(tempw) - (38d-1 + 1d-2*dble(tempw))*dble(salw)
        ! density based on Eckart is g/ml, hence multiply by 1000 to get g/l
        rhow   = 1000.*pf0/(lambda+0.698*pf0)
+       !
+    else if ( .not. rhow /= -999. ) then
+       !
+       rhow = 1000.
        !
     endif
     !
@@ -1007,7 +1025,7 @@ subroutine SwashCheckPrep
     !
     ! check parameters of floating objects
     !
-    if ( ifloat == 1 ) then
+    if ( ifloat /= 0 ) then
        !
        horwinc = .false.
        !
@@ -1018,16 +1036,36 @@ subroutine SwashCheckPrep
           pship(1) = 0.
        endif
        !
-       ! in case of moving object, set compressibility factor to zero
-       !
-       if ( ifldyn(18) /= 0 ) pship(1) = 0.
-       !
        if ( pship(2) < 0.5 .or. pship(2) > 1. ) then
           call msgerr (1, 'incorrect theta value for time integration beneath floating object')
           pship(2) = 1.
        endif
        !
        if ( .not. pship(2) /= 0.5 ) pship(2) = 0.51
+       !
+       ! check motion rigid bodies
+       !
+       if ( ifloat /= 2 .and. mbod > 1 ) then
+          call msgerr (3, 'specification of labels for rigid bodies as input grid is required')
+       else if ( mbod == 1 ) then
+          ifloat = 2
+       else if ( mbod == 0 ) then
+          ifloat = min( 1, ifloat )
+       endif
+       !
+       ! in case of moving object, set compressibility factor to zero
+       !
+       if ( ifldyn(18) /= 0 .or. ifloat == 2 ) pship(1) = 0.
+       !
+       ! for computing hydrodynamic loads acting on (moving) objects accurately, only user-defined draft levels and an upwind depth interpolation is allowed
+       !
+       if ( ifloat /= 0 ) dpsopt = 4
+       if ( ifloat == 2 ) then
+          if ( pnums(11) == 3. .and. pnums(12) == 1. ) then
+             pnums(11) = 6.
+             pnums(12) = 0.
+          endif
+       endif
        !
     endif
     !
@@ -1249,6 +1287,85 @@ subroutine SwashCheckPrep
        endif
     endif
     !
+    ! check generalized-alpha method
+    !
+    if ( mfoti == 1 ) then
+       if ( pship(3) < 0. .or. pship(3) > 0.5 ) then
+          call msgerr (1, 'incorrect beta for the Newmark scheme')
+          pship(3) = 0.25
+       endif
+       if ( pship(4) < 0. .or. pship(4) > 1. ) then
+          call msgerr (1, 'incorrect gamma for the Newmark scheme')
+          pship(4) = 0.5
+       endif
+    else if ( mfoti > 1 ) then
+       rhoinf = pship(5)
+       if ( rhoinf < 0. .or. rhoinf > 1. ) then
+          call msgerr (1, 'incorrect spectral radius for the generalized-alpha method')
+          rhoinf = 1.
+       endif
+    endif
+    !
+    if ( mfoti == 1 ) then
+       !
+       ! Newmark scheme
+       !
+       alfam = 0.
+       alfaf = 0.
+       !
+    else if ( mfoti == 2 ) then
+       !
+       ! Chung-Hulbert scheme
+       !
+       alfam = (2.*rhoinf-1.) / (1.+rhoinf)
+       alfaf = rhoinf / (1.+rhoinf)
+       !
+    else if ( mfoti == 3 ) then
+       !
+       ! Hilber-Hughes-Taylor scheme
+       !
+       alfam = 0.
+       alfaf = (1.-rhoinf) / (1.+rhoinf)
+       !
+    else if ( mfoti == 4 ) then
+       !
+       ! Wood-Bossak-Zienkiewicz scheme
+       !
+       alfam = (rhoinf-1.) / (1.+rhoinf)
+       alfaf = 0.
+       !
+    endif
+    !
+    if ( mfoti > 1 ) then
+       !
+       fac      = 1. - alfam + alfaf
+       pship(3) = 0.25 * fac * fac
+       pship(4) = fac - 0.5
+       !
+    endif
+    !
+    ! check FSI coupling
+    !
+    if ( ifloat == 2 ) then
+       if ( pship(10) < 0. .or. pship(10) > 1. ) then
+          call msgerr (1, 'incorrect under-relaxation value for FSI coupling')
+          pship(10) = 0.3
+       endif
+    else
+       ! no iteration process required!
+       pship(8) = 0.
+       pship(9) = 1.
+    endif
+    !
+    ! check implicitness factor for kinematic boundary conditions
+    !
+    if ( ifloat == 2 ) then
+       if ( pship(11) < 0. .or. pship(11) > 1. ) then
+          call msgerr (1, 'incorrect theta value for update kinematic boundary conditions')
+          pship(11) = 0.5
+       endif
+    endif
+    !
     ! allocate arrays for storing flow variables at previous time level in case of nonstationary run
     !
     if ( nstatc == 1 ) then
@@ -1456,6 +1573,155 @@ subroutine SwashCheckPrep
              exit
           endif
        enddo
+       !
+    endif
+    !
+    ! allocate arrays and store COG and DOF for a fixed body case (only used for output purposes)
+    !
+    if ( ifloat == 1 ) then
+       !
+       if ( .not.allocated(bcog) ) allocate(bcog(1,3)  )
+       if ( .not.allocated(bdof) ) allocate(bdof(1,3,2))
+       !
+       bcog(1,1) = cogx
+       bcog(1,2) = cogy
+       bcog(1,3) = cogz
+       !
+       bdof = .false.
+       !
+    else if ( ifloat == 0 ) then
+       !
+       if ( .not.allocated(bcog) ) allocate(bcog(0,0)  )
+       if ( .not.allocated(bdof) ) allocate(bdof(0,0,0))
+       !
+    endif
+    !
+    ! allocate arrays and store data for rigid bodies, if appropriate
+    !
+    if ( ifloat == 2 ) then
+       !
+       ! physical properties
+       !
+       if ( .not.allocated(bmass) ) allocate(bmass(mbod)       )
+       if ( .not.allocated(bmoi ) ) allocate(bmoi (mbod,ndim)  )
+       if ( .not.allocated(bcog ) ) allocate(bcog (mbod,ndim)  )
+       if ( .not.allocated(bdof ) ) allocate(bdof (mbod,ndim,2))
+       if ( .not.allocated(barea) ) allocate(barea(mbod)       )
+       if ( .not.allocated(bvol ) ) allocate(bvol (mbod)       )
+       if ( .not.allocated(bmoax) ) allocate(bmoax(mbod)       )
+       if ( .not.allocated(bmoay) ) allocate(bmoay(mbod)       )
+       if ( .not.allocated(bcob ) ) allocate(bcob (mbod)       )
+       !
+       ! power of PTO system
+       !
+       if ( .not.allocated(ptop) ) allocate(ptop(mbod))
+       !
+       ! mooring lines
+       !
+       if ( .not.allocated(nmlb) ) allocate(nmlb(mbod))
+       if ( mxmli > 0 ) then
+          !
+          if ( .not.allocated(bmli  ) ) allocate(bmli  (mbod,mxmli,10))
+          if ( .not.allocated(cpto  ) ) allocate(cpto  (mbod)         )
+          !
+          if ( .not.allocated(extml0) ) allocate(extml0(mbod,mxmli)   )
+          if ( .not.allocated(extml1) ) allocate(extml1(mbod,mxmli)   )
+          !
+       endif
+       !
+       ! fenders
+       !
+       if ( .not.allocated(nfeb) ) allocate(nfeb(mbod))
+       if ( mxfen > 0 ) then
+          !
+          if ( .not.allocated(bfen) ) allocate(bfen(mbod,mxfen,4))
+          !
+       endif
+       !
+       bmass = 0.
+       bmoi  = 0.
+       bcog  = 0.
+       bdof  = .false.
+       barea = 0.
+       bvol  = 0.
+       bmoax = 0.
+       bmoay = 0.
+       bcob  = 0.
+       ptop  = 0.
+       nmlb  = 0
+       nfeb  = 0
+       if ( mxmli > 0 ) then
+          bmli   = 0.
+          cpto   = .false.
+          extml0 = 0.
+          extml1 = 0.
+       endif
+       if ( mxfen > 0 ) then
+          bfen = 0.
+       endif
+       !
+       currib => frigbod
+       do i = 1, mbod
+          m = currib%label
+          bmass(m) = currib%parm(1)
+          do j = 1, ndim
+             bmoi(m,j) = currib%parm(j+1)
+             bcog(m,j) = currib%parm(j+4)
+             do k = 1, 2
+                l = j + ndim*(k-1)
+                bdof(m,j,k) = currib%dof(l)
+             enddo
+          enddo
+          if ( mxmli > 0 ) then
+             nmli = currib%nmli
+             do j = 1, nmli
+                do k = 1, 9
+                   bmli(m,j,k) = currib%mli(j,k)
+                enddo
+             enddo
+             nmlb(m) = nmli
+             cpto(m) = currib%pret
+          endif
+          if ( mxfen > 0 ) then
+             nfen = currib%nfen
+             do j = 1, nfen
+                do k = 1, 4
+                   bfen(m,j,k) = currib%fen(j,k)
+                enddo
+             enddo
+             nfeb(m) = nfen
+          endif
+          if (.not.associated(currib%nextrib)) exit
+          currib => currib%nextrib
+       enddo
+       !
+       if ( oned ) then
+          !
+          ! 1D mode - three degrees of freedom: surge, heave and pitch
+          !
+          bdof(:,2,1) = .false.
+          bdof(:,1,2) = .false.
+          bdof(:,3,2) = .false.
+          !
+       endif
+       !
+    else
+       !
+       if ( .not.allocated(bmass ) ) allocate(bmass (0)    )
+       if ( .not.allocated(bmoi  ) ) allocate(bmoi  (0,0)  )
+       if ( .not.allocated(barea ) ) allocate(barea (0)    )
+       if ( .not.allocated(bvol  ) ) allocate(bvol  (0)    )
+       if ( .not.allocated(bmoax ) ) allocate(bmoax (0)    )
+       if ( .not.allocated(bmoay ) ) allocate(bmoay (0)    )
+       if ( .not.allocated(bcob  ) ) allocate(bcob  (0)    )
+       if ( .not.allocated(ptop  ) ) allocate(ptop  (0)    )
+       if ( .not.allocated(nmlb  ) ) allocate(nmlb  (0)    )
+       if ( .not.allocated(bmli  ) ) allocate(bmli  (0,0,0))
+       if ( .not.allocated(cpto  ) ) allocate(cpto  (0)    )
+       if ( .not.allocated(extml0) ) allocate(extml0(0,0)  )
+       if ( .not.allocated(extml1) ) allocate(extml1(0,0)  )
+       if ( .not.allocated(nfeb  ) ) allocate(nfeb  (0)    )
+       if ( .not.allocated(bfen  ) ) allocate(bfen  (0,0,0))
        !
     endif
     !
@@ -1749,7 +2015,7 @@ subroutine SwashCheckPrep
     !
     if ( istat == 0 ) then
        !
-       if ( ifloat == 1 ) then
+       if ( ifloat /= 0 ) then
           !
           if ( .not.allocated(flobjf) ) allocate ( flobjf(mcgrd), stat = istat )
           if ( istat == 0 ) flobjf = 0.
@@ -1757,6 +2023,21 @@ subroutine SwashCheckPrep
        else
           !
           allocate ( flobjf(0) )
+          !
+       endif
+       !
+    endif
+    !
+    if ( istat == 0 ) then
+       !
+       if ( ifloat == 2 ) then
+          !
+          if ( .not.allocated(lbodf) ) allocate ( lbodf(mcgrd), stat = istat )
+          if ( istat == 0 ) lbodf = 0.
+          !
+       else
+          !
+          allocate ( lbodf(0) )
           !
        endif
        !
@@ -1999,13 +2280,32 @@ subroutine SwashCheckPrep
                 !
                 ! retrieve draft of floating object and map to computational grid
                 !
-                if ( ifloat == 1 ) then
+                if ( ifloat /= 0 ) then
                    if ( lflgrd(18) ) then
                       draft = flobj((iygl-1)*mxg(18)+ixgl)
                    else
                       draft = SVALQI (xp, yp, 18, flobj, NEAREST)
                    endif
                    flobjf(indx) = draft
+                endif
+                !
+                ! retrieve label of rigid body and map to computational grid
+                !
+                if ( ifloat == 2 ) then
+                   if ( allocated(lbod) ) then
+                      if ( lflgrd(19) ) then
+                         labl = lbod((iygl-1)*mxg(19)+ixgl)
+                      else
+                         labl = SVALQI (xp, yp, 19, lbod, 0.)
+                      endif
+                      lbodf(indx) = labl
+                   else
+                      if ( flobjf(indx) > 0. ) then
+                         lbodf(indx) = 1.
+                      else
+                         lbodf(indx) = 0.
+                      endif
+                   endif
                 endif
                 !
              endif
@@ -2234,13 +2534,32 @@ subroutine SwashCheckPrep
           !
           ! retrieve draft of floating object and map to computational grid
           !
-          if ( ifloat == 1 ) then
+          if ( ifloat /= 0 ) then
              if ( lflgrd(18) ) then
                 draft = flobj(indx)
              else
                 draft = SVALQI (xp, yp, 18, flobj, NEAREST)
              endif
              flobjf(indx) = draft
+          endif
+          !
+          ! retrieve label of rigid body and map to computational grid
+          !
+          if ( ifloat == 2 ) then
+             if ( allocated(lbod) ) then
+                if ( lflgrd(19) ) then
+                   labl = lbod(indx)
+                else
+                   labl = SVALQI (xp, yp, 19, lbod, 0.)
+                endif
+                lbodf(indx) = labl
+             else
+                if ( flobjf(indx) > 0. ) then
+                   lbodf(indx) = 1.
+                else
+                   lbodf(indx) = 0.
+                endif
+             endif
           endif
           !
        enddo
@@ -2296,6 +2615,8 @@ subroutine SwashCheckPrep
     if ( istat == 0 .and. .not.allocated(flos  ) ) allocate (flos  (mcgrd), stat = istat)
     if ( istat == 0 .and. .not.allocated(flou  ) ) allocate (flou  (mcgrd), stat = istat)
     !
+    if ( istat == 0 .and. .not.allocated(lfbs) ) allocate (lfbs(mcgrd), stat = istat)
+    !
     if ( svwp ) then
        if ( istat == 0 .and. .not.allocated(patm) ) allocate (patm (mcgrd), stat = istat)
     endif
@@ -2310,6 +2631,8 @@ subroutine SwashCheckPrep
     !
     if ( istat == 0 .and. .not.allocated(presp ) ) allocate (presp (mcgrd), stat = istat)
     if ( istat == 0 .and. .not.allocated(presu ) ) allocate (presu (mcgrd), stat = istat)
+    !
+    if ( istat == 0 .and. .not.allocated(skc   ) ) allocate (skc   (mcgrd), stat = istat)
     !
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(brks) ) allocate (brks(mcgrd), stat = istat)
@@ -2407,6 +2730,8 @@ subroutine SwashCheckPrep
     flos   = -9999.
     flou   = -9999.
     !
+    lfbs   = 0
+    !
     if ( svwp ) patm = 0.
     !
     wets   = 0
@@ -2414,6 +2739,8 @@ subroutine SwashCheckPrep
     !
     presp  = 0
     presu  = 0
+    !
+    skc    = 0.
     !
     brks   = 0
     !
@@ -2464,7 +2791,7 @@ subroutine SwashCheckPrep
     !
     ! determine some parameters for floating objects
     !
-    if ( optg /= 5 .and. ifloat == 1 ) call SwashFloatObjects
+    if ( optg /= 5 .and. ifloat /= 0 ) call SwashFloatObjects
     if (STPNOW()) return
     !
     ! allocate and initialize other flow data (discharges and some help arrays)
@@ -4421,6 +4748,105 @@ subroutine SwashCheckPrep
        !
     endif
     !
+    ! allocate and initialize data for rigid body solver
+    !
+    if ( ifloat == 2 ) then
+       !
+       if ( istat == 0 .and. .not.allocated(fbod0) ) allocate (fbod0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(tbod0) ) allocate (tbod0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(fbod1) ) allocate (fbod1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(tbod1) ) allocate (tbod1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(fhyd0) ) allocate (fhyd0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(thyd0) ) allocate (thyd0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(fhyd1) ) allocate (fhyd1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(thyd1) ) allocate (thyd1(mbod,ndim), stat = istat)
+       !
+       if ( istat == 0 .and. .not.allocated(afot0) ) allocate (afot0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(afor0) ) allocate (afor0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(vfot0) ) allocate (vfot0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(vfor0) ) allocate (vfor0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(xfot0) ) allocate (xfot0(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(xfor0) ) allocate (xfor0(mbod,ndim), stat = istat)
+       !
+       if ( istat == 0 .and. .not.allocated(afot1) ) allocate (afot1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(afor1) ) allocate (afor1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(vfot1) ) allocate (vfot1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(vfor1) ) allocate (vfor1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(xfot1) ) allocate (xfot1(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(xfor1) ) allocate (xfor1(mbod,ndim), stat = istat)
+       !
+       if ( istat == 0 .and. .not.allocated(xfoti) ) allocate (xfoti(mbod,ndim), stat = istat)
+       if ( istat == 0 .and. .not.allocated(xfori) ) allocate (xfori(mbod,ndim), stat = istat)
+       !
+    else
+       !
+       if ( .not.allocated(fbod0) ) allocate (fbod0(0,0))
+       if ( .not.allocated(tbod0) ) allocate (tbod0(0,0))
+       if ( .not.allocated(fbod1) ) allocate (fbod1(0,0))
+       if ( .not.allocated(tbod1) ) allocate (tbod1(0,0))
+       if ( .not.allocated(fhyd0) ) allocate (fhyd0(0,0))
+       if ( .not.allocated(thyd0) ) allocate (thyd0(0,0))
+       if ( .not.allocated(fhyd1) ) allocate (fhyd1(0,0))
+       if ( .not.allocated(thyd1) ) allocate (thyd1(0,0))
+       !
+       if ( .not.allocated(afot0) ) allocate (afot0(0,0))
+       if ( .not.allocated(afor0) ) allocate (afor0(0,0))
+       if ( .not.allocated(vfot0) ) allocate (vfot0(0,0))
+       if ( .not.allocated(vfor0) ) allocate (vfor0(0,0))
+       if ( .not.allocated(xfot0) ) allocate (xfot0(1,1))
+       if ( .not.allocated(xfor0) ) allocate (xfor0(1,1))
+       !
+       if ( .not.allocated(afot1) ) allocate (afot1(0,0))
+       if ( .not.allocated(afor1) ) allocate (afor1(0,0))
+       if ( .not.allocated(vfot1) ) allocate (vfot1(0,0))
+       if ( .not.allocated(vfor1) ) allocate (vfor1(0,0))
+       if ( .not.allocated(xfot1) ) allocate (xfot1(1,1))
+       if ( .not.allocated(xfor1) ) allocate (xfor1(1,1))
+       !
+       if ( .not.allocated(xfoti) ) allocate (xfoti(1,1))
+       if ( .not.allocated(xfori) ) allocate (xfori(1,1))
+       !
+    endif
+    !
+    if ( ifloat == 2 ) then
+       !
+       fbod0 = 0.
+       tbod0 = 0.
+       fbod1 = 0.
+       tbod1 = 0.
+       fhyd0 = 0.
+       thyd0 = 0.
+       fhyd1 = 0.
+       thyd1 = 0.
+       !
+       afot0 = 0.
+       afor0 = 0.
+       vfot0 = 0.
+       vfor0 = 0.
+       xfot0 = 0.
+       xfor0 = 0.
+       !
+       afot1 = 0.
+       afor1 = 0.
+       vfot1 = 0.
+       vfor1 = 0.
+       xfot1 = 0.
+       xfor1 = 0.
+       !
+       xfoti = 0.
+       xfori = 0.
+       !
+    else
+       !
+       xfot0 = 0.
+       xfor0 = 0.
+       xfot1 = 0.
+       xfor1 = 0.
+       xfoti = 0.
+       xfori = 0.
+       !
+    endif
+    !
     ! allocate and initialize wave output
     !
     if ( lwavoutp ) then
@@ -4631,6 +5057,13 @@ subroutine SwashCheckPrep
        endif
     endif
 !TIMG    call SWTSTO(55)
+    if (STPNOW()) return
+    !
+    ! in case of moving bodies initialize forces and moments
+    !
+!TIMG    call SWTSTA(62)
+    call SwashForcesRigidBod
+!TIMG    call SWTSTO(62)
     if (STPNOW()) return
     !
     ! in case of (quasi-)steady flow initialize flow velocities based on Chezy formula

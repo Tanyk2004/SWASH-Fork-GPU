@@ -11,7 +11,7 @@ subroutine SwashUpdateData ( it )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -34,6 +34,7 @@ subroutine SwashUpdateData ( it )
 !    3.02: Floris de Wit
 !    6.01: Panagiotis Vasarmidis
 !    6.02: Tom Bogaard
+!    9.01: Dirk Rijnsdorp
 !
 !   Updates
 !
@@ -42,6 +43,7 @@ subroutine SwashUpdateData ( it )
 !    3.02,    April 2016: take into account heading per frequency in case of btype = 3 and 7
 !    6.01,     June 2019: extension internal wave generation
 !    6.02,     July 2019: extension 3D (non)linear k-eps model
+!    9.01,  October 2022: extension moving rigid bodies
 !
 !   Purpose
 !
@@ -66,6 +68,7 @@ subroutine SwashUpdateData ( it )
     use m_bndspec
     use m_genarr
     use SwashFlowdata
+    use SwashRigBoddata
     use m_parall
 !
     implicit none
@@ -144,6 +147,8 @@ subroutine SwashUpdateData ( it )
                                       ! =-1; refers to outflowing at right and upper boundaries
     real                  :: s        ! sign to preserve symmetry at boundary
     real                  :: sfval    ! value from an internal-generated series of wave components
+    real                  :: srcb     ! start point of source area (left/lower border)
+    real                  :: srce     ! end point of source area (right/upper border)
     real                  :: swd      ! still water depth
     real                  :: theta    ! randomly chosen directions assigned to each frequency
     real                  :: tsmo     ! period for smoothing boundary values during cold start
@@ -228,6 +233,30 @@ subroutine SwashUpdateData ( it )
        hso = hs
        if ( kmax > 1    ) hkso = hks
        if ( icreep /= 0 ) zkso = zks
+       !
+       ! moving rigid bodies
+       if ( ifloat == 2 ) then
+          !
+          ! displacements, velocities and accelerations
+          xfot0 = xfot1
+          xfor0 = xfor1
+          vfot0 = vfot1
+          vfor0 = vfor1
+          afot0 = afot1
+          afor0 = afor1
+          !
+          ! hydrodynamic forces and torques
+          fhyd0 = fhyd1
+          thyd0 = thyd1
+          !
+          ! body-related forces and torques
+          fbod0 = fbod1
+          tbod0 = tbod1
+          !
+          ! extension mooring lines
+          extml0 = extml1
+          !
+       endif
        !
     endif
     !
@@ -1563,87 +1592,185 @@ subroutine SwashUpdateData ( it )
              !
           else
              !
-             if ( lsrcfy ) then
+             if ( optg == 1 ) then
                 !
-                cgsrc = piwg(1) - dble(xoffs)
-                hwidt = 0.5 * piwg(2)
+                ! grid domain is rectilinear and uniform
                 !
-                isrcb = nint(cgsrc/dx - hwidt/dx - real(MXF) + 101.) - 99
-                isrce = nint(cgsrc/dx + hwidt/dx - real(MXF) + 101.) - 99
-                !
-                do j = 2, myc-1
-                   do i = 2, mxc-1
-                      !
-                      indx = kgrpnt(i,j)
-                      !
-                      if ( .not. i < isrcb .and. .not. i > isrce ) then
-                         !
-                         xp = real(i-isrcb) * dx - hwidt
-                         yp = real(j+MYF-2) * dy
-                         !
-                         sfval = 0.
-                         !
-                         do jj = 1, nfreq
-                            !
-                            ampl  = curbfs%sfamp(jj)
-                            beta  = curbfs%bshap(jj)
-                            !
-                            omega = curbfs%omega(jj)
-                            theta = curbfs%theta(jj)
-                            kwav  = kwave(jj,1)
-                            phase = curbfs%phase(jj)
-                            !
-                            sfval = sfval + ampl * exp( -beta * xp**2 ) * cos( kwav * yp * sin(theta) + omega * timco + phase )
-                            !
-                         enddo
-                         !
-                         srcm(indx) = fsmo * sfval
-                         !
-                      endif
-                      !
-                   enddo
-                enddo
-                !
-             else if ( lsrcfx ) then
-                !
-                cgsrc = piwg(1) - dble(yoffs)
-                hwidt = 0.5 * piwg(2)
-                !
-                isrcb = nint(cgsrc/dy - hwidt/dy - real(MYF) + 101.) - 99
-                isrce = nint(cgsrc/dy + hwidt/dy - real(MYF) + 101.) - 99
-                !
-                do i = 2, mxc-1
+                if ( lsrcfy ) then
+                   !
+                   cgsrc = piwg(1) - dble(xoffs)
+                   hwidt = 0.5 * piwg(2)
+                   !
+                   isrcb = nint(cgsrc/dx - hwidt/dx - real(MXF) + 101.) - 99
+                   isrce = nint(cgsrc/dx + hwidt/dx - real(MXF) + 101.) - 99
+                   !
                    do j = 2, myc-1
-                      !
-                      indx = kgrpnt(i,j)
-                      !
-                      if ( .not. j < isrcb .and. .not. j > isrce ) then
+                      do i = 2, mxc-1
                          !
-                         yp = real(j-isrcb) * dy - hwidt
-                         xp = real(i+MXF-2) * dx
+                         indx = kgrpnt(i,j)
                          !
-                         sfval = 0.
-                         !
-                         do jj = 1, nfreq
+                         if ( .not. i < isrcb .and. .not. i > isrce ) then
                             !
-                            ampl  = curbfs%sfamp(jj)
-                            beta  = curbfs%bshap(jj)
+                            xp = real(i-isrcb) * dx - hwidt
+                            yp = real(j+MYF-2) * dy
                             !
-                            omega = curbfs%omega(jj)
-                            theta = curbfs%theta(jj)
-                            kwav  = kwave(jj,1)
-                            phase = curbfs%phase(jj)
+                            sfval = 0.
                             !
-                            sfval = sfval + ampl * exp( -beta * yp**2 ) * cos( kwav * xp * cos(theta) + omega * timco + phase )
+                            do jj = 1, nfreq
+                               !
+                               ampl  = curbfs%sfamp(jj)
+                               beta  = curbfs%bshap(jj)
+                               !
+                               omega = curbfs%omega(jj)
+                               theta = curbfs%theta(jj)
+                               kwav  = kwave(jj,1)
+                               phase = curbfs%phase(jj)
+                               !
+                               sfval = sfval + ampl * exp( -beta * xp**2 ) * cos( kwav * yp * sin(theta) + omega * timco + phase )
+                               !
+                            enddo
                             !
-                         enddo
+                            srcm(indx) = fsmo * sfval
+                            !
+                         endif
                          !
-                         srcm(indx) = fsmo * sfval
-                         !
-                      endif
-                      !
+                      enddo
                    enddo
-                enddo
+                   !
+                else if ( lsrcfx ) then
+                   !
+                   cgsrc = piwg(1) - dble(yoffs)
+                   hwidt = 0.5 * piwg(2)
+                   !
+                   isrcb = nint(cgsrc/dy - hwidt/dy - real(MYF) + 101.) - 99
+                   isrce = nint(cgsrc/dy + hwidt/dy - real(MYF) + 101.) - 99
+                   !
+                   do i = 2, mxc-1
+                      do j = 2, myc-1
+                         !
+                         indx = kgrpnt(i,j)
+                         !
+                         if ( .not. j < isrcb .and. .not. j > isrce ) then
+                            !
+                            yp = real(j-isrcb) * dy - hwidt
+                            xp = real(i+MXF-2) * dx
+                            !
+                            sfval = 0.
+                            !
+                            do jj = 1, nfreq
+                               !
+                               ampl  = curbfs%sfamp(jj)
+                               beta  = curbfs%bshap(jj)
+                               !
+                               omega = curbfs%omega(jj)
+                               theta = curbfs%theta(jj)
+                               kwav  = kwave(jj,1)
+                               phase = curbfs%phase(jj)
+                               !
+                               sfval = sfval + ampl * exp( -beta * yp**2 ) * cos( kwav * xp * cos(theta) + omega * timco + phase )
+                               !
+                            enddo
+                            !
+                            srcm(indx) = fsmo * sfval
+                            !
+                         endif
+                         !
+                      enddo
+                   enddo
+                   !
+                endif
+                !
+             else if ( optg == 3 ) then
+                !
+                ! domain is rectilinear but grid may not be uniform
+                !
+                if ( lsrcfy ) then
+                   !
+                   cgsrc = piwg(1) - dble(xoffs)
+                   hwidt = 0.5 * piwg(2)
+                   !
+                   srcb = cgsrc - hwidt
+                   srce = cgsrc + hwidt
+                   !
+                   do j = 2, myc-1
+                      do i = 2, mxc-1
+                         !
+                         indx = kgrpnt(i,j)
+                         !
+                         xp = 0.5 * ( xcgrid(i,j) + xcgrid(i-1,j) )
+                         yp = 0.5 * ( ycgrid(i,j) + ycgrid(i,j-1) )
+                         !
+                         if ( .not. xp < srcb .and. .not. xp > srce ) then
+                            !
+                            xp = xp - cgsrc
+                            !
+                            sfval = 0.
+                            !
+                            do jj = 1, nfreq
+                               !
+                               ampl  = curbfs%sfamp(jj)
+                               beta  = curbfs%bshap(jj)
+                               !
+                               omega = curbfs%omega(jj)
+                               theta = curbfs%theta(jj)
+                               kwav  = kwave(jj,1)
+                               phase = curbfs%phase(jj)
+                               !
+                               sfval = sfval + ampl * exp( -beta * xp**2 ) * cos( kwav * yp * sin(theta) + omega * timco + phase )
+                               !
+                            enddo
+                            !
+                            srcm(indx) = fsmo * sfval
+                            !
+                         endif
+                         !
+                      enddo
+                   enddo
+                   !
+                else if ( lsrcfx ) then
+                   !
+                   cgsrc = piwg(1) - dble(yoffs)
+                   hwidt = 0.5 * piwg(2)
+                   !
+                   srcb = cgsrc - hwidt
+                   srce = cgsrc + hwidt
+                   !
+                   do i = 2, mxc-1
+                      do j = 2, myc-1
+                         !
+                         indx = kgrpnt(i,j)
+                         !
+                         xp = 0.5 * ( xcgrid(i,j) + xcgrid(i-1,j) )
+                         yp = 0.5 * ( ycgrid(i,j) + ycgrid(i,j-1) )
+                         !
+                         if ( .not. yp < srcb .and. .not. yp > srce ) then
+                            !
+                            yp = yp - cgsrc
+                            !
+                            sfval = 0.
+                            !
+                            do jj = 1, nfreq
+                               !
+                               ampl  = curbfs%sfamp(jj)
+                               beta  = curbfs%bshap(jj)
+                               !
+                               omega = curbfs%omega(jj)
+                               theta = curbfs%theta(jj)
+                               kwav  = kwave(jj,1)
+                               phase = curbfs%phase(jj)
+                               !
+                               sfval = sfval + ampl * exp( -beta * yp**2 ) * cos( kwav * xp * cos(theta) + omega * timco + phase )
+                               !
+                            enddo
+                            !
+                            srcm(indx) = fsmo * sfval
+                            !
+                         endif
+                         !
+                      enddo
+                   enddo
+                   !
+                endif
                 !
              endif
              !

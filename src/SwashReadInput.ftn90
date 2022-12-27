@@ -11,7 +11,7 @@ subroutine SwashReadInput ( comput )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -63,6 +63,7 @@ subroutine SwashReadInput ( comput )
     use SwashTimecomm
     use SwashFlowdata
     use SwashSolvedata
+    use SwashRigBoddata
     use outp_data
     use m_genarr
     use m_bndspec
@@ -101,9 +102,12 @@ subroutine SwashReadInput ( comput )
     integer                            :: itmp3              ! auxiliary integer
     integer                            :: ivtype             ! type of output quantity
     integer                            :: j                  ! loop counter
+    integer                            :: labl               ! label of rigid body
     integer                            :: mxs                ! user-defined number of cells in x-direction
     integer                            :: mys                ! user-defined number of cells in y-direction
+    integer                            :: nfen               ! number of fenders per rigid body (see command BODY FENDER)
     integer                            :: nlen               ! linelength of block output
+    integer                            :: nmli               ! number of mooring lines per rigid body (see command BODY MLINE)
     integer                            :: nn                 ! number of stems (see command VEGET)
     integer                            :: numlay             ! actual number of vertical layers (see command VERT)
     integer                            :: nvar               ! actual number of output quantities (see command QUANT)
@@ -112,12 +116,28 @@ subroutine SwashReadInput ( comput )
     integer, dimension(:), allocatable :: iarr               ! integer array to temporarily store indices of test points
     integer, dimension(mxincl), save   :: incnum = 0         ! unit reference numbers of included files
     !
+    real                               :: bb                 ! damping coefficient of the mooring line
+    real                               :: bk                 ! spring coefficient of the mooring line/fender
+    real                               :: bx                 ! x-component of mooring line attachment point at bottom relative to center of gravity
+    real                               :: by                 ! y-component of mooring line attachment point at bottom relative to center of gravity
+    real                               :: bz                 ! z-component of mooring line attachment point at bottom relative to center of gravity
     real                               :: cc                 ! drag coefficient (see command VEGET)
+    real                               :: cgx                ! x-component of center of gravity of rigid body (see command BODY)
+    real                               :: cgy                ! y-component of center of gravity of rigid body (see command BODY)
+    real                               :: cgz                ! z-component of center of gravity of rigid body (see command BODY)
     real                               :: DEGCNV             ! indicates Cartesian or nautical degrees
     real                               :: dd                 ! stem diameter (see command VEGET)
     real*8                             :: diff               ! difference between end and begin times
+    real                               :: el                 ! equilibrium length of the mooring line
+    real                               :: fx                 ! x-component of mooring line/fender attachment point at floating body relative to center of gravity
+    real                               :: fy                 ! y-component of mooring line/fender attachment point at floating body relative to center of gravity
+    real                               :: fz                 ! z-component of mooring line/fender attachment point at floating body relative to center of gravity
     real                               :: height             ! wave height of regular wave (see command SOURCE)
     real                               :: hh                 ! layer thickness (see command VERT)
+    real                               :: mass               ! mass of rigid body (see command BODY)
+    real                               :: moix               ! x-component of moment of inertia of rigid body (see command BODY)
+    real                               :: moiy               ! y-component of moment of inertia of rigid body (see command BODY)
+    real                               :: moiz               ! z-component of moment of inertia of rigid body (see command BODY)
     real                               :: per                ! wave period of regular wave (see command SOURCE)
     real*8                             :: rtmp               ! auxiliary double precision
     real, dimension(5)                 :: spparm             ! parameters used for computation of internal-generated spectrum (see command SOURCE)
@@ -150,11 +170,14 @@ subroutine SwashReadInput ( comput )
                                                              ! (4) command READ COOR has been carried out
                                                              ! (5) command READ UNSTRUC has been carried out
                                                              ! (6) arrays s1, u1 and v1 have been allocated
+    logical, save                      :: lrib = .false.     ! indicates whether linked list of rigid body parameters is initialized or not (see command BODY)
     logical, save                      :: runmade = .false.  ! indicates that computation has been made or not
     logical                            :: STPNOW             ! indicates that program must stop
     !
     type(bfsdat), pointer              :: iwgtmp             ! list containing parameters for internal wave generation (see command SOURCE)
     type(opsdat), pointer              :: opstmp             ! list containing parameters for grid
+    type(ribdat), pointer              :: bodtmp             ! list containing parameters for rigid bodies (see command BODY)
+    type(ribdat), save, pointer        :: crib               ! pointer to rigid body data
     !
     type oqpt                                                ! linked list for output quantity (see command QUANT)
        integer               :: i
@@ -186,6 +209,21 @@ subroutine SwashReadInput ( comput )
     end type sponpt
     type(sponpt), target     :: frstsp
     type(sponpt), pointer    :: currsp, tmpsp
+    !
+    type fenpt                                               ! linked list for fenders of rigid body (see command BODY FENDER)
+       real                  :: k, fx, fy, fz
+       type(fenpt), pointer  :: nextfe
+    end type fenpt
+    type(fenpt), target      :: frstfe
+    type(fenpt), pointer     :: currfe, tmpfe
+    !
+    type mlipt                                               ! linked list for mooring lines of rigid body (see command BODY MLINE)
+       real                  :: el, k, b, bx, by, bz,  &
+                                fx, fy, fz
+       type(mlipt), pointer  :: nextml
+    end type mlipt
+    type(mlipt), target      :: frstml
+    type(mlipt), pointer     :: currml, tmpml
 !
 !   Structure
 !
@@ -657,16 +695,16 @@ subroutine SwashReadInput ( comput )
              if ( ivtype == 21 ) then
                 if ( qr(6) /= -999. ) hrunp = qr(6)
              endif
-             if ( ivtype >= 104 .and. ivtype <= 112 ) then
+             if ( ivtype >= 104 .and. ivtype <= 106 ) then
                 cogx = qr(8)
                 cogy = qr(9)
                 cogz = qr(10)
              endif
-             if ( ivtype >= 101 .and. ivtype <= 112 ) then
+             if ( ivtype >= 101 .and. ivtype <= 106 ) then
                 alpobj = qr(11)
                 alpobj = pi2 * (alpobj/360. - nint(alpobj/360.))
              endif
-             if ( ivtype == 113 ) then
+             if ( ivtype == 115 ) then
                 if ( qr(12) /= -999. ) delrp = qr(12)
              endif
              if ( ovsvty(ivtype) == 2 .or. ovsvty(ivtype) == 3 ) then
@@ -883,14 +921,259 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
-    ! FLOAT [alpha] [theta]
+    ! floating rigid body parameters
     !
     ! ==========================================================================
     !
-    if ( KEYWIS ('SHIP') .or. KEYWIS ('FLOAT') .or. KEYWIS ('OBST') .or. KEYWIS ('PONT') .or. KEYWIS ('PFLOW') ) then
+    if ( KEYWIS ('SHIP') .or. KEYWIS ('VESS') .or. KEYWIS ('WEC') .or. KEYWIS ('FLOAT') .or. KEYWIS ('BODY') .or. KEYWIS ('PONT') .or. KEYWIS ('PFLOW') ) then
        !
-       call INREAL ( 'ALPHA', pship(1), 'STA', 0. )
-       call INREAL ( 'THETA', pship(2), 'STA', 1. )
+       call INKEYW ('REQ',' ')
+       if ( KEYWIS('METH') .or. KEYWIS('SOLV') ) then
+          !
+          ! ==========================================================================
+          !
+          !              |    NEWmark [beta] [gamma] |
+          !              |                           |
+          !              | -> CH [rho]               |
+          ! BODY SOLVer <                             > COUPler [tol] [maxiter] [relax] &
+          !              |    HHT [rho]              |
+          !              |                           |
+          !              |    WBZ [rho]              |
+          !
+          !      KBC [theta]
+          !
+          ! ==========================================================================
+          !
+          call INKEYW ('STA', 'CH')
+          if ( KEYWIS('NEW') ) then
+             mfoti = 1
+             call INREAL ('BETA' , pship(3), 'STA', 0.25)
+             call INREAL ('GAMMA', pship(4), 'STA', 0.50)
+          else if ( KEYWIS('HHT') ) then
+             mfoti = 3
+             call INREAL ('RHO', pship(5), 'STA', 1.0)
+          else if ( KEYWIS('WBZ') ) then
+             mfoti = 4
+             call INREAL ('RHO', pship(5), 'STA', 1.0)
+          else
+             call IGNORE ('CH')
+             mfoti = 2
+             call INREAL ('RHO', pship(5), 'STA', 1.0)
+          endif
+          !
+          call INKEYW ('STA','  ')
+          if ( KEYWIS('COUP') ) then
+             call INREAL('TOL'    , pship(8) , 'STA', 0.0001)
+             call ININTG('MAXITER', itmp1    , 'STA', 50)
+             call INREAL('RELAX'  , pship(10), 'STA', 0.3)
+             pship(9) = real(itmp1)
+          endif
+          !
+          call INKEYW ('STA','  ')
+          if ( KEYWIS('KBC') ) then
+             call INREAL ('THETA', pship(11), 'STA', 0.5)
+          endif
+          !
+       else if ( KEYWIS('DIM') ) then
+          !
+          ! ==========================================================================
+          !
+          ! BODY DIMension [l] [mass] [Ix] [Iy] [Iz] [cogx] [cogy] [cogz]             &
+          !
+          !      DOF SUrge SWay HEave ROll PItch YAw                                  &
+          !
+          !      ( MLIne < [K] [B] [apbx] [apby] [apbz] [apfx] [apfy] [apfz] [elen] > &
+          !
+          !              PRETension )
+          !
+          !      ( FENder < [K] [apfx] [apfy] [apfz] > )
+          !
+          ! ==========================================================================
+          !
+          allocate(bodtmp)
+          bodtmp%label     = 0
+          bodtmp%parm(1:7) = 0.
+          bodtmp%dof(1:6)  = .false.
+          !
+          nmli = 0
+          nfen = 0
+          !
+          call ININTG ('L'   , labl, 'REQ', 0 )
+          call INREAL ('MASS', mass, 'REQ', 0.)
+          call INREAL ('IX'  , moix, 'REQ', 0.)
+          call INREAL ('IY'  , moiy, 'REQ', 0.)
+          call INREAL ('IZ'  , moiz, 'REQ', 0.)
+          call INREAL ('COGX', cgx , 'REQ', 0.)
+          call INREAL ('COGY', cgy , 'REQ', 0.)
+          call INREAL ('COGZ', cgz , 'REQ', 0.)
+          bodtmp%label   = labl
+          bodtmp%parm(1) = mass
+          bodtmp%parm(2) = moix
+          bodtmp%parm(3) = moiy
+          bodtmp%parm(4) = moiz
+          bodtmp%parm(5) = cgx
+          bodtmp%parm(6) = cgy
+          bodtmp%parm(7) = cgz
+          !
+          call INKEYW ('REQ', ' ')
+          if ( KEYWIS('DOF') ) then
+             !
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('SU') ) bodtmp%dof(1) = .true.
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('SW') ) bodtmp%dof(2) = .true.
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('HE') ) bodtmp%dof(3) = .true.
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('RO') ) bodtmp%dof(4) = .true.
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('PI') ) bodtmp%dof(5) = .true.
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('YA') ) bodtmp%dof(6) = .true.
+             !
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('ALL') ) bodtmp%dof(1:6) = .true.
+             !
+          endif
+          !
+          call INKEYW ('REQ', '  ')
+          if ( KEYWIS('MLI') ) then
+             !
+             frstml%k  = 0.
+             frstml%b  = 0.
+             frstml%bx = 0.
+             frstml%by = 0.
+             frstml%bz = 0.
+             frstml%fx = 0.
+             frstml%fy = 0.
+             frstml%fz = 0.
+             frstml%el = 0.
+             nullify(frstml%nextml)
+             currml => frstml
+ 112         call INREAL ('K', bk, 'REP', -1.)
+             if ( bk /= -1. ) then
+                call INREAL ('B'   , bb, 'REQ', 0.)
+                call INREAL ('APBX', bx, 'REQ', 0.)
+                call INREAL ('APBY', by, 'REQ', 0.)
+                call INREAL ('APBZ', bz, 'REQ', 0.)
+                call INREAL ('APFX', fx, 'REQ', 0.)
+                call INREAL ('APFY', fy, 'REQ', 0.)
+                call INREAL ('APFZ', fz, 'REQ', 0.)
+                call INREAL ('ELEN', el, 'REQ', 0.)
+                nmli = nmli + 1
+                allocate(tmpml)
+                tmpml%k  = bk
+                tmpml%b  = bb
+                tmpml%bx = bx
+                tmpml%by = by
+                tmpml%bz = bz
+                tmpml%fx = fx
+                tmpml%fy = fy
+                tmpml%fz = fz
+                if ( el /= 0. ) then
+                   tmpml%el = el
+                else
+                   tmpml%el = sqrt((fx-bx)**2+(fy-by)**2+(fz-bz)**2)
+                endif
+                nullify(tmpml%nextml)
+                currml%nextml => tmpml
+                currml => tmpml
+                goto 112
+             endif
+             if ( nmli == 0 ) call msgerr (2,'no mooring line parameters found')
+             !
+             bodtmp%nmli = nmli
+             allocate(bodtmp%mli(nmli,9))
+             currml => frstml%nextml
+             do j = 1, nmli
+                bodtmp%mli(j,1) = currml%k
+                bodtmp%mli(j,2) = currml%b
+                bodtmp%mli(j,3) = currml%bx
+                bodtmp%mli(j,4) = currml%by
+                bodtmp%mli(j,5) = currml%bz
+                bodtmp%mli(j,6) = currml%fx
+                bodtmp%mli(j,7) = currml%fy
+                bodtmp%mli(j,8) = currml%fz
+                bodtmp%mli(j,9) = currml%el
+                currml => currml%nextml
+             enddo
+             deallocate(tmpml)
+             !
+             call INKEYW ('STA', ' ')
+             if ( KEYWIS ('PRET') ) then
+                bodtmp%pret = .true.
+             else
+                bodtmp%pret = .false.
+             endif
+             !
+          endif
+          mxmli = max( mxmli, nmli )
+          !
+          call INKEYW ('REQ', '  ')
+          if ( KEYWIS('FEN') ) then
+             !
+             frstfe%k  = 0.
+             frstfe%fx = 0.
+             frstfe%fy = 0.
+             frstfe%fz = 0.
+             nullify(frstfe%nextfe)
+             currfe => frstfe
+ 113         call INREAL ('K', bk, 'REP', -1.)
+             if ( bk /= -1. ) then
+                call INREAL ('APFX', fx, 'REQ', 0.)
+                call INREAL ('APFY', fy, 'REQ', 0.)
+                call INREAL ('APFZ', fz, 'REQ', 0.)
+                nfen = nfen + 1
+                allocate(tmpfe)
+                tmpfe%k  = bk
+                tmpfe%fx = fx
+                tmpfe%fy = fy
+                tmpfe%fz = fz
+                nullify(tmpfe%nextfe)
+                currfe%nextfe => tmpfe
+                currfe => tmpfe
+                goto 113
+             endif
+             if ( nfen == 0 ) call msgerr (2,'no fender parameters found')
+             !
+             bodtmp%nfen = nfen
+             allocate(bodtmp%fen(nfen,4))
+             currfe => frstfe%nextfe
+             do j = 1, nfen
+                bodtmp%fen(j,1) = currfe%k
+                bodtmp%fen(j,2) = currfe%fx
+                bodtmp%fen(j,3) = currfe%fy
+                bodtmp%fen(j,4) = currfe%fz
+                currfe => currfe%nextfe
+             enddo
+             deallocate(tmpfe)
+             !
+          endif
+          mxfen = max( mxfen, nfen )
+          !
+          nullify(bodtmp%nextrib)
+          mbod = mbod + 1
+          if ( .not.lrib ) then
+             frigbod = bodtmp
+             crib => frigbod
+             lrib = .true.
+          else
+             crib%nextrib => bodtmp
+             crib => bodtmp
+          endif
+          !
+       else
+          !
+          ! ==========================================================================
+          !
+          ! PFLOW [alpha] [theta]
+          !
+          ! ==========================================================================
+          !
+          call INREAL ( 'ALPHA', pship(1), 'STA', 0. )
+          call INREAL ( 'THETA', pship(2), 'STA', 1. )
+          !
+       endif
        !
        goto 100
        !
@@ -1825,7 +2108,7 @@ subroutine SwashReadInput ( comput )
     !
     ! INPgrid                                                                &
     !    BOTtom/WLEVel/CURrent/VX/VY/FRic/WInd/WX/WY/PRes/PORO/PSIZ/HSTRUC/  &
-    !    NPLAnts/FLOAT/SALinity/TEMPerature/SEDiment                         &
+    !    NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment                   &
     !    | REG [xpinp] [ypinp] [alpinp]  [mxinp] [myinp]  [dxinp] [dyinp] |
     !   <  CURVilinear [stagrx] [stagry] [mxinp] [myinp]                   > &
     !    | UNSTRUCtured                                                   |
@@ -1896,8 +2179,11 @@ subroutine SwashReadInput ( comput )
        else if ( KEYWIS ('SED') ) then
           igrd   = 17
           psname = 'SEDGRID'
-       else if ( KEYWIS ('SHIP') .or. KEYWIS ('FLOAT') .or. KEYWIS ('OBST') .or. KEYWIS ('PONT') .or. KEYWIS ('PFLOW') ) then
+       else if ( KEYWIS ('SHIP') .or. KEYWIS ('VESS') .or. KEYWIS ('WEC') .or. KEYWIS ('FLOAT') .or. KEYWIS ('DRAF') .or. KEYWIS ('PONT') .or. KEYWIS ('PFLOW') ) then
           igrd   = 18
+          psname = 'SHIPGRID'
+       else if ( KEYWIS ('LAB') .or. KEYWIS ('BODY') ) then
+          igrd   = 19
           psname = 'SHIPGRID'
        else
           igrd   = 1
@@ -1913,7 +2199,7 @@ subroutine SwashReadInput ( comput )
     ! ==========================================================================
     !
     ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/PORO/PSIZ/HSTRUC/ &
-    !          NPLAnts/FLOAT/SALinity/TEMPerature/SEDiment                     &
+    !          NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment               &
     !      [fac]  / 'fname1'        \
     !             \ SERIES 'fname2' /  [idla] [nhedf] ([nhedt]) (nhedvec])     &
     !      FREE / FORMAT 'form' / [idfm] / UNFORMATTED

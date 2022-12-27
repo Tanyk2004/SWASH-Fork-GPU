@@ -11,7 +11,7 @@ subroutine SwashPresFlow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -52,8 +52,12 @@ subroutine SwashPresFlow
 !
     integer, save :: ient = 0 ! number of entries in this subroutine
     integer       :: m        ! loop counter
+    integer       :: mu       ! index of point m+1
     integer       :: n        ! loop counter
     integer       :: nm       ! pointer to m,n
+    integer       :: nmu      ! pointer to m+1,n
+    integer       :: nu       ! index of point n+1
+    integer       :: num      ! pointer to m,n+1
     !
     logical       :: STPNOW   ! indicates that program must stop
 !
@@ -73,7 +77,7 @@ subroutine SwashPresFlow
           !
           nm = kgrpnt(m,1)
           !
-          if ( hs(nm) + flos(nm) < dps(nm) ) then
+          if ( s1(nm) < -flos(nm) ) then
              !
              presp(nm) = 0
              !
@@ -94,9 +98,12 @@ subroutine SwashPresFlow
        !
        do m = mf, ml
           !
-          nm = kgrpnt(m,1)
+          mu = m + 1
           !
-          if ( hu(nm) + flou(nm) < dpu(nm) ) then
+          nm  = kgrpnt(m ,1)
+          nmu = kgrpnt(mu,1)
+          !
+          if ( presp(nm) == 0 .and. presp(nmu) == 0 ) then
              !
              presu(nm) = 0
              !
@@ -122,7 +129,7 @@ subroutine SwashPresFlow
              !
              nm = kgrpnt(m,n)
              !
-             if ( hs(nm) + flos(nm) < dps(nm) ) then
+             if ( s1(nm) < -flos(nm) ) then
                 !
                 presp(nm) = 0
                 !
@@ -153,9 +160,12 @@ subroutine SwashPresFlow
        do n = nfu, nl
           do m = mf, ml
              !
-             nm = kgrpnt(m,n)
+             mu = m + 1
              !
-             if ( hu(nm) + flou(nm) < dpu(nm) ) then
+             nm  = kgrpnt(m ,n)
+             nmu = kgrpnt(mu,n)
+             !
+             if ( presp(nm) == 0 .and. presp(nmu) == 0 ) then
                 !
                 presu(nm) = 0
                 !
@@ -186,9 +196,12 @@ subroutine SwashPresFlow
        do m = mfu, ml
           do n = nf, nl
              !
-             nm = kgrpnt(m,n)
+             nu = n + 1
              !
-             if ( hv(nm) + flov(nm) < dpv(nm) ) then
+             nm  = kgrpnt(m,n )
+             num = kgrpnt(m,nu)
+             !
+             if ( presp(nm) == 0 .and. presp(num) == 0 ) then
                 !
                 presv(nm) = 0
                 !

@@ -11,7 +11,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -560,7 +560,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                 oparr(indx,2) = 0.5 * ( s1(indx) + s1(indxr) )
                 !
                 oparr(indx,1) = oparr(indx,2) + depf(indx)
-                if ( ifloat == 1 ) oparr(indx,1) = min( depf(indx)-flobjf(indx), oparr(indx,1) )
+                if ( ifloat /= 0 ) oparr(indx,1) = min( depf(indx)-flobjf(indx), oparr(indx,1) )
                 !
                 oparr(indx,16) = 0.5 * ( hindun(indx) + hindun(indxr) )
                 !
@@ -686,7 +686,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                 oparr(indx,2) = s1(indxr)
                 !
                 oparr(indx,1) = oparr(indx,2) + dps(indxr)
-                if ( ifloat == 1 ) oparr(indx,1) = min( dps(indxr)-flos(indxr), oparr(indx,1) )
+                if ( ifloat /= 0 ) oparr(indx,1) = min( dps(indxr)-flos(indxr), oparr(indx,1) )
                 !
                 oparr(indx,16) = hindun(indxr)
                 !
@@ -1001,7 +1001,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                    oparr(indx,2) = 0.25 * ( s1(indx) + s1(indxr) + s1(indxu) + s1(indxs) )
                    !
                    oparr(indx,1) = oparr(indx,2) + depf(indx)
-                   if ( ifloat == 1 ) oparr(indx,1) = min( depf(indx)-flobjf(indx), oparr(indx,1) )
+                   if ( ifloat /= 0 ) oparr(indx,1) = min( depf(indx)-flobjf(indx), oparr(indx,1) )
                    !
                    oparr(indx,16) = 0.25 * ( hindun(indx) + hindun(indxr) + hindun(indxu) + hindun(indxs) )
                    !
@@ -1374,7 +1374,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                    oparr(indx,2) = s1(indxs)
                    !
                    oparr(indx,1) = oparr(indx,2) + dps(indxs)
-                   if ( ifloat == 1 ) oparr(indx,1) = min( dps(indxs)-flos(indxs), oparr(indx,1) )
+                   if ( ifloat /= 0 ) oparr(indx,1) = min( dps(indxs)-flos(indxs), oparr(indx,1) )
                    !
                    oparr(indx,16) = hindun(indxs)
                    !

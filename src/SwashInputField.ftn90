@@ -11,7 +11,7 @@ subroutine SwashInputField ( logcom )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -90,7 +90,7 @@ subroutine SwashInputField ( logcom )
     ! ==========================================================================
     !
     ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/PORO/PSIZ/HSTRUC/ &
-    !          NPLAnts/FLOAT/SALinity/TEMPerature/SEDiment                     &
+    !          NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment               &
     !
     !              | 'fname1'        |
     !      [fac]  <  SERIes 'fname2'  >  [idla] [nhedf] ([nhedt]) (nhedvec])   &
@@ -155,9 +155,12 @@ subroutine SwashInputField ( logcom )
        itrans = 1
        ltrans = ltrans + 1
        lsed   = ltrans
-    else if ( KEYWIS ('SHIP') .or. KEYWIS ('FLOAT') .or. KEYWIS ('OBST') .or. KEYWIS ('PONT') .or. KEYWIS ('PFLOW') ) then
+    else if ( KEYWIS ('SHIP') .or. KEYWIS ('VESS') .or. KEYWIS ('WEC') .or. KEYWIS ('FLOAT') .or. KEYWIS ('DRAF') .or. KEYWIS ('PONT') .or. KEYWIS ('PFLOW') ) then
        igr1   = 18
        ifloat = 1
+    else if ( KEYWIS ('LAB') .or. KEYWIS ('BODY') ) then
+       igr1   = 19
+       ifloat = 2
     else
        call WRNKEY
     endif
@@ -165,6 +168,10 @@ subroutine SwashInputField ( logcom )
     ! read multiplication factor
     !
     call INREAL ('FAC', iflfac(igr1), 'STA', 1.)
+    if ( igr1 == 19 .and. iflfac(19) /= 1. ) then
+       call msgerr (1, 'for labelling rigid bodies, [fac] must be set to 1.0')
+       iflfac(19) = 1.
+    endif
     !
     if ( igr2 > 0 ) then
        vector       = .true.
@@ -295,6 +302,11 @@ subroutine SwashInputField ( logcom )
        !
        if (.not.allocated(flobj)) allocate(flobj(mxg(igr1)*myg(igr1)))
        call SWCOPR( tarr, flobj, mxg(igr1)*myg(igr1) )
+       !
+    else if ( igr1 == 19 ) then
+       !
+       if (.not.allocated(lbod)) allocate(lbod(mxg(igr1)*myg(igr1)))
+       call SWCOPR( tarr, lbod, mxg(igr1)*myg(igr1) )
        !
     endif
     !

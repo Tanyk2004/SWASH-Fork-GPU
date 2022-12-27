@@ -11,7 +11,7 @@ subroutine SwashInit ( inerr )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -51,6 +51,7 @@ subroutine SwashInit ( inerr )
     use SwashCommdata4
     use SwashTimecomm
     use SwashSolvedata
+    use SwashRigBoddata
     use m_bndspec
     use outp_data
     use SwanGriddata
@@ -75,7 +76,7 @@ subroutine SwashInit ( inerr )
 !   Source text
 !
     VERTXT = BLANK
-    VERNUM = 8.01
+    VERNUM = 9.01
     write (VERTXT, '(f5.2)') VERNUM
     !call BUGFIX ('A')
     !call BUGFIX ('B')
@@ -128,7 +129,7 @@ subroutine SwashInit ( inerr )
     ! physical parameters
     !
     grav   = 9.813
-    rhow   = 1000.        ! reference density (subject to change)
+    rhow   = -999.        ! reference density (subject to change)
     rhoa   = 1.205
     dynvis = 1.e-3
     vonkar = 0.4
@@ -321,12 +322,23 @@ subroutine SwashInit ( inerr )
     ppor(3) = 200.
     ppor(4) = 1.1
     !
-    ! floating objects
+    ! floating rigid bodies
     !
-    ifloat   = 0
-    pship    = 0.
-    pship(1) = 0.
-    pship(2) = 1.
+    ifloat    = 0
+    mbod      = 0
+    mfoti     = 2
+    mxmli     = 0
+    mxfen     = 0
+    pship     = 0.
+    pship( 1) = 0.
+    pship( 2) = 1.
+    pship( 3) = 0.25
+    pship( 4) = 0.5
+    pship( 5) = 1.
+    pship( 8) = 0.0001
+    pship( 9) = 50.
+    pship(10) = 0.3
+    pship(11) = 0.5
     !
     ! transport of constituent
     !
@@ -1470,8 +1482,8 @@ subroutine SwashInit ( inerr )
     ovkeyw(ivtype) = 'FORCEX'
     ovsnam(ivtype) = 'Fx'
     ovlnam(ivtype) = 'Force in x-direction'
-    ovunit(ivtype) = 'N'
-    ovsvty(ivtype) = 1
+    ovunit(ivtype) = 'kN'
+    ovsvty(ivtype) = 4
     ovllim(ivtype) = -1.e-4
     ovulim(ivtype) = 1.e4
     ovlexp(ivtype) = -2.
@@ -1482,8 +1494,8 @@ subroutine SwashInit ( inerr )
     ovkeyw(ivtype) = 'FORCEY'
     ovsnam(ivtype) = 'Fy'
     ovlnam(ivtype) = 'Force in y-direction'
-    ovunit(ivtype) = 'N'
-    ovsvty(ivtype) = 1
+    ovunit(ivtype) = 'kN'
+    ovsvty(ivtype) = 4
     ovllim(ivtype) = -1.e-4
     ovulim(ivtype) = 1.e4
     ovlexp(ivtype) = -2.
@@ -1494,8 +1506,8 @@ subroutine SwashInit ( inerr )
     ovkeyw(ivtype) = 'FORCEZ'
     ovsnam(ivtype) = 'Fz'
     ovlnam(ivtype) = 'Force in z-direction'
-    ovunit(ivtype) = 'N'
-    ovsvty(ivtype) = 1
+    ovunit(ivtype) = 'kN'
+    ovsvty(ivtype) = 4
     ovllim(ivtype) = -1.e-4
     ovulim(ivtype) = 1.e4
     ovlexp(ivtype) = -1000.
@@ -1506,8 +1518,8 @@ subroutine SwashInit ( inerr )
     ovkeyw(ivtype) = 'MOMX'
     ovsnam(ivtype) = 'Mx'
     ovlnam(ivtype) = 'Moment in x-direction'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
+    ovunit(ivtype) = 'kNm'
+    ovsvty(ivtype) = 4
     ovllim(ivtype) = -1.e-4
     ovulim(ivtype) = 1.e4
     ovlexp(ivtype) = -2.
@@ -1518,8 +1530,8 @@ subroutine SwashInit ( inerr )
     ovkeyw(ivtype) = 'MOMY'
     ovsnam(ivtype) = 'My'
     ovlnam(ivtype) = 'Moment in y-direction'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
+    ovunit(ivtype) = 'kNm'
+    ovsvty(ivtype) = 4
     ovllim(ivtype) = -1.e-4
     ovulim(ivtype) = 1.e4
     ovlexp(ivtype) = -2.
@@ -1530,87 +1542,101 @@ subroutine SwashInit ( inerr )
     ovkeyw(ivtype) = 'MOMZ'
     ovsnam(ivtype) = 'Mz'
     ovlnam(ivtype) = 'Moment in z-direction'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
+    ovunit(ivtype) = 'kNm'
+    ovsvty(ivtype) = 4
     ovllim(ivtype) = -1.e-4
     ovulim(ivtype) = 1.e4
     ovlexp(ivtype) = -2.
     ovhexp(ivtype) = 2.
     ovexcv(ivtype) = -99.
+    !
+    ! rigid body motions
     !
     ivtype = 107
-    ovkeyw(ivtype) = 'MOMXY'
-    ovsnam(ivtype) = 'Mxy'
-    ovlnam(ivtype) = 'Moment in x-direction due y-force'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
-    ovllim(ivtype) = -1.e-4
+    ovkeyw(ivtype) = 'TRAX'
+    ovsnam(ivtype) = 'Tx'
+    ovlnam(ivtype) = 'Translation in x-direction'
+    ovunit(ivtype) = 'm'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = -1.e4
     ovulim(ivtype) = 1.e4
-    ovlexp(ivtype) = -2.
-    ovhexp(ivtype) = 2.
-    ovexcv(ivtype) = -99.
+    ovlexp(ivtype) = -100.
+    ovhexp(ivtype) = 100.
+    ovexcv(ivtype) = -9999.
     !
     ivtype = 108
-    ovkeyw(ivtype) = 'MOMXZ'
-    ovsnam(ivtype) = 'Mxz'
-    ovlnam(ivtype) = 'Moment in x-direction due z-force'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
-    ovllim(ivtype) = -1.e-4
+    ovkeyw(ivtype) = 'TRAY'
+    ovsnam(ivtype) = 'Ty'
+    ovlnam(ivtype) = 'Translation in y-direction'
+    ovunit(ivtype) = 'm'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = -1.e4
     ovulim(ivtype) = 1.e4
-    ovlexp(ivtype) = -2.
-    ovhexp(ivtype) = 2.
-    ovexcv(ivtype) = -99.
+    ovlexp(ivtype) = -100.
+    ovhexp(ivtype) = 100.
+    ovexcv(ivtype) = -9999.
     !
     ivtype = 109
-    ovkeyw(ivtype) = 'MOMYX'
-    ovsnam(ivtype) = 'Myx'
-    ovlnam(ivtype) = 'Moment in y-direction due x-force'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
-    ovllim(ivtype) = -1.e-4
+    ovkeyw(ivtype) = 'TRAZ'
+    ovsnam(ivtype) = 'Tz'
+    ovlnam(ivtype) = 'Translation in z-direction'
+    ovunit(ivtype) = 'm'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = -1.e4
     ovulim(ivtype) = 1.e4
-    ovlexp(ivtype) = -2.
-    ovhexp(ivtype) = 2.
-    ovexcv(ivtype) = -99.
+    ovlexp(ivtype) = -100.
+    ovhexp(ivtype) = 100.
+    ovexcv(ivtype) = -9999.
     !
     ivtype = 110
-    ovkeyw(ivtype) = 'MOMYZ'
-    ovsnam(ivtype) = 'Myz'
-    ovlnam(ivtype) = 'Moment in y-direction due z-force'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
-    ovllim(ivtype) = -1.e-4
+    ovkeyw(ivtype) = 'ROTX'
+    ovsnam(ivtype) = 'Rx'
+    ovlnam(ivtype) = 'Rotation around x-axis'
+    ovunit(ivtype) = 'degr'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = -1.e4
     ovulim(ivtype) = 1.e4
-    ovlexp(ivtype) = -2.
-    ovhexp(ivtype) = 2.
-    ovexcv(ivtype) = -99.
+    ovlexp(ivtype) = -100.
+    ovhexp(ivtype) = 100.
+    ovexcv(ivtype) = -9999.
     !
     ivtype = 111
-    ovkeyw(ivtype) = 'MOMZX'
-    ovsnam(ivtype) = 'Mzx'
-    ovlnam(ivtype) = 'Moment in z-direction due x-force'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
-    ovllim(ivtype) = -1.e-4
+    ovkeyw(ivtype) = 'ROTY'
+    ovsnam(ivtype) = 'Ry'
+    ovlnam(ivtype) = 'Rotation around y-axis'
+    ovunit(ivtype) = 'degr'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = -1.e4
     ovulim(ivtype) = 1.e4
-    ovlexp(ivtype) = -2.
-    ovhexp(ivtype) = 2.
-    ovexcv(ivtype) = -99.
+    ovlexp(ivtype) = -100.
+    ovhexp(ivtype) = 100.
+    ovexcv(ivtype) = -9999.
     !
     ivtype = 112
-    ovkeyw(ivtype) = 'MOMZY'
-    ovsnam(ivtype) = 'Mzy'
-    ovlnam(ivtype) = 'Moment in z-direction due y-force'
-    ovunit(ivtype) = 'Nm'
-    ovsvty(ivtype) = 1
-    ovllim(ivtype) = -1.e-4
+    ovkeyw(ivtype) = 'ROTZ'
+    ovsnam(ivtype) = 'Rz'
+    ovlnam(ivtype) = 'Rotation around z-axis'
+    ovunit(ivtype) = 'degr'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = -1.e4
     ovulim(ivtype) = 1.e4
-    ovlexp(ivtype) = -2.
-    ovhexp(ivtype) = 2.
-    ovexcv(ivtype) = -99.
+    ovlexp(ivtype) = -100.
+    ovhexp(ivtype) = 100.
+    ovexcv(ivtype) = -9999.
     !
     ivtype = 113
+    ovkeyw(ivtype) = 'PTO'
+    ovsnam(ivtype) = 'PTOpow'
+    ovlnam(ivtype) = 'PTO power'
+    ovunit(ivtype) = 'kW'
+    ovsvty(ivtype) = 4
+    ovllim(ivtype) = 0.
+    ovulim(ivtype) = 1000.
+    ovlexp(ivtype) = 0.
+    ovhexp(ivtype) = 1000.
+    ovexcv(ivtype) = -99.
+    !
+    ivtype = 115
     ovkeyw(ivtype) = 'RUNUP'
     ovsnam(ivtype) = 'Runlev'
     ovlnam(ivtype) = 'Runup height'
