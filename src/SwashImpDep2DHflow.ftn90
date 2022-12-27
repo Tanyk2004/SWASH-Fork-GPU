@@ -11,7 +11,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -67,7 +67,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     use SwashTimecomm
     use m_genarr, only: kgrpnt, guu, guv, gvu, gvv, gsqs, gsqsu, gsqsv, sbimp, slimp, srimp, stimp
     use m_parall
-    use SwashSolvedata, only: newton
+    use SwashSolvedata, only: newton, iamout
     use SwashFlowdata, rhotmp    => rho   , &
                        u1tmp     => u1    , &
                        u0tmp     => u0    , &
@@ -222,7 +222,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     !
     ! adapt theta values underneath the floating object, if appropriate
     !
-    if ( ifloat == 1 ) then
+    if ( ifloat /= 0 ) then
        !
        do n = nfu, nl
           do m = mf, ml
@@ -1229,6 +1229,8 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        do n = nf, nl
           do m = msta, mend
              !
+             md  = m  - 1
+             mu  = m  + 1
              nd  = n  - 1
              nu  = n  + 1
              nuu = nu + 1
@@ -1237,10 +1239,12 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
              if ( LMYL .and. nu  > nl  ) nu  = nl
              if ( LMYL .and. nuu > nl  ) nuu = nl
              !
-             nm   = kgrpnt(m,n  )
-             ndm  = kgrpnt(m,nd )
-             num  = kgrpnt(m,nu )
-             nuum = kgrpnt(m,nuu)
+             nm   = kgrpnt(m ,n  )
+             nmd  = kgrpnt(md,n  )
+             nmu  = kgrpnt(mu,n  )
+             ndm  = kgrpnt(m ,nd )
+             num  = kgrpnt(m ,nu )
+             nuum = kgrpnt(m ,nuu)
              !
              if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
                 !
@@ -2201,15 +2205,19 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
              md  = m  - 1
              mu  = m  + 1
              muu = mu + 1
+             nd  = n  - 1
+             nu  = n  + 1
              !
              if ( LMXF .and. md  < mfu ) md  = mfu
              if ( LMXL .and. mu  > ml  ) mu  = ml
              if ( LMXL .and. muu > ml  ) muu = ml
              !
-             nm   = kgrpnt(m  ,n)
-             nmd  = kgrpnt(md ,n)
-             nmu  = kgrpnt(mu ,n)
-             nmuu = kgrpnt(muu,n)
+             nm   = kgrpnt(m  ,n )
+             nmd  = kgrpnt(md ,n )
+             nmu  = kgrpnt(mu ,n )
+             nmuu = kgrpnt(muu,n )
+             ndm  = kgrpnt(m  ,nd)
+             num  = kgrpnt(m  ,nu)
              !
              if ( ( v0(nm) > v0(ndm) .or. stricthead ) .and. .not.strictmom ) then
                 !
@@ -2517,6 +2525,10 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                 rhs (nm  ) = dt * ( guu(nmd)*hu(nmd) * ( tetau(nmd)*ui(nmd) + (1.-tetau(nmd))*u0(nmd) ) - guu(nm)*hu(nm) * ( tetau(nm)*ui(nm) + (1.-tetau(nm))*u0(nm) ) + &
                                     gvv(ndm)*hv(ndm) * ( tetav(ndm)*vi(ndm) + (1.-tetav(ndm))*v0(ndm) ) - gvv(nm)*hv(nm) * ( tetav(nm)*vi(nm) + (1.-tetav(nm))*v0(nm) ) )
                 !
+                ! add contribution from rigid body motions
+                !
+                rhs(nm) = rhs(nm) - dt * gsqs(nm) * skc(nm)
+                !
              enddo
           enddo
           !
@@ -2529,7 +2541,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                    !
                    nm = kgrpnt(m,n)
                    !
-                   rhs(nm) = rhs(nm) + dt * srcm(nm)
+                   rhs(nm) = rhs(nm) + dt * gsqs(nm) * srcm(nm)
                    !
                 enddo
              enddo
@@ -2540,8 +2552,22 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
           if ( lpproj ) then
              !
-             do n = nfu, nl
-                do m = mfu, ml
+             ! not computed for point ml or nl at periodic boundary
+             !
+             if ( lreptx ) then
+                mend = ml - 1
+             else
+                mend = ml
+             endif
+             !
+             if ( lrepty ) then
+                nend = nl - 1
+             else
+                nend = nl
+             endif
+             !
+             do n = nfu, nend
+                do m = mfu, mend
                    !
                    md = m - 1
                    nd = n - 1
@@ -2692,6 +2718,10 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                 rhsn (nm  ) = dt * ( guu(nmd)*hu(nmd) * ( tetau(nmd)*ui(nmd) + (1.-tetau(nmd))*u0(nmd) ) - guu(nm)*hu(nm) * ( tetau(nm)*ui(nm) + (1.-tetau(nm))*u0(nm) ) + &
                                      gvv(ndm)*hv(ndm) * ( tetav(ndm)*vi(ndm) + (1.-tetav(ndm))*v0(ndm) ) - gvv(nm)*hv(nm) * ( tetav(nm)*vi(nm) + (1.-tetav(nm))*v0(nm) ) )
                 !
+                ! add contribution from rigid body motions
+                !
+                rhsn(nm) = rhsn(nm) - dt * gsqs(nm) * skc(nm)
+                !
                 amatn(nm,:) = amatn(nm,:) / gsqs(nm)
                 rhsn (nm  ) = rhsn (nm  ) / gsqs(nm)
                 !
@@ -2720,8 +2750,22 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
           if ( lpproj ) then
              !
-             do n = nfu, nl
-                do m = mfu, ml
+             ! not computed for point ml or nl at periodic boundary
+             !
+             if ( lreptx ) then
+                mend = ml - 1
+             else
+                mend = ml
+             endif
+             !
+             if ( lrepty ) then
+                nend = nl - 1
+             else
+                nend = nl
+             endif
+             !
+             do n = nfu, nend
+                do m = mfu, mend
                    !
                    md = m - 1
                    nd = n - 1
@@ -2830,7 +2874,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        rval = resm
        call SWREDUCE ( resm, 1, SWREAL, SWMAX )
        !
-       if ( ITEST >= 30 .and. EQREAL(resm,rval) .and. maxit > 1 ) then
+       if ( iamout == 2 .and. EQREAL(resm,rval) .and. maxit > 1 ) then
           !
           write (PRINTF,'(a,i4,a,e12.6,a,i5,a,i5,a)') ' ++ pressure projection: iter = ',j,' res = ',resm,' in (m,n)=(',minf+MXF-2,',',ninf+MYF-2,')'
           !
@@ -3046,6 +3090,9 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                       ! pressurized flow
                       !
                       w1top(nm) = -0.5 * ( ( u1(nm) + u1(nmd) ) * ( flou(nm) - flou(nmd) ) / dxl + ( v1(nm) + v1(ndm) ) * ( flov(nm) - flov(ndm) ) / dyl )
+                      !
+                      ! add body motion
+                      w1top(nm) = w1top(nm) + skc(nm)
                       !
                    endif
                    !
@@ -3347,6 +3394,10 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                    amat(nm,1) = amat(nm,1) + fac1 * gmatv(nm,1) + fac2 * gmatv(ndm,2)
                    rhs (nm  ) = rhs (nm  ) + fac1*v1(nm) + fac2*v1(ndm)
                    !
+                   ! add contribution from rigid body motions
+                   !
+                   rhs(nm) = rhs(nm) + gsqs(nm) * skc(nm)
+                   !
                    rhs(nm) = rhs(nm)/(dt*theta3)
                    !
                 else
@@ -3507,6 +3558,8 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                    w1top(nm) = w1top(nm) - w1bot(nm)
                 else
                    w1top(nm) = -0.5 * ( ( u1(nm) + u1(nmd) ) * ( flou(nm) - flou(nmd) ) / dxl + ( v1(nm) + v1(ndm) ) * ( flov(nm) - flov(ndm) ) / dyl )
+                   ! add body motion
+                   w1top(nm) = w1top(nm) + skc(nm)
                 endif
                 !
              endif

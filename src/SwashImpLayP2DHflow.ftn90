@@ -11,7 +11,7 @@ subroutine SwashImpLayP2DHflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -2006,6 +2006,8 @@ subroutine SwashImpLayP2DHflow
           do n = nf, nl
              do m = mf+1, mlast
                 !
+                md  = m  - 1
+                mu  = m  + 1
                 nd  = n  - 1
                 nu  = n  + 1
                 nuu = nu + 1
@@ -2014,10 +2016,12 @@ subroutine SwashImpLayP2DHflow
                 if ( LMYL .and. nu  > nl  ) nu  = nl
                 if ( LMYL .and. nuu > nl  ) nuu = nl
                 !
-                nm   = kgrpnt(m,n  )
-                ndm  = kgrpnt(m,nd )
-                num  = kgrpnt(m,nu )
-                nuum = kgrpnt(m,nuu)
+                nm   = kgrpnt(m ,n  )
+                nmd  = kgrpnt(md,n  )
+                nmu  = kgrpnt(mu,n  )
+                ndm  = kgrpnt(m ,nd )
+                num  = kgrpnt(m ,nu )
+                nuum = kgrpnt(m ,nuu)
                 !
                 if ( ( udep(nm) > udep(nmd) .or. stricthead ) .and. .not.strictmom ) then
                    !
@@ -3825,15 +3829,19 @@ subroutine SwashImpLayP2DHflow
                 md  = m  - 1
                 mu  = m  + 1
                 muu = mu + 1
+                nd  = n  - 1
+                nu  = n  + 1
                 !
                 if ( LMXF .and. md  < mfu ) md  = mfu
                 if ( LMXL .and. mu  > ml  ) mu  = ml
                 if ( LMXL .and. muu > ml  ) muu = ml
                 !
-                nm   = kgrpnt(m  ,n)
-                nmd  = kgrpnt(md ,n)
-                nmu  = kgrpnt(mu ,n)
-                nmuu = kgrpnt(muu,n)
+                nm   = kgrpnt(m  ,n )
+                nmd  = kgrpnt(md ,n )
+                nmu  = kgrpnt(mu ,n )
+                nmuu = kgrpnt(muu,n )
+                ndm  = kgrpnt(m  ,nd)
+                num  = kgrpnt(m  ,nu)
                 !
                 if ( ( vdep(nm) > vdep(ndm) .or. stricthead ) .and. .not.strictmom ) then
                    !
@@ -4147,7 +4155,7 @@ subroutine SwashImpLayP2DHflow
              !
              nm = kgrpnt(m,n)
              !
-             rhs(nm) = rhs(nm) + dt * srcm(nm)
+             rhs(nm) = rhs(nm) + dt * gsqs(nm) * srcm(nm)
              !
           enddo
        enddo

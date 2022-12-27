@@ -1,6 +1,6 @@
 # a CMake script to build SWASH
 #
-# Copyright (C) 2022  Delft University of Technology
+# Copyright (C) 2023  Delft University of Technology
 
 # use of CMake version 3.12 or greater
 cmake_minimum_required( VERSION 3.12 )
@@ -16,7 +16,7 @@ endif()
 project( SWASH Fortran )
 
 # set the SWASH version
-set( VERSION 8.01 )
+set( VERSION 9.01 )
 
 # enable common build
 set( CMAKE_BUILD_TYPE None CACHE STRING "" FORCE )

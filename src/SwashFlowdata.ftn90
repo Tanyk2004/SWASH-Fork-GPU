@@ -11,7 +11,7 @@ module SwashFlowdata
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -96,6 +96,7 @@ module SwashFlowdata
                                                                   ! see variable ibb for meaning
     integer, dimension(:), save, allocatable      :: ibt          ! boundary condition type at upper boundary
                                                                   ! see variable ibb for meaning
+    integer, dimension(:), save, allocatable      :: lfbs         ! label of floating body in wl-point
     integer, dimension(:), save, allocatable      :: presp        ! mask value for free surface/pressurized flow at pressure/wl-point
                                                                   ! =0; free surface flow
                                                                   ! =1; pressurized flow
@@ -280,6 +281,7 @@ module SwashFlowdata
     real  , dimension(:,:,:)  , save, allocatable :: rtur         ! turbulence quantities at center of layer interfaces
     real  , dimension(:)      , save, allocatable :: s0           ! water level at previous time level
     real  , dimension(:)      , save, allocatable :: s1           ! water level at current time level
+    real  , dimension(:)      , save, allocatable :: skc          ! time rate of change of displacement of rigid body (derived from kinematic boundary conditions)
     real  , dimension(:)      , save, allocatable :: smax         ! maximum water level stored
     real  , dimension(:)      , save, allocatable :: so           ! water level at old time level
     real  , dimension(:)      , save, allocatable :: sponxl       ! left sponge layer in x-direction

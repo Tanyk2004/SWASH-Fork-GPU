@@ -24,7 +24,7 @@
 !   VERTical [kmax] < [thickness] M|PERC >
 !
 !   INPgrid  BOT|WLEV|CUR|VX|VY|FRic|WInd|WX|WY|PRessure|POROS|PSIZ|HSTRUC|    &
-!            NPLAnts|FLOAT|SALinity|TEMPerature|SEDiment                       &
+!            NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment                 &
 !
 !      | REG [xpinp] [ypinp] [alpinp]  [mxinp] [myinp]  [dxinp] [dyinp] |
 !      |                                                                |
@@ -42,7 +42,7 @@
 !                         \    EASYmesh / 'fname'
 !
 !   READinp   BOTtom|WLEVel|CURrent|FRic|WInd|PRessure|COOR|POROS|PSIZ|HSTRUC| &
-!             NPLAnts|FLOAT|SALinity|TEMPerature|SEDiment                      &
+!             NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment                &
 !
 !                | 'fname1'        |
 !        [fac]  <  SERIes 'fname2'  >  [idla] [nhedf] ([nhedt]) (nhedvec])     &
@@ -100,6 +100,28 @@
 !
 !
 !   FLOAT  [alpha] [theta]
+!
+!
+!   BODY  DIMension [l] [mass] [Ix] [Iy] [Iz] [cogx] [cogy] [cogz]             &
+!
+!         DOF SUrge SWay HEave ROll PItch YAw                                  &
+!
+!         ( MLIne < [K] [B] [apbx] [apby] [apbz] [apfx] [apfy] [apfz] [elen] > &
+!
+!                 PRETension )                                                 &
+!
+!         ( FENder < [K] [apfx] [apfy] [apfz] > )
+!
+!
+!                 |    NEWmark [beta] [gamma] |
+!                 |                           |
+!                 | -> CH [rho]               |
+!   BODY  SOLVer <                             > COUPling [tol] [maxiter] [relax] &
+!                 |    HHT [rho]              |
+!                 |                           |
+!                 |    WBZ [rho]              |
+!
+!         KBC [theta]
 !
 !
 !                     | -> CONstant [cd]                       |
@@ -289,7 +311,7 @@
 !             VISC|HS|HRMS|SETUP|MVMAG|MVDIR|MVEL|MVKSI|MVETA|MVMAGK|MVDIRK|   &
 !             MVELK|MVKSIK|MVETAK|MTKE|MEPS|MVISC|SAL|TEMP|SED|MSAL|MTEMP|     &
 !             MSED|SALK|TEMPK|SEDK|MSALK|MTEMPK|MSEDK|FORCEX|FORCEY|FORCEZ|    &
-!             MOMX|MOMY|MOMZ|RUNUP >                                           &
+!             MOMX|MOMY|MOMZ|TRAX|TRAY|TRAZ|ROTX|ROTY|ROTZ|PTOP|RUNUP >        &
 !           (OUTPUT [tbegtbl] [delttbl] SEC|MIN|HR|DAY)
 !
 !

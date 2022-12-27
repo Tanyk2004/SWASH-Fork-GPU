@@ -11,7 +11,7 @@ subroutine SwashReqOutQ ( found )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -66,6 +66,7 @@ subroutine SwashReqOutQ ( found )
     integer                     :: ilpos          ! actual length of error message filename
     integer                     :: iproc          ! loop counter over processors
     integer                     :: iostat         ! I/O status in call FOR
+    integer                     :: ivar           ! index of output variable
     integer                     :: ivtype         ! type of output quantity
     integer                     :: mip            ! number of output points
     integer                     :: nref           ! reference number
@@ -199,10 +200,7 @@ subroutine SwashReqOutQ ( found )
        if ( ivtype == 98 ) goto 110
        if ( ivtype /= 999 ) then
           call INREAL ('UNIT', dfac, 'STA', -1.)
-          if ( ovsvty(ivtype) == 7 ) then
-             call msgerr (2, 'type of output not allowed for this quantity')
-             write (PRINTF, *) ' -> ', ovsnam(ivtype)
-          else if ( ivtype > 50 .and. ivtype < 100 .and. kmax == 1 ) then
+          if ( ivtype > 50 .and. ivtype < 100 .and. kmax == 1 ) then
              call msgerr (1, 'this layer-dependent quantity will not be outputted' )
              write (PRINTF, *) ' -> ', ovsnam(ivtype)
           else if ( (ivtype == 10 .or. ivtype == 11 .or. ivtype == 75 .or. ivtype == 76) .and. optg == 5 ) then
@@ -249,6 +247,22 @@ subroutine SwashReqOutQ ( found )
           nstatm = 1
           call INCTIM (ITMOPT, 'TBEG', orqtmp%oqr(1), 'REQ', 0d0)
           call INITVD ('DELT', orqtmp%oqr(2), 'REQ', 0d0)
+          !
+          do i = 1, nvar
+             ivar = orqtmp%ivtyp(i)
+             if ( ivar == 22 .or.  ivar == 23  .or. ivar == 24 .or.  &
+                  ivar == 42 .or.  ivar == 43  .or. ivar == 44 .or.  &
+                  ivar == 57 .or.  ivar == 58  .or. ivar == 59 .or.  &
+                  ivar == 92 .or.  ivar == 93  .or. ivar == 94 .or.  &
+                 (ivar >= 33 .and. ivar <= 37) .or.                  &
+                 (ivar >= 84 .and. ivar <= 88) ) then
+                call msgerr (1, 'command OUTput ignored for this stationary quantity')
+                write (PRINTF, *) ' -> ', ovkeyw(ivar)
+                orqtmp%oqr(1) = -1.
+                orqtmp%oqr(2) = -1.
+                goto 115
+             endif
+          enddo
           !
           ! a PVD file is created to collect time-varying output
           !
@@ -313,6 +327,7 @@ subroutine SwashReqOutQ ( found )
           endif
        endif
        !
+ 115   continue
        orqtmp%oqi(3) = nvar
        nullify(orqtmp%nextorq)
        if ( .not.lorq ) then
@@ -337,7 +352,7 @@ subroutine SwashReqOutQ ( found )
     !         HS|HRMS|SETUP|MVMAG|MVDIR|MVEL|MVKSI|MVETA|MVMAGK|MVDIRK|        &
     !         MVELK|MVKSIK|MVETAK|MTKE|MEPS|MVISC|SAL|TEMP|SED|MSAL|MTEMP|     &
     !         MSED|SALK|TEMPK|SEDK|MSALK|MTEMPK|MSEDK|FORCEX|FORCEY|FORCEZ|    &
-    !         MOMX|MOMY|MOMZ >                                                 &
+    !         MOMX|MOMY|MOMZ|TRAX|TRAY|TRAZ|ROTX|ROTY|ROTZ|PTOP|RUNUP >        &
     !         (OUTPUT [tbegtbl] [delttbl] SEC/MIN/HR/DAY)
     !
     ! ==========================================================================
@@ -402,13 +417,10 @@ subroutine SwashReqOutQ ( found )
              call msgerr (2, 'empty set not allowed for this quantity')
              write (PRINTF, *) ' -> ', ovsnam(ivtype)
           endif
-          if ( ivtype == 113 .and. .not.oned ) then
+          if ( ivtype == 115 .and. .not.oned ) then
              call msgerr (1, 'wave runup height will not be computed in 2D mode')
           endif
-          if ( ovsvty(ivtype) == 7 ) then
-             call msgerr (2, 'type of output not allowed for this quantity')
-             write (PRINTF, *) ' -> ', ovsnam(ivtype)
-          else if ( ivtype > 50 .and. ivtype < 100 .and. kmax == 1 ) then
+          if ( ivtype > 50 .and. ivtype < 100 .and. kmax == 1 ) then
              call msgerr (1, 'this layer-dependent quantity will not be outputted' )
              write (PRINTF, *) ' -> ', ovsnam(ivtype)
           else if ( (ivtype == 10 .or. ivtype == 11 .or. ivtype == 75 .or. ivtype == 76) .and. optg == 5 ) then
@@ -457,6 +469,20 @@ subroutine SwashReqOutQ ( found )
           nstatm = 1
           call INCTIM (ITMOPT, 'TBEG', orqtmp%oqr(1), 'REQ', 0d0)
           call INITVD ('DELT', orqtmp%oqr(2), 'REQ', 0d0)
+          do i = 1, nvar
+             ivar = orqtmp%ivtyp(i)
+             if ( ivar == 22 .or.  ivar == 23  .or. ivar == 24 .or.  &
+                  ivar == 42 .or.  ivar == 43  .or. ivar == 44 .or.  &
+                  ivar == 57 .or.  ivar == 58  .or. ivar == 59 .or.  &
+                  ivar == 92 .or.  ivar == 93  .or. ivar == 94 .or.  &
+                 (ivar >= 33 .and. ivar <= 37) .or.                  &
+                 (ivar >= 84 .and. ivar <= 88) ) then
+                call msgerr (1, 'command OUTput ignored for this stationary quantity')
+                write (PRINTF, *) ' -> ', ovkeyw(ivar)
+                orqtmp%oqr(1) = -1.
+                orqtmp%oqr(2) = -1.
+             endif
+          enddo
        endif
        orqtmp%oqi(3) = nvar
        nullify(orqtmp%nextorq)

@@ -11,7 +11,7 @@ subroutine SwashCleanMem
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -49,6 +49,7 @@ subroutine SwashCleanMem
     use SwanCompdata
     use SwashFlowdata
     use SwashSolvedata
+    use SwashRigBoddata
 !
     implicit none
 !
@@ -77,6 +78,7 @@ subroutine SwashCleanMem
     if ( allocated(depth ) )  deallocate(depth )
     if ( allocated(wlevl ) )  deallocate(wlevl )
     if ( allocated(flobj ) )  deallocate(flobj )
+    if ( allocated(lbod  ) )  deallocate(lbod  )
     if ( allocated(fric  ) )  deallocate(fric  )
     if ( allocated(uxb   ) )  deallocate(uxb   )
     if ( allocated(uyb   ) )  deallocate(uyb   )
@@ -93,6 +95,7 @@ subroutine SwashCleanMem
     if ( allocated(depf  ) )  deallocate(depf  )
     if ( allocated(wlevf ) )  deallocate(wlevf )
     if ( allocated(flobjf) )  deallocate(flobjf)
+    if ( allocated(lbodf ) )  deallocate(lbodf )
     if ( allocated(fricf ) )  deallocate(fricf )
     if ( allocated(uxf   ) )  deallocate(uxf   )
     if ( allocated(uyf   ) )  deallocate(uyf   )
@@ -208,6 +211,7 @@ subroutine SwashCleanMem
     if ( allocated(flos  ) )  deallocate(flos  )
     if ( allocated(flou  ) )  deallocate(flou  )
     if ( allocated(flov  ) )  deallocate(flov  )
+    if ( allocated(lfbs  ) )  deallocate(lfbs  )
     if ( allocated(fcor  ) )  deallocate(fcor  )
     if ( allocated(patm  ) )  deallocate(patm  )
     if ( allocated(rho   ) )  deallocate(rho   )
@@ -222,6 +226,7 @@ subroutine SwashCleanMem
     if ( allocated(presp ) )  deallocate(presp )
     if ( allocated(presu ) )  deallocate(presu )
     if ( allocated(presv ) )  deallocate(presv )
+    if ( allocated(skc   ) )  deallocate(skc   )
     if ( allocated(quf   ) )  deallocate(quf   )
     if ( allocated(qx    ) )  deallocate(qx    )
     if ( allocated(qy    ) )  deallocate(qy    )
@@ -402,6 +407,46 @@ subroutine SwashCleanMem
     if ( allocated(ju    ) )  deallocate(ju    )
     if ( allocated(rs    ) )  deallocate(rs    )
     if ( allocated(wk    ) )  deallocate(wk    )
+    !
+    if ( allocated(bmass ) )  deallocate(bmass )
+    if ( allocated(bmoi  ) )  deallocate(bmoi  )
+    if ( allocated(bcog  ) )  deallocate(bcog  )
+    if ( allocated(bdof  ) )  deallocate(bdof  )
+    if ( allocated(barea ) )  deallocate(barea )
+    if ( allocated(bvol  ) )  deallocate(bvol  )
+    if ( allocated(bmoax ) )  deallocate(bmoax )
+    if ( allocated(bmoay ) )  deallocate(bmoay )
+    if ( allocated(bcob  ) )  deallocate(bcob  )
+    if ( allocated(ptop  ) )  deallocate(ptop  )
+    if ( allocated(nmlb  ) )  deallocate(nmlb  )
+    if ( allocated(bmli  ) )  deallocate(bmli  )
+    if ( allocated(cpto  ) )  deallocate(cpto  )
+    !
+    if ( allocated(extml0) )  deallocate(extml0)
+    if ( allocated(extml1) )  deallocate(extml1)
+    !
+    if ( allocated(fbod0 ) )  deallocate(fbod0 )
+    if ( allocated(tbod0 ) )  deallocate(tbod0 )
+    if ( allocated(fbod1 ) )  deallocate(fbod1 )
+    if ( allocated(tbod1 ) )  deallocate(tbod1 )
+    if ( allocated(fhyd0 ) )  deallocate(fhyd0 )
+    if ( allocated(thyd0 ) )  deallocate(thyd0 )
+    if ( allocated(fhyd1 ) )  deallocate(fhyd1 )
+    if ( allocated(thyd1 ) )  deallocate(thyd1 )
+    !
+    if ( allocated(afot0 ) )  deallocate(afot0 )
+    if ( allocated(afor0 ) )  deallocate(afor0 )
+    if ( allocated(vfot0 ) )  deallocate(vfot0 )
+    if ( allocated(vfor0 ) )  deallocate(vfor0 )
+    if ( allocated(xfot0 ) )  deallocate(xfot0 )
+    if ( allocated(xfor0 ) )  deallocate(xfor0 )
+    !
+    if ( allocated(afot1 ) )  deallocate(afot1 )
+    if ( allocated(afor1 ) )  deallocate(afor1 )
+    if ( allocated(vfot1 ) )  deallocate(vfot1 )
+    if ( allocated(vfor1 ) )  deallocate(vfor1 )
+    if ( allocated(xfot1 ) )  deallocate(xfot1 )
+    if ( allocated(xfor1 ) )  deallocate(xfor1 )
     !
     if ( allocated(iwrk  ) )  deallocate(iwrk  )
     if ( allocated(uwrk  ) )  deallocate(uwrk  )

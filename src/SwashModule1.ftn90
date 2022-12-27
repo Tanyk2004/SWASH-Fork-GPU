@@ -21,7 +21,7 @@ module SwashCommdata1
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -89,7 +89,7 @@ module SwashCommdata1
                                                               ! =1; scalar
                                                               ! =2; angle
                                                               ! =3; vector
-                                                              ! =4; tensor
+                                                              ! =4; multiple
     !
     real                                       :: alcq        ! angle between x-axis of computational grid and output frame
     real                                       :: alpq        ! angle between x-axis of user coordinate system and output frame
@@ -135,7 +135,7 @@ module SwashCommdata2
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -258,7 +258,7 @@ module SwashCommdata3
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -303,7 +303,7 @@ module SwashCommdata3
     integer, parameter                         :: mnums = 60  ! dimension of array pnums
     integer, parameter                         :: mpor  =  5  ! dimension of array ppor
     integer, parameter                         :: msed  = 15  ! dimension of array psed
-    integer, parameter                         :: mship =  5  ! dimension of array pship
+    integer, parameter                         :: mship = 15  ! dimension of array pship
     integer, parameter                         :: msurf =  5  ! dimension of array psurf
     integer, parameter                         :: mturb =  5  ! dimension of array pturb
     integer, parameter                         :: mwnd  = 10  ! dimension of array pwnd
@@ -530,9 +530,20 @@ module SwashCommdata3
                                                               ! =11; critical bed shear stress for deposition (cohesive sediment)
                                                               ! =12; entrainment rate for erosion flux (cohesive sediment)
                                                               ! =13; empirical constant used in stability factor for sediment-laden BBL (=5.5)
-    real, dimension(mship)                     :: pship       ! parameters for floating objects
+    real, dimension(mship)                     :: pship       ! parameters for floating rigid bodies
                                                               ! = 1; compressibility factor for flow beneath fixed floating object
                                                               ! = 2; theta; implicitness factor for time integration used beneath floating object
+                                                              !      =0.5: Crank-Nicolson
+                                                              !      =1.0: implicit Euler
+                                                              ! = 3; beta; implicitness factor for Newmark scheme
+                                                              ! = 4; gamma; implicitness factor for Newmark scheme
+                                                              ! = 5; rhoinf; spectral radius (for infinite frequency) to be used in generalized-alpha schemes
+                                                              ! = 6; not used
+                                                              ! = 7; not used
+                                                              ! = 8; maximum error for the fluid-structure coupling
+                                                              ! = 9; maximum number of iterations to be performed in the fluid-structure coupling
+                                                              ! =10; under-relaxation for rigid body accelerations (added-mass effect)
+                                                              ! =11; theta; implicitness factor for update kinematic boundary conditions
                                                               !      =0.5: Crank-Nicolson
                                                               !      =1.0: implicit Euler
     real, dimension(msurf)                     :: psurf       ! parameters for control of wave breaking
@@ -723,7 +734,7 @@ module SwashCommdata4
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -814,7 +825,7 @@ module SwashTimecomm
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by

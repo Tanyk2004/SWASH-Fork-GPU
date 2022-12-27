@@ -11,7 +11,7 @@ subroutine SwashRunupHeight ( oqproc, nvoqp, voqr, voq )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2022  Delft University of Technology
+!     Copyright (C) 2010-2023  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -85,7 +85,7 @@ subroutine SwashRunupHeight ( oqproc, nvoqp, voqr, voq )
 !
     if (ltrace) call strace (ient,'SwashRunupHeight')
     !
-    rh = ovexcv(113)
+    rh = ovexcv(115)
     !
     if ( oned ) then
        !
@@ -135,7 +135,7 @@ subroutine SwashRunupHeight ( oqproc, nvoqp, voqr, voq )
           !
        else
           !
-          rh = ovexcv(113)
+          rh = ovexcv(115)
           !
        endif
        !
@@ -151,6 +151,6 @@ subroutine SwashRunupHeight ( oqproc, nvoqp, voqr, voq )
     !
     ! runup height
     !
-    voq(voqr(113)) = rh
+    voq(voqr(115)) = rh
     !
 end subroutine SwashRunupHeight
