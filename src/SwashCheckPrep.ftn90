@@ -1725,6 +1725,13 @@ subroutine SwashCheckPrep
        !
     endif
     !
+    if ( ifloat == 1 .or. ifloat == 2 ) then
+       !
+       bcog(:,1) = bcog(:,1) - xoffs
+       bcog(:,2) = bcog(:,2) - yoffs
+       !
+    endif
+    !
     ! allocate work arrays to temporarily store data
     !
     if ( lwork /= 0 ) then

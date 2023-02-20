@@ -6189,6 +6189,14 @@ subroutine SwashExpLayP2DHflow
        !
     endif
     !
+    ! not computed for points ml and nl at subdomain interfaces since, these end points are owned by the neighbouring subdomains
+    !
+    mend(1) = ml - 1
+    if ( LMXL ) mend(1) = ml
+    !
+    nend(1) = nl - 1
+    if ( LMYL ) nend(1) = nl
+    !
     ! solve global continuity equation by means of the second order Hancock scheme
     !
     do j = 1, 2
@@ -6243,6 +6251,7 @@ subroutine SwashExpLayP2DHflow
        !
        if ( ihydro /= 3 ) then
           !
+          udep      = 0.
           work(:,1) = 0.
           !
           do n = nfu, nl
@@ -6267,6 +6276,7 @@ subroutine SwashExpLayP2DHflow
              enddo
           enddo
           !
+          vdep      = 0.
           work(:,2) = 0.
           !
           do m = mfu, ml
@@ -6314,14 +6324,6 @@ subroutine SwashExpLayP2DHflow
           enddo
           !
        endif
-       !
-       ! not computed for points ml and nl at subdomain interfaces since, these end points are owned by the neighbouring subdomains
-       !
-       mend(1) = ml - 1
-       if ( LMXL ) mend(1) = ml
-       !
-       nend(1) = nl - 1
-       if ( LMYL ) nend(1) = nl
        !
        ! compute the water level
        !
