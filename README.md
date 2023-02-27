@@ -233,7 +233,7 @@ See
 
 ## bugs and questions
 
-For bug reports please send to the [SourceForge mailing lst](http://sourceforge.net/mail/?group_id=385225).
+For bug reports please send to the [SourceForge mailing list](http://sourceforge.net/mail/?group_id=385225).
 
 
 <small>&copy; Copyright 2023  Marcel Zijlema</small>
