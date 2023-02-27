@@ -233,7 +233,7 @@ See
 
 ## bugs and questions
 
-For bug reports please use the [GitLab issue tracker](https://gitlab.tudelft.nl/citg/wavemodels/swash/issues).
+For bug reports please send to the [SourceForge mailing lst](http://sourceforge.net/mail/?group_id=385225).
 
 
 <small>&copy; Copyright 2023  Marcel Zijlema</small>
