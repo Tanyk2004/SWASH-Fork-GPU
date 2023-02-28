@@ -31,7 +31,7 @@ Ninja can be downloaded from its [git repository](https://github.com/ninja-build
 
 In addition to the build tools, a Perl package must be available on your local computer.
 Usually, it is available for macOS, Linux and a UNIX-like operating system. Check it by typing `perl -v`.
-Otherwise, you can download Perl from [Strawberry Perl](https://strawberryperl.com).
+You can download Perl for MS Windows from [Strawberry Perl](https://strawberryperl.com).
 The Perl version should be at least 5.0.0 or higher.
 
 Finally, SWASH also requires a Fortran90 compiler to be present in your environment.
