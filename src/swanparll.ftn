@@ -2137,6 +2137,9 @@
       DATA IENT/0/
       IF (LTRACE) CALL STRACE (IENT,'SWREDUCD')
 
+!     --- if not parallel, return
+      IF (.NOT.PARLL) RETURN
+
       ALLOCATE(TEMP(ILEN))
 
 !TIMG      CALL SWTSTA(202)
