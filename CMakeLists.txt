@@ -16,7 +16,7 @@ endif()
 project( SWASH Fortran )
 
 # set the SWASH version
-set( VERSION 9.01 )
+set( VERSION 9.01A )
 
 # enable common build
 set( CMAKE_BUILD_TYPE None CACHE STRING "" FORCE )

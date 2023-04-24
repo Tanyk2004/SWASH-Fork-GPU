@@ -69,8 +69,13 @@ subroutine SwashUBotFrict
 !
     integer, save :: ient = 0 ! number of entries in this subroutine
     integer       :: iface    ! loop counter over faces
+    integer       :: vf1      ! first vertex of present face
+    integer       :: vf2      ! second vertex of present face
 !
+    real          :: cf       ! local friction coefficient
     real          :: cz       ! Chezy value
+    !
+    type(facetype), dimension(:), pointer :: face ! datastructure for faces with their attributes
 !
 !   Structure
 !
@@ -80,6 +85,10 @@ subroutine SwashUBotFrict
 !
     if (ltrace) call strace (ient,'SwashUBotFrict')
     !
+    ! point to face object
+    !
+    face => gridobject%face_grid
+    !
     if ( irough == 1 .or. irough == 11 ) then
        !
        ! dimensionless constant or linear bottom friction (dimension is m/s)
@@ -88,7 +97,12 @@ subroutine SwashUBotFrict
           !
           do iface = 1, nfaces
              !
-             cfricu(iface) = fricf(iface,2)
+             vf1 = face(iface)%atti(FACEV1)
+             vf2 = face(iface)%atti(FACEV2)
+             !
+             cf = 0.5 * ( fricf(vf1,2) + fricf(vf2,2) )
+             !
+             cfricu(iface) = cf
              !
           enddo
           !
@@ -110,9 +124,14 @@ subroutine SwashUBotFrict
           !
           do iface = 1, nfaces
              !
-             if ( fricf(iface,2) /= 0. ) then
+             vf1 = face(iface)%atti(FACEV1)
+             vf2 = face(iface)%atti(FACEV2)
+             !
+             cf = 0.5 * ( fricf(vf1,2) + fricf(vf2,2) )
+             !
+             if ( cf /= 0. ) then
                 !
-                cfricu(iface) = grav / ( fricf(iface,2) * fricf(iface,2) )
+                cfricu(iface) = grav / ( cf * cf )
                 !
              endif
              !
@@ -140,9 +159,14 @@ subroutine SwashUBotFrict
           !
           do iface = 1, nfaces
              !
+             vf1 = face(iface)%atti(FACEV1)
+             vf2 = face(iface)%atti(FACEV2)
+             !
+             cf = 0.5 * ( fricf(vf1,2) + fricf(vf2,2) )
+             !
              if ( hum(iface) > 0. ) then
                 !
-                cfricu(iface) = grav * fricf(iface,2) * fricf(iface,2) / hum(iface)**(1./3.)
+                cfricu(iface) = grav * cf * cf / hum(iface)**(1./3.)
                 !
              endif
              !
@@ -170,9 +194,14 @@ subroutine SwashUBotFrict
           !
           do iface = 1, nfaces
              !
-             if ( hum(iface) > 0. .and. fricf(iface,2) /= 0. ) then
+             vf1 = face(iface)%atti(FACEV1)
+             vf2 = face(iface)%atti(FACEV2)
+             !
+             cf = 0.5 * ( fricf(vf1,2) + fricf(vf2,2) )
+             !
+             if ( hum(iface) > 0. .and. cf /= 0. ) then
                 !
-                cz = 18. * log10 ( max(12.*hum(iface) / fricf(iface,2), cfix) )
+                cz = 18. * log10 ( max(12.*hum(iface) / cf, cfix) )
                 cfricu(iface) = grav / cz**2
                 !
              endif
