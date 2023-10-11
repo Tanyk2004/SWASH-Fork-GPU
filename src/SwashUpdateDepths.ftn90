@@ -112,7 +112,7 @@ subroutine SwashUpdateDepths ( u, v )
           !
           hs(nm) = s1(nm) + dps(nm)
           !
-          if ( hs(nm) < 0. ) then
+          if ( hs(nm) < 0. .and. inewt == 0 ) then
              !
              if ( hs(nm) < -epsdry ) then
                 !
@@ -135,6 +135,10 @@ subroutine SwashUpdateDepths ( u, v )
           !
           if ( ifloat /= 0 ) hs(nm) = min( dps(nm)-flos(nm), hs(nm) )
           !
+          ! ... and in case of Newton iteration, water depth must be bounded below by bottom level
+          !
+          if ( inewt /= 0 ) hs(nm) = max( epsdry, hs(nm) )
+          !
        enddo
        !
        ! exchange water depth in wl-point with neighbouring subdomains
@@ -142,34 +146,44 @@ subroutine SwashUpdateDepths ( u, v )
        call SWEXCHG ( hs, kgrpnt, 1, 1 )
        if (STPNOW()) return
        !
-       rtmp(1) = epsdry
-       if ( adapted ) then
-          rtmp(2) = 1.
-       else
-          rtmp(2) = 0.
-       endif
+       ! check minimal depth in cells
        !
-       call SWREDUCE ( rtmp, 2, SWREAL, SWMAX )
-       !
-       epsdry = rtmp(1)
-       if ( rtmp(2) /= 0. ) then
-          adapted = .true.
-       else
-          adapted = .false.
-       endif
-       !
-       if ( adapted ) then
-          write (msgstr,'(a,e12.4)') 'new minimal depth for checking drying and flooding: DEPMIN = ',epsdry
-          call msgerr (1, trim(msgstr) )
-       endif
-       !
-       ! check minimal depth for drying and flooding (at most 1 cm)
-       !
-       if ( epsdry > 0.01 ) then
+       if ( inewt == 0 ) then
           !
-          call msgerr ( 4, 'INSTABLE: water level is too far below the bottom level!' )
-          call msgerr ( 0, '          Please reduce the time step!' )
-          return
+          rtmp(1) = epsdry
+          if ( adapted ) then
+             rtmp(2) = 1.
+          else
+             rtmp(2) = 0.
+          endif
+          !
+          call SWREDUCE ( rtmp, 2, SWREAL, SWMAX )
+          !
+          epsdry = rtmp(1)
+          if ( rtmp(2) /= 0. ) then
+             adapted = .true.
+          else
+             adapted = .false.
+          endif
+          !
+          if ( adapted ) then
+             write (msgstr,'(a,e12.4)') 'new minimal depth for checking drying and flooding: DEPMIN = ',epsdry
+             call msgerr (1, trim(msgstr) )
+          endif
+          !
+          ! check minimal depth for drying and flooding (at most 1 cm)
+          !
+          if ( epsdry > 0.01 ) then
+             !
+             call msgerr ( 4, 'INSTABLE: water level is too far below the bottom level!' )
+             call msgerr ( 0, '          Please reduce the time step!' )
+             return
+             !
+          endif
+          !
+          ! also reset minimal depth at faces
+          !
+          epshu = epsdry
           !
        endif
        !
@@ -248,6 +262,10 @@ subroutine SwashUpdateDepths ( u, v )
                 hu(nm) = min( dpu(nm)-flou(nm), hu(nm) )
                 !
              endif
+             !
+             ! ... and in case of Newton iteration, water depth must be bounded below by bottom level
+             !
+             if ( inewt /= 0 ) hu(nm) = max( epsdry, hu(nm) )
              !
           enddo
           !
@@ -332,7 +350,7 @@ subroutine SwashUpdateDepths ( u, v )
              !
              hs(nm) = s1(nm) + dps(nm)
              !
-             if ( hs(nm) < 0. .and. nm /= 1 ) then
+             if ( hs(nm) < 0. .and. nm /= 1 .and. inewt == 0 ) then
                 !
                 if ( hs(nm) < -epsdry ) then
                    !
@@ -355,6 +373,10 @@ subroutine SwashUpdateDepths ( u, v )
              !
              if ( ifloat /= 0 ) hs(nm) = min( dps(nm)-flos(nm), hs(nm) )
              !
+             ! ... and in case of Newton iteration, water depth must be bounded below by bottom level
+             !
+             if ( inewt /= 0 ) hs(nm) = max( epsdry, hs(nm) )
+             !
           enddo
        enddo
        !
@@ -367,34 +389,44 @@ subroutine SwashUpdateDepths ( u, v )
        call SWEXCHG ( hs, kgrpnt, 1, 1 )
        if (STPNOW()) return
        !
-       rtmp(1) = epsdry
-       if ( adapted ) then
-          rtmp(2) = 1.
-       else
-          rtmp(2) = 0.
-       endif
+       ! check minimal depth in cells
        !
-       call SWREDUCE ( rtmp, 2, SWREAL, SWMAX )
-       !
-       epsdry = rtmp(1)
-       if ( rtmp(2) /= 0. ) then
-          adapted = .true.
-       else
-          adapted = .false.
-       endif
-       !
-       if ( adapted ) then
-          write (msgstr,'(a,e12.4)') 'new minimal depth for checking drying and flooding: DEPMIN = ',epsdry
-          call msgerr (1, trim(msgstr) )
-       endif
-       !
-       ! check minimal depth for drying and flooding (at most 1 cm)
-       !
-       if ( epsdry > 0.01 ) then
+       if ( inewt == 0 ) then
           !
-          call msgerr ( 4, 'INSTABLE: water level is too far below the bottom level!' )
-          call msgerr ( 0, '          Please reduce the time step!' )
-          return
+          rtmp(1) = epsdry
+          if ( adapted ) then
+             rtmp(2) = 1.
+          else
+             rtmp(2) = 0.
+          endif
+          !
+          call SWREDUCE ( rtmp, 2, SWREAL, SWMAX )
+          !
+          epsdry = rtmp(1)
+          if ( rtmp(2) /= 0. ) then
+             adapted = .true.
+          else
+             adapted = .false.
+          endif
+          !
+          if ( adapted ) then
+             write (msgstr,'(a,e12.4)') 'new minimal depth for checking drying and flooding: DEPMIN = ',epsdry
+             call msgerr (1, trim(msgstr) )
+          endif
+          !
+          ! check minimal depth for drying and flooding (at most 1 cm)
+          !
+          if ( epsdry > 0.01 ) then
+             !
+             call msgerr ( 4, 'INSTABLE: water level is too far below the bottom level!' )
+             call msgerr ( 0, '          Please reduce the time step!' )
+             return
+             !
+          endif
+          !
+          ! also reset minimal depth at faces
+          !
+          epshu = epsdry
           !
        endif
        !
@@ -525,6 +557,10 @@ subroutine SwashUpdateDepths ( u, v )
                    !
                 endif
                 !
+                ! ... and in case of Newton iteration, water depth must be bounded below by bottom level
+                !
+                if ( inewt /= 0 ) hu(nm) = max( epsdry, hu(nm) )
+                !
              enddo
           enddo
           !
@@ -592,6 +628,10 @@ subroutine SwashUpdateDepths ( u, v )
                    hv(nm) = min( dpv(nm)-flov(nm), hv(nm) )
                    !
                 endif
+                !
+                ! ... and in case of Newton iteration, water depth must be bounded below by bottom level
+                !
+                if ( inewt /= 0 ) hv(nm) = max( epsdry, hv(nm) )
                 !
              enddo
           enddo

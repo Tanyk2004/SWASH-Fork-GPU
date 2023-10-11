@@ -95,7 +95,7 @@ subroutine SwashInitCompUgrid ( logcom )
     !
     ! check the grid
     !
-    call SwanCheckGrid
+    call SwashCheckGrid
     !
     ! compute xcgmin, xcgmax, ycgmin, ycgmax
     !

@@ -82,7 +82,7 @@ subroutine SwashDryWet
           !
           nm = kgrpnt(m,1)
           !
-          if ( hu(nm) > epsdry ) then
+          if ( hu(nm) > epshu ) then
              !
              wetu(nm) = 1
              !
@@ -129,7 +129,7 @@ subroutine SwashDryWet
              !
              nm = kgrpnt(m,n)
              !
-             if ( hu(nm) > epsdry ) then
+             if ( hu(nm) > epshu ) then
                 !
                 wetu(nm) = 1
                 !
@@ -162,7 +162,7 @@ subroutine SwashDryWet
              !
              nm = kgrpnt(m,n)
              !
-             if ( hv(nm) > epsdry ) then
+             if ( hv(nm) > epshu ) then
                 !
                 wetv(nm) = 1
                 !

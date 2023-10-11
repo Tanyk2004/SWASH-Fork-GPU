@@ -221,7 +221,8 @@
            IVSTAT2 = .FALSE.
         ENDIF
         IF ( IVTYPE.GT.83 .AND. IVTYPE.NE.89 .AND.
-     &       IVTYPE.NE.90 .AND. IVTYPE.NE.91      ) THEN
+     &       IVTYPE.NE.90 .AND. IVTYPE.NE.91 .AND.
+     &       IVTYPE.NE.95 .AND. IVTYPE.NE.96      ) THEN
            IVSTAT3 = .TRUE.
         ELSE
            IVSTAT3 = .FALSE.
@@ -1113,7 +1114,7 @@
                ENDIF
             ENDDO
          ENDDO
-         IF ( MXKF.GE.MXKL .OR. MYKF.GE.MYKL ) THEN
+         IF ( MXKF.GE.MXKL-1 .OR. MYKF.GE.MYKL-1 ) THEN
             MXKF = 1
             MXKL = 0
             MYKF = 1

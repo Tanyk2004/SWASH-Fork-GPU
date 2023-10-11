@@ -76,9 +76,9 @@ subroutine SwashInit ( inerr )
 !   Source text
 !
     VERTXT = BLANK
-    VERNUM = 9.01
+    VERNUM = 10.01
     write (VERTXT, '(f5.2)') VERNUM
-    call BUGFIX ('A')
+    !call BUGFIX ('A')
     !call BUGFIX ('B')
     !
     call OCPINI ( 'swashinit', .true., inerr )
@@ -118,6 +118,8 @@ subroutine SwashInit ( inerr )
     degrad = pi/180.
     !
     epsdry = 5.e-5
+    epshu  = 1.e-3
+    epsuf  = 1.e-8
     !
     swl    = 0.
     !
@@ -145,7 +147,7 @@ subroutine SwashInit ( inerr )
     ! viscosity and diffusivity parameters
     !
     ihvisc = 0
-    bvisc  = 0.
+    bvisc  = -999.
     hvisc  = 0.
     hdiff  = 0.
     !
@@ -368,8 +370,8 @@ subroutine SwashInit ( inerr )
     !
     ! discretization parameters
     !
-    mtimei     = 1
-    dpsopt     = 2
+    mtimei     = -1
+    dpsopt     =  2
     corrdep    = .true.
     depcds     = .false.
     stricthead = .false.
@@ -377,7 +379,7 @@ subroutine SwashInit ( inerr )
     horwinc    = .false.
     verwinc    = .false.
     mimetic    = .false.
-    ccn        = .false.
+    ccn        = .true.
     !
     pnums     = 0.
     pnums( 1) = 0.5
@@ -422,16 +424,16 @@ subroutine SwashInit ( inerr )
     !
     iamout    = 0
     icond     = -999
-    pnums(21) = 0.01
+    pnums(21) = -1.
     pnums(22) = 0.01
     pnums(23) = 0.
     pnums(24) = 100.
     pnums(25) = 500.
-    pnums(26) = 0.9
+    pnums(26) = -1.
     pnums(27) = -1.
     pnums(28) = 1.
     !
-    newton    = .false.
+    inewt     = -1
     !
     ! test output control
     !
@@ -1475,6 +1477,30 @@ subroutine SwashInit ( inerr )
     ovlexp(ivtype) = 0.
     ovhexp(ivtype) = 1.e4
     ovexcv(ivtype) = -99.
+    !
+    ivtype = 95
+    ovkeyw(ivtype) = 'DIVU'
+    ovsnam(ivtype) = 'divU'
+    ovlnam(ivtype) = 'Horizontal divergence of flow velocity'
+    ovunit(ivtype) = '1/s'
+    ovsvty(ivtype) = 1
+    ovllim(ivtype) = -100.
+    ovulim(ivtype) = 100.
+    ovlexp(ivtype) = -2.
+    ovhexp(ivtype) = 2.
+    ovexcv(ivtype) = 0.
+    !
+    ivtype = 96
+    ovkeyw(ivtype) = 'DIVQ'
+    ovsnam(ivtype) = 'divQ'
+    ovlnam(ivtype) = 'Horizontal divergence of mass flux'
+    ovunit(ivtype) = '1/s'
+    ovsvty(ivtype) = 1
+    ovllim(ivtype) = -100.
+    ovulim(ivtype) = 100.
+    ovlexp(ivtype) = -2.
+    ovhexp(ivtype) = 2.
+    ovexcv(ivtype) = 0.
     !
     ! hydrodynamic forces and moments
     !

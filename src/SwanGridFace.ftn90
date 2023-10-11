@@ -164,7 +164,7 @@ subroutine SwanGridFace ( nfaces, ncells, nverts, xcugrd, ycugrd, kvertf )
        face(iface)%atti(FACECL ) = 0
        face(iface)%atti(FACECR ) = 0
        face(iface)%atti(FMARKER) = 0
-       face(iface)%atti(FBTYPE ) = 0
+       face(iface)%atti(FBTYPE ) = 1
        !
     enddo
     !

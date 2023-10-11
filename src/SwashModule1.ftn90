@@ -596,6 +596,9 @@ module SwashCommdata3
                                                               ! =1; non-hydrostatic using box scheme for vertical pressure gradient
                                                               ! =2; non-hydrostatic using standard discretization for vertical pressure gradient
                                                               ! =3; box scheme applied for a pressure layer containing a number of velocity layers
+    integer                                    :: inewt       ! method of Newton-type iteration
+                                                              ! =0; no Newton
+                                                              ! =1; nested Newton of Brugnano and Casulli (2008)
     integer                                    :: iproj       ! indicates type of projection method
                                                               ! =1; pressure correction method
                                                               ! =2; classical projection method
@@ -624,6 +627,10 @@ module SwashCommdata3
     real                                       :: cflmax      ! maximum CFL value found in flow computation
     real                                       :: epsdry      ! minimal depth for drying/wetting
                                                               ! =epsdry; set by command SET ... [depmin] ...
+    real                                       :: epshu       ! minimal depth at velocity face
+                                                              ! =epshu; set by command SET ... [epshu] ...
+    real                                       :: epsuf       ! flow velocity with absolute value smaller than epsuf is zero
+                                                              ! to be used for determination of upwind depth
     real                                       :: kappa       ! controls the spatial accuracy of the higher order schemes
     real                                       :: mbound      ! gives the maximum bound of the flux limiter
     real                                       :: phieby      ! indicates a parameter of the Sweby Phi-limiter
@@ -699,7 +706,7 @@ module SwashCommdata3
     real*8, dimension(300,5)                   :: rcompt      !
     !
     logical                                    :: bnaut       ! indicates whether nautical or Cartesian directions are used
-    logical                                    :: ccn         ! indicates whether non-Delaunay cells are allowed or not
+    logical                                    :: ccn         ! indicates whether non-Delaunay (obtuse) cells are corrected or not
     logical                                    :: coriolis    ! indicates whether Coriolis force should be included or not
     logical                                    :: corrdep     ! water depth in velocity point is corrected to 2nd order accuracy or not
     logical                                    :: depcds      ! water depth in velocity point approximated by central differences only

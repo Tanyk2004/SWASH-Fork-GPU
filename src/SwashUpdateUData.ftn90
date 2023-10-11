@@ -85,6 +85,7 @@ subroutine SwashUpdateUData ( it )
     integer               :: icell    ! loop counter over cells
     integer, save         :: ient = 0 ! number of entries in this subroutine
     integer               :: iface    ! face index
+    integer               :: ifpco    ! frequency with which preconditioner is applied
     integer               :: indx     ! boundary point index
     integer               :: indxf    ! index of boundary face
     integer               :: indxn    ! index of next boundary point
@@ -183,10 +184,27 @@ subroutine SwashUpdateUData ( it )
     cell => gridobject%cell_grid
     face => gridobject%face_grid
     !
+    if ( ihydro == 1 .or. ihydro == 2 ) then
+       !
+       ! indicate whether preconditioner should be applied or not
+       !
+       ifpco = nint(pnums(28))
+       !
+       if ( ifpco < 0 ) then
+          lprecon = .false.
+       else if ( mod(it-1,ifpco) == 0 ) then
+          lprecon = .true.
+       else
+          lprecon = .false.
+       endif
+       !
+    endif
+    !
     ! store flow variables to previous time level
     !
     if ( nstatc == 1 ) then
        !
+       if ( relwav ) so = s0
        s0 = s1
        u0 = u1
        !
@@ -205,7 +223,10 @@ subroutine SwashUpdateUData ( it )
           !
        endif
        !
-       bcso = bcs
+       hso   = hs
+       bcso  = bcs
+       if ( kmax   > 1 ) hkso = hks
+       if ( ltrans > 0 ) bcrpo = bcrp
        !
     endif
     !
@@ -399,7 +420,10 @@ subroutine SwashUpdateUData ( it )
                 ! logarithmic distribution in vertical
                 !
                 if ( hu(indxf) > 0. ) then
-                   if ( cfricu(indxf) > 0. ) then
+                   if ( irough == 4 ) then
+                      z1 = 0.5 * ( zks(indxs,kmax-1) - zks(indxs,kmax) )
+                      z0 = z1 / exp( vonkar*logfrc(indxs,2) )
+                   else if ( cfricu(indxf) > 0. ) then
                       z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxf)) + 1. )
                    endif
                    fac = bval * hu(indxf) / ( hu(indxf)*(log(hu(indxf)/z0)-1.) + z0 )
@@ -571,7 +595,10 @@ subroutine SwashUpdateUData ( it )
                 ! logarithmic distribution in vertical
                 !
                 if ( hu(indxf) > 0. ) then
-                   if ( cfricu(indxf) > 0. ) then
+                   if ( irough == 4 ) then
+                      z1 = 0.5 * ( zks(indxs,kmax-1) - zks(indxs,kmax) )
+                      z0 = z1 / exp( vonkar*logfrc(indxs,2) )
+                   else if ( cfricu(indxf) > 0. ) then
                       z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxf)) + 1. )
                    endif
                    fac = bval / ( hu(indxf)*(log(hu(indxf)/z0)-1.) + z0 )
@@ -621,7 +648,10 @@ subroutine SwashUpdateUData ( it )
                 ! logarithmic distribution in vertical
                 !
                 if ( hu(indxf) > 0. ) then
-                   if ( cfricu(indxf) > 0. ) then
+                   if ( irough == 4 ) then
+                      z1 = 0.5 * ( zks(indxs,kmax-1) - zks(indxs,kmax) )
+                      z0 = z1 / exp( vonkar*logfrc(indxs,2) )
+                   else if ( cfricu(indxf) > 0. ) then
                       z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxf)) + 1. )
                    endif
                    fac = rsgn * sqrt( grav / hu(indxf) ) * ( 2.*bval - s0(indxs) )
@@ -996,11 +1026,30 @@ subroutine SwashUpdateUData ( it )
     ! update bottom friction coefficient
     !
 !TIMG    call SWTSTA(55)
-    if ( it > 0 .and. (ifldyn(4) == 1 .or. irough == 3 .or. irough == 4) ) then
-       call SwashUBotFrict
+    if ( irough == 4 .and. kmax > 1 ) then
+       call SwashULogLaw
+    else if ( it > 0 .and. (ifldyn(4) == 1 .or. irough == 3 .or. irough == 4) ) then
+       call SwashUBotFrict ( u0 )
     endif
 !TIMG    call SWTSTO(55)
     if (STPNOW()) return
+    !
+    ! calculate wind stresses, if appropriate
+    !
+!TIMG    call SWTSTA(56)
+    if ( iwind /= 0 .and. (it == 0 .or. ifldyn(5) == 1 .or. relwnd .or. relwav) ) call SwashUWindStress
+!TIMG    call SWTSTO(56)
+    if (STPNOW()) return
+    !
+    ! update atmospheric pressure based on space varying input field and correct water level on open boundaries, if appropriate
+    !
+    if ( it == 0 ) then
+       itmp       = ifldyn(13)
+       ifldyn(13) = 1
+    endif
+    if ( svwp .and. (ifldyn(13) == 1 .or. prmean > 0.) ) call SwashUpdUPress
+    if (STPNOW()) return
+    if ( it == 0 ) ifldyn(13) = itmp
     !
     ! calculate horizontal eddy viscosity coefficient, if appropriate
     !
@@ -1014,6 +1063,16 @@ subroutine SwashUpdateUData ( it )
     endif
 !TIMG    call SWTSTO(57)
     if (STPNOW()) return
+    !
+    ! calculate vertical eddy viscosity coefficient, if appropriate
+    !
+!TIMG    call SWTSTA(58)
+    if ( iturb /= 0 ) call SwashVertVisc
+!TIMG    call SWTSTO(58)
+    !
+    ! compute density, if appropriate
+    !
+    if ( idens /= 0 ) call SwashDensity
     !
  202 format (' boundary face', 2i8, 2(f8.3, i4))
  203 format (' wl, u: ', 2e12.4)

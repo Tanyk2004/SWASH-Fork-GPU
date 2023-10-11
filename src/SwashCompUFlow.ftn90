@@ -75,13 +75,13 @@ subroutine SwashCompUFlow
           !
           ! explicit (leap-frog) approach
           !
-          call SwashExpDepUflow ( u1(1,1), u0(1,1), uvc(1,1,1), quf(1,1,1), q(1,1), dq(1,1), gmatu(1,1,1) )
+          call SwashExpDepUflow ( u1(1,1), u0(1,1), uvc(1,1,1), quf(1,1,1), q(1,1), dq(1,1), gmatu(1,1,1), rho(1,1) )
           !
        else if ( mtimei == 2 ) then
           !
           ! semi-implicit approach
           !
-          call SwashImpDepUflow ( u1(1,1), u0(1,1), uvc(1,1,1), quf(1,1,1), q(1,1), dq(1,1), gmatu(1,1,1) )
+          call SwashImpDepUflow ( u1(1,1), u0(1,1), uvc(1,1,1), quf(1,1,1), q(1,1), dq(1,1), gmatu(1,1,1), rho(1,1) )
           !
        endif
        !

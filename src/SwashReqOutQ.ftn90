@@ -200,7 +200,10 @@ subroutine SwashReqOutQ ( found )
        if ( ivtype == 98 ) goto 110
        if ( ivtype /= 999 ) then
           call INREAL ('UNIT', dfac, 'STA', -1.)
-          if ( ivtype > 50 .and. ivtype < 100 .and. kmax == 1 ) then
+          if ( (ivtype == 95 .or. ivtype == 96) .and. optg /= 5 ) then
+             call msgerr (1, 'horizontal divergence operators will not be outputted' )
+             write (PRINTF, *) ' -> ', ovsnam(ivtype)
+          else if ( ivtype > 50 .and. ivtype < 100 .and. ivtype /= 95 .and. ivtype /= 96 .and. kmax == 1 ) then
              call msgerr (1, 'this layer-dependent quantity will not be outputted' )
              write (PRINTF, *) ' -> ', ovsnam(ivtype)
           else if ( (ivtype == 10 .or. ivtype == 11 .or. ivtype == 75 .or. ivtype == 76) .and. optg == 5 ) then
@@ -420,7 +423,10 @@ subroutine SwashReqOutQ ( found )
           if ( ivtype == 115 .and. .not.oned ) then
              call msgerr (1, 'wave runup height will not be computed in 2D mode')
           endif
-          if ( ivtype > 50 .and. ivtype < 100 .and. kmax == 1 ) then
+          if ( (ivtype == 95 .or. ivtype == 96) .and. optg /= 5 ) then
+             call msgerr (1, 'horizontal divergence operators will not be outputted' )
+             write (PRINTF, *) ' -> ', ovsnam(ivtype)
+          else if ( ivtype > 50 .and. ivtype < 100 .and. ivtype /= 95 .and. ivtype /= 96 .and. kmax == 1 ) then
              call msgerr (1, 'this layer-dependent quantity will not be outputted' )
              write (PRINTF, *) ' -> ', ovsnam(ivtype)
           else if ( (ivtype == 10 .or. ivtype == 11 .or. ivtype == 75 .or. ivtype == 76) .and. optg == 5 ) then

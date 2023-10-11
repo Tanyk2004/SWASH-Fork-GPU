@@ -307,11 +307,6 @@ subroutine SwashCheckPrep
     !
     ! check if there are instationary flow input fields while shallow water equations need to be solved
     !
-    if ( optg == 5 .and. momskip ) then
-       call msgerr (1, 'momentum equations will not be skipped in case of unstructured grids')
-       momskip = .false.
-    endif
-    !
     if ( .not.momskip ) then
        if ( ifldyn(2) /= 0 ) then
           call msgerr (1, 'instationary VX field has been read but will be ignored')
@@ -548,6 +543,28 @@ subroutine SwashCheckPrep
     endif
     if ( nonequi .or. fixlay ) numdisp = .false.
     !
+    ! check default time integration with reference to computational mesh
+    !
+    if ( mtimei < 0 ) then
+       if ( optg /= 5 ) then
+          mtimei = 1
+       else
+          mtimei = 2
+       endif
+    endif
+    !
+    ! check Newton method with reference to computational mesh
+    !
+    if ( inewt < 0 ) then
+       if ( optg /= 5 ) then
+          inewt = 0
+       else
+          inewt = 1
+       endif
+    endif
+    !
+    if ( inewt /= 0 .and. mtimei /= 2 ) inewt = 0
+    !
     ! check default projection method with reference to floating objects
     !
     if ( iproj < 0 ) then
@@ -563,6 +580,7 @@ subroutine SwashCheckPrep
     if ( icond < 0 ) then
        if ( ifloat == 0 ) then
           icond = 2
+          if ( optg == 5 ) icond = 3
        else
           icond = 3
        endif
@@ -671,6 +689,12 @@ subroutine SwashCheckPrep
     !
     if ( iturb > 1 .and. ihydro /= 2 ) then
        call msgerr (3, 'non-hydrostatic mode (option STANDARD) must be switch on in case of 3D turbulence')
+    endif
+    !
+    ! check availability of 3D turbulence model in case of unstructured grids
+    !
+    if ( iturb > 1 .and. optg == 5 ) then
+       call msgerr (3,'3D turbulence model not supported in case of unstructured grids')
     endif
     !
     ! check outputting mean turbulence quantities
@@ -809,6 +833,15 @@ subroutine SwashCheckPrep
        !
        rhow = 1000.
        !
+    endif
+    !
+    ! check background viscosity
+    !
+    if ( bvisc < 0. ) then
+       bvisc = 0.
+       ! note: including baroclinic forcing may amplify horizontal divergence checkerboard modes on unstructured mesh
+       !       therefore, add background viscosity to filter these spurious modes
+       if ( optg == 5 .and. idens /= 0 ) bvisc = 5.e-5
     endif
     !
     ! kinematic viscosity of water
@@ -1006,23 +1039,6 @@ subroutine SwashCheckPrep
        !
     endif
     !
-    ! reset numerical parameters in case of unstructured grid
-    !
-    if ( optg == 5 ) then
-       !
-       pnums(6) = 1.
-       pnums(7) = 0.
-       !
-       if ( pnums(11) /= 1. .and. pnums(11) /= 3. ) then
-          pnums(11) = 1.
-          pnums(12) = 0.
-       endif
-       !
-       strictmom  = .true.
-       stricthead = .false.
-       !
-    endif
-    !
     ! check parameters of floating objects
     !
     if ( ifloat /= 0 ) then
@@ -1097,7 +1113,10 @@ subroutine SwashCheckPrep
     !
     ! check minimal depth for drying and flooding
     !
-    if ( epsdry > 0.01 ) then
+    if ( .not. epsdry > 0. ) then
+       call msgerr (1, 'minimal depth for drying/wetting should not be negative or zero')
+       epsdry = 5.e-5
+    else if ( epsdry > 0.01 ) then
        call msgerr (1, 'minimal depth for drying/wetting should not be larger than 1 cm')
        epsdry = 0.01
     endif
@@ -1127,6 +1146,8 @@ subroutine SwashCheckPrep
     else
        delrp = epsdry
     endif
+    !
+    if ( inewt == 0 ) epshu = epsdry
     !
     ! check porosity parameters
     !
@@ -1221,8 +1242,11 @@ subroutine SwashCheckPrep
     ! check termination criterion for linear solvers
     !
     if ( pnums(21) < 0. ) then
-       call msgerr (1, 'incorrect termination criterion for the CG method')
-       pnums(21) = 0.01
+       if ( inewt == 0 ) then
+          pnums(21) = 0.01
+       else
+          pnums(21) = 0.001
+       endif
     endif
     if ( pnums(22) < 0. ) then
        call msgerr (1, 'incorrect termination criterion for the SIP or BiCGSTAB solver')
@@ -1235,16 +1259,25 @@ subroutine SwashCheckPrep
     !
     ! check and set weight factors / relaxation parameter for linear solvers
     !
-    if ( pnums(26) < 0. .or. pnums(26) > 1. ) then
+    if ( pnums(26) > 1. ) then
        call msgerr (1, 'incorrect weight factor for the CG method')
-       pnums(26) = 0.9
+       pnums(26) = -1.
+    endif
+    if ( pnums(26) < 0. ) then
+       if ( optg /= 5 ) then
+          pnums(26) = 0.9
+       else
+          pnums(26) = 0.
+       endif
     endif
     if ( pnums(27) > 1. ) then
        call msgerr (1, 'incorrect weight factor for the SIP or BiCGSTAB solver')
        pnums(27) = -1.
     endif
     if ( pnums(27) < 0. ) then
-       if ( kmax == 1 .or. ihydro == 3 ) then
+       if ( optg == 5 ) then
+          pnums(27) = 0.
+       else if ( kmax == 1 .or. ihydro == 3 ) then
           pnums(27) = 0.91
        else if ( qmax == 1 ) then
           pnums(27) = 0.93
@@ -1264,16 +1297,6 @@ subroutine SwashCheckPrep
                 pnums(27) = 0.9
              endif
           endif
-       endif
-    endif
-    !
-    ! check nested Newton iteration method
-    !
-    if ( newton ) then
-       if ( mtimei /= 2 ) newton = .false.
-       if ( ifloat == 0 ) then
-          call msgerr (1, 'nested Newton iteration method not applied')
-          newton = .false.
        endif
     endif
     !
@@ -2592,18 +2615,19 @@ subroutine SwashCheckPrep
        if ( istat == 0 .and. .not.allocated(dpu) ) allocate (dpu(nfaces), stat = istat)
     endif
     !
-    if ( istat == 0 .and. .not.allocated(hso) ) allocate (hso(mcgrd), stat = istat)
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(hs ) ) allocate (hs (mcgrd), stat = istat)
+       if ( istat == 0 .and. .not.allocated(hso) ) allocate (hso(mcgrd), stat = istat)
        if ( istat == 0 .and. .not.allocated(hu ) ) allocate (hu (mcgrd), stat = istat)
        if ( istat == 0 .and. .not.allocated(hum) ) allocate (hum(mcgrd), stat = istat)
     else
        if ( istat == 0 .and. .not.allocated(hs ) ) allocate (hs (ncells), stat = istat)
+       if ( istat == 0 .and. .not.allocated(hso) ) allocate (hso(ncells), stat = istat)
        if ( istat == 0 .and. .not.allocated(hu ) ) allocate (hu (nfaces), stat = istat)
        if ( istat == 0 .and. .not.allocated(hum) ) allocate (hum(nfaces), stat = istat)
     endif
-    if ( istat == 0 .and. .not.allocated(humn  ) ) allocate (humn  (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(humo  ) ) allocate (humo  (mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(humn) ) allocate (humn(mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(humo) ) allocate (humo(mcgrd), stat = istat)
     !
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(cfricu) ) allocate (cfricu(mcgrd), stat = istat)
@@ -2616,16 +2640,30 @@ subroutine SwashCheckPrep
     if ( istat == 0 .and. .not.allocated(aporu ) ) allocate (aporu (mcgrd), stat = istat)
     if ( istat == 0 .and. .not.allocated(bporu ) ) allocate (bporu (mcgrd), stat = istat)
     if ( istat == 0 .and. .not.allocated(cporu ) ) allocate (cporu (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(windu ) ) allocate (windu (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(cwndu ) ) allocate (cwndu (mcgrd), stat = istat)
     !
-    if ( istat == 0 .and. .not.allocated(flos  ) ) allocate (flos  (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(flou  ) ) allocate (flou  (mcgrd), stat = istat)
+    if ( optg /= 5 ) then
+       if ( istat == 0 .and. .not.allocated(windu) ) allocate (windu(mcgrd), stat = istat)
+       if ( istat == 0 .and. .not.allocated(cwndu) ) allocate (cwndu(mcgrd), stat = istat)
+    else
+       if ( istat == 0 .and. .not.allocated(windu) ) allocate (windu(nfaces), stat = istat)
+       if ( istat == 0 .and. .not.allocated(cwndu) ) allocate (cwndu(nfaces), stat = istat)
+    endif
+    !
+    if ( optg /= 5 ) then
+       if ( istat == 0 .and. .not.allocated(flos) ) allocate (flos(mcgrd), stat = istat)
+    else
+       if ( istat == 0 .and. .not.allocated(flos) ) allocate (flos(ncells), stat = istat)
+    endif
+    if ( istat == 0 .and. .not.allocated(flou) ) allocate (flou(mcgrd), stat = istat)
     !
     if ( istat == 0 .and. .not.allocated(lfbs) ) allocate (lfbs(mcgrd), stat = istat)
     !
     if ( svwp ) then
-       if ( istat == 0 .and. .not.allocated(patm) ) allocate (patm (mcgrd), stat = istat)
+       if ( optg /= 5 ) then
+          if ( istat == 0 .and. .not.allocated(patm) ) allocate (patm(mcgrd), stat = istat)
+       else
+          if ( istat == 0 .and. .not.allocated(patm) ) allocate (patm(ncells), stat = istat)
+       endif
     endif
     !
     if ( optg /= 5 ) then
@@ -2636,10 +2674,10 @@ subroutine SwashCheckPrep
        if ( istat == 0 .and. .not.allocated(wetu) ) allocate (wetu(nfaces), stat = istat)
     endif
     !
-    if ( istat == 0 .and. .not.allocated(presp ) ) allocate (presp (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(presu ) ) allocate (presu (mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(presp) ) allocate (presp(mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(presu) ) allocate (presu(mcgrd), stat = istat)
     !
-    if ( istat == 0 .and. .not.allocated(skc   ) ) allocate (skc   (mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(skc) ) allocate (skc(mcgrd), stat = istat)
     !
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(brks) ) allocate (brks(mcgrd), stat = istat)
@@ -2647,12 +2685,12 @@ subroutine SwashCheckPrep
        if ( istat == 0 .and. .not.allocated(brks) ) allocate (brks(ncells), stat = istat)
     endif
     !
-    if ( istat == 0 .and. .not.allocated(npors ) ) allocate (npors (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(nporu ) ) allocate (nporu (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(hpors ) ) allocate (hpors (mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(hporu ) ) allocate (hporu (mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(npors) ) allocate (npors(mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(nporu) ) allocate (nporu(mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(hpors) ) allocate (hpors(mcgrd), stat = istat)
+    if ( istat == 0 .and. .not.allocated(hporu) ) allocate (hporu(mcgrd), stat = istat)
     !
-    if ( istat == 0 .and. .not.allocated(cvegu ) ) allocate (cvegu (mcgrd,kmax,2), stat = istat)
+    if ( istat == 0 .and. .not.allocated(cvegu) ) allocate (cvegu(mcgrd,kmax,2), stat = istat)
     !
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(hindun) ) allocate (hindun(mcgrd), stat = istat)
@@ -2661,8 +2699,13 @@ subroutine SwashCheckPrep
     endif
     !
     if ( relwav ) then
-       if ( istat == 0 .and. .not.allocated(smax) ) allocate (smax(mcgrd), stat = istat)
-       if ( istat == 0 .and. .not.allocated(so  ) ) allocate (so  (mcgrd), stat = istat)
+       if ( optg /= 5 ) then
+          if ( istat == 0 .and. .not.allocated(smax) ) allocate (smax(mcgrd), stat = istat)
+          if ( istat == 0 .and. .not.allocated(so  ) ) allocate (so  (mcgrd), stat = istat)
+       else
+          if ( istat == 0 .and. .not.allocated(smax) ) allocate (smax(nfaces), stat = istat)
+          if ( istat == 0 .and. .not.allocated(so  ) ) allocate (so  (ncells), stat = istat)
+       endif
     endif
     !
     if ( .not.oned ) then
@@ -2804,16 +2847,17 @@ subroutine SwashCheckPrep
     ! allocate and initialize other flow data (discharges and some help arrays)
     !
     if ( .not.allocated(qx) ) allocate(qx(mcgrd,kmax), stat = istat)
-    if ( istat == 0 .and. .not.allocated(wndimp) ) allocate (wndimp(mcgrd)     , stat = istat)
     if ( istat == 0 .and. .not.allocated(apomu ) ) allocate (apomu (mcgrd,kmax), stat = istat)
     if ( istat == 0 .and. .not.allocated(bpomu ) ) allocate (bpomu (mcgrd,kmax), stat = istat)
     if ( istat == 0 .and. .not.allocated(cpomu ) ) allocate (cpomu (mcgrd,kmax), stat = istat)
     if ( optg /= 5 ) then
-       if ( istat == 0 .and. .not.allocated(sponxl) ) allocate (sponxl(mcgrd)  , stat = istat)
-       if ( istat == 0 .and. .not.allocated(sponxr) ) allocate (sponxr(mcgrd)  , stat = istat)
+       if ( istat == 0 .and. .not.allocated(wndimp) ) allocate (wndimp(mcgrd), stat = istat)
+       if ( istat == 0 .and. .not.allocated(sponxl) ) allocate (sponxl(mcgrd), stat = istat)
+       if ( istat == 0 .and. .not.allocated(sponxr) ) allocate (sponxr(mcgrd), stat = istat)
     else
-       if ( istat == 0 .and. .not.allocated(sponu ) ) allocate (sponu(nfaces,nspl), stat = istat)
-       if ( istat == 0 .and. .not.allocated(spons ) ) allocate (spons(ncells,nspl), stat = istat)
+       if ( istat == 0 .and. .not.allocated(wndimp) ) allocate (wndimp(nfaces     ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(sponu ) ) allocate (sponu (nfaces,nspl), stat = istat)
+       if ( istat == 0 .and. .not.allocated(spons ) ) allocate (spons (ncells,nspl), stat = istat)
     endif
     !
     if ( .not.oned .and. optg /= 5 ) then
@@ -2849,8 +2893,10 @@ subroutine SwashCheckPrep
     if ( istat == 0 .and. .not.allocated(up) ) allocate (up(mcgrd,kmax), stat = istat)
     !
     if ( optg == 5 ) then
-       if ( istat == 0 .and. .not.allocated(quf) ) allocate(quf(ncells,kmax,3), stat = istat)
-       if ( istat == 0 .and. .not.allocated(uvc) ) allocate(uvc(ncells,kmax,2), stat = istat)
+       if ( istat == 0 .and. .not.allocated(quf ) ) allocate(quf (ncells,kmax,3), stat = istat)
+       if ( istat == 0 .and. .not.allocated(uvc ) ) allocate(uvc (ncells,kmax,2), stat = istat)
+       if ( istat == 0 .and. .not.allocated(divu) ) allocate(divu(ncells,kmax  ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(divq) ) allocate(divq(ncells,kmax  ), stat = istat)
     endif
     !
     if ( kmax == 1 ) then
@@ -2866,15 +2912,13 @@ subroutine SwashCheckPrep
           endif
        endif
        if ( optg /= 5 ) then
-          if ( istat == 0 .and. .not.allocated(cbot) ) allocate (cbot(mcgrd), stat = istat)
-       else
-          if ( istat == 0 .and. .not.allocated(cbot) ) allocate (cbot(nfaces), stat = istat)
-       endif
-       if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(mcgrd), stat = istat)
-       if ( optg /= 5 ) then
+          if ( istat == 0 .and. .not.allocated(cbot ) ) allocate (cbot (mcgrd), stat = istat)
+          if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(mcgrd), stat = istat)
           if ( istat == 0 .and. .not.allocated(visc ) ) allocate (visc (mcgrd), stat = istat)
           if ( istat == 0 .and. .not.allocated(qgrad) ) allocate (qgrad(mcgrd), stat = istat)
        else
+          if ( istat == 0 .and. .not.allocated(cbot ) ) allocate (cbot (nfaces), stat = istat)
+          if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(nfaces), stat = istat)
           if ( istat == 0 .and. .not.allocated(visc ) ) allocate (visc (nfaces), stat = istat)
           if ( istat == 0 .and. .not.allocated(qgrad) ) allocate (qgrad(nfaces), stat = istat)
        endif
@@ -2998,7 +3042,11 @@ subroutine SwashCheckPrep
     !
     if ( idens /= 0 ) then
        !
-       if ( istat == 0 .and. .not.allocated(rho) ) allocate (rho(mcgrd,kmax), stat = istat)
+       if ( optg /= 5 ) then
+          if ( istat == 0 .and. .not.allocated(rho) ) allocate (rho(mcgrd,kmax), stat = istat)
+       else
+          if ( istat == 0 .and. .not.allocated(rho) ) allocate (rho(ncells,kmax), stat = istat)
+       endif
        !
     else
        !
@@ -3008,7 +3056,11 @@ subroutine SwashCheckPrep
     !
     if ( ltrans > 0 ) then
        !
-       if ( istat == 0 .and. .not.allocated(rp) ) allocate (rp(mcgrd,kmax,ltrans), stat = istat)
+       if ( optg /= 5 ) then
+          if ( istat == 0 .and. .not.allocated(rp) ) allocate (rp(mcgrd,kmax,ltrans), stat = istat)
+       else
+          if ( istat == 0 .and. .not.allocated(rp) ) allocate (rp(ncells,kmax,ltrans), stat = istat)
+       endif
        !
        if ( oned ) then
           !
@@ -3028,6 +3080,13 @@ subroutine SwashCheckPrep
           if ( .not.allocated(icretr) ) allocate (icretr(1,kmax))
           if ( .not.allocated(icretb) ) allocate (icretb(0,0))
           if ( .not.allocated(icrett) ) allocate (icrett(0,0))
+          !
+       else if ( optg == 5 ) then
+          !
+          if ( istat == 0 .and. .not.allocated(fluxt ) ) allocate (fluxt (nfaces ,kmax       ), stat = istat)
+          if ( istat == 0 .and. .not.allocated(cbndu ) ) allocate (cbndu (nfacesb,kmax,ltrans), stat = istat)
+          if ( istat == 0 .and. .not.allocated(coutu ) ) allocate (coutu (nfacesb,kmax       ), stat = istat)
+          if ( istat == 0 .and. .not.allocated(icretu) ) allocate (icretu(nfacesb,kmax       ), stat = istat)
           !
        else
           !
@@ -3054,7 +3113,11 @@ subroutine SwashCheckPrep
     !
     if ( itrans /= 0 ) then
        !
-       if ( istat == 0 .and. .not.allocated(rpo) ) allocate (rpo(mcgrd,kmax), stat = istat)
+       if ( optg /= 5 ) then
+          if ( istat == 0 .and. .not.allocated(rpo) ) allocate (rpo(mcgrd,kmax), stat = istat)
+       else
+          if ( istat == 0 .and. .not.allocated(rpo) ) allocate (rpo(ncells,kmax), stat = istat)
+       endif
        !
     endif
     !
@@ -3073,13 +3136,25 @@ subroutine SwashCheckPrep
           if ( istat == 0 .and. .not.allocated(vnu3d) ) allocate (vnu3d(ncells,0:kmax), stat = istat)
        endif
        if ( ltur /= 0 ) then
-          if ( istat == 0 .and. .not.allocated(rtur) ) allocate (rtur(mcgrd,0:kmax,ltur), stat = istat)
+          if ( optg /= 5 ) then
+             if ( istat == 0 .and. .not.allocated(rtur) ) allocate (rtur(mcgrd,0:kmax,ltur), stat = istat)
+          else
+             if ( istat == 0 .and. .not.allocated(rtur) ) allocate (rtur(ncells,0:kmax,ltur), stat = istat)
+          endif
        endif
        if ( iturb /= 0 ) then
-          if ( istat == 0 .and. .not.allocated(zshear) ) allocate (zshear(mcgrd,kmax-1), stat = istat)
+          if ( optg /= 5 ) then
+             if ( istat == 0 .and. .not.allocated(zshear) ) allocate (zshear(mcgrd,kmax-1), stat = istat)
+          else
+             if ( istat == 0 .and. .not.allocated(zshear) ) allocate (zshear(ncells,kmax-1), stat = istat)
+          endif
        endif
        if ( irough == 4 ) then
-          if ( istat == 0 .and. .not.allocated(logfrc) ) allocate (logfrc(mcgrd,2), stat = istat)
+          if ( optg /= 5 ) then
+             if ( istat == 0 .and. .not.allocated(logfrc) ) allocate (logfrc(mcgrd,2), stat = istat)
+          else
+             if ( istat == 0 .and. .not.allocated(logfrc) ) allocate (logfrc(ncells,2), stat = istat)
+          endif
        endif
        if ( iturb > 1 ) then
           if ( istat == 0 .and. .not.allocated(rsuu) ) allocate (rsuu(mcgrd,1:kmax), stat = istat)
@@ -3152,8 +3227,10 @@ subroutine SwashCheckPrep
     up = 0.
     !
     if ( optg == 5 ) then
-       quf = 0.
-       uvc = 0.
+       quf  = 0.
+       uvc  = 0.
+       divu = 0.
+       divq = 0.
     endif
     !
     if ( kmax == 1 ) then
@@ -3206,16 +3283,22 @@ subroutine SwashCheckPrep
     if ( idens /= 0 ) rho = 0.
     !
     if ( ltrans > 0 ) then
-       rp   = 0.
-       flux = 0.
+       rp = 0.
        if ( oned ) then
+          flux   = 0.
           cbndl  = 0.
           cbndr  = 0.
           coutl  = 0.
           coutr  = 0.
           icretl = 0.
           icretr = 0.
+       else if ( optg == 5 ) then
+          fluxt  = 0.
+          cbndu  = 0.
+          coutu  = 0.
+          icretu = 0.
        else
+          flux   = 0.
           cbndl  = 0.
           cbndr  = 0.
           cbndb  = 0.
@@ -3321,7 +3404,13 @@ subroutine SwashCheckPrep
     !
     ! initialize transport constituents and store boundary values
     !
-    if ( optg /= 5 .and. itrans /= 0 ) call SwashInitBCtrans
+    if ( itrans /= 0 ) then
+       if ( optg /= 5 ) then
+          call SwashInitBCtrans
+       else
+          call SwashInitBCUtrans
+       endif
+    endif
     !
     ! allocate and initialize layer interfaces and layer thicknesses
     !
@@ -3352,7 +3441,7 @@ subroutine SwashCheckPrep
           if ( istat == 0 .and. .not.allocated(zkum  ) ) allocate (zkum  (nfaces,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hks   ) ) allocate (hks   (ncells,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hksnew) ) allocate (hksnew(ncells,  kmax), stat = istat)
-          if ( istat == 0 .and. .not.allocated(hkso  ) ) allocate (hkso  (     0,     0), stat = istat)
+          if ( istat == 0 .and. .not.allocated(hkso  ) ) allocate (hkso  (ncells,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hku   ) ) allocate (hku   (nfaces,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hkum  ) ) allocate (hkum  (nfaces,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hkumn ) ) allocate (hkumn (     0,     0), stat = istat)
@@ -3606,12 +3695,19 @@ subroutine SwashCheckPrep
        !
     endif
     !
-    ! allocate and initialize arrays for storing water levels prescribed at boundary faces of triangular mesh
+    ! allocate and initialize arrays for storing water levels and constituents prescribed at boundary faces of triangular mesh
     !
     if ( optg == 5 ) then
        !
        if ( .not.allocated(bcs) ) allocate(bcs(nfaces), stat = istat)
        if ( istat == 0 .and. .not.allocated(bcso) ) allocate(bcso(nfaces), stat = istat)
+       !
+       if ( ltrans > 0 ) then
+          !
+          if ( istat == 0 .and. .not.allocated(bcrp ) ) allocate(bcrp (nfacesb,kmax,ltrans), stat = istat)
+          if ( istat == 0 .and. .not.allocated(bcrpo) ) allocate(bcrpo(nfacesb,kmax,ltrans), stat = istat)
+          !
+       endif
        !
        if ( istat /= 0 ) then
           write (msgstr, '(a,i6)') 'allocation problem: variables for flexible mesh and return code is ',istat
@@ -3621,6 +3717,13 @@ subroutine SwashCheckPrep
        !
        bcs  = 0.
        bcso = 0.
+       !
+       if ( ltrans > 0 ) then
+          !
+          bcrp  = 0.
+          bcrpo = 0.
+          !
+       endif
        !
     endif
     !
@@ -3946,7 +4049,7 @@ subroutine SwashCheckPrep
                 z1 = 0.
                 z2 = 0.
                 !
-                if ( newton ) then
+                if ( inewt /= 0 ) then
                    !
                    if ( .not.allocated(z12) ) allocate (z12(mcgrd), stat = istat)
                    if ( istat == 0 .and. .not.allocated(z22) ) allocate (z22(mcgrd), stat = istat)
@@ -3964,7 +4067,7 @@ subroutine SwashCheckPrep
                 !
              endif
              !
-             if ( newton ) then
+             if ( inewt /= 0 ) then
                 !
                 if ( .not.allocated(an) ) allocate (an(mcgrd), stat = istat)
                 if ( istat == 0 .and. .not.allocated(bn ) ) allocate (bn (mcgrd), stat = istat)
@@ -3973,17 +4076,17 @@ subroutine SwashCheckPrep
                 if ( istat == 0 .and. .not.allocated(lon) ) allocate (lon(mcgrd), stat = istat)
                 if ( istat == 0 .and. .not.allocated(upn) ) allocate (upn(mcgrd), stat = istat)
                 !
-                if ( istat == 0 .and. .not.allocated(p0 ) ) allocate (p0 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(p1 ) ) allocate (p1 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q0 ) ) allocate (q0 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q1 ) ) allocate (q1 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(ba ) ) allocate (ba (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(da ) ) allocate (da (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(sol) ) allocate (sol(mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(vt ) ) allocate (vt (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(p0  ) ) allocate (p0  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(p1  ) ) allocate (p1  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(q0  ) ) allocate (q0  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(q1  ) ) allocate (q1  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(ba  ) ) allocate (ba  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(da  ) ) allocate (da  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(sola) ) allocate (sola(mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(vt  ) ) allocate (vt  (mcgrd), stat = istat)
                 !
                 if ( istat /= 0 ) then
-                   write (msgstr, '(a,i6)') 'allocation problem: variables for nested Newton iteration and return code is ',istat
+                   write (msgstr, '(a,i6)') 'allocation problem: variables for Newton iteration and return code is ',istat
                    call msgerr ( 4, trim(msgstr) )
                    return
                 endif
@@ -4001,7 +4104,7 @@ subroutine SwashCheckPrep
                 q1  = 0d0
                 ba  = 1d0
                 da  = 0d0
-                sol = 0d0
+                sola= 0d0
                 vt  = 0d0
                 !
              endif
@@ -4030,73 +4133,142 @@ subroutine SwashCheckPrep
              !
              if ( mtimei == 2 ) then
                 !
-                if ( .not.newton ) then
+                if ( optg /= 5 ) then
                    !
-                   if ( optg /= 5 ) then
+                   if ( inewt == 0 ) then
+                      !
                       if ( .not.allocated(diag) ) allocate (diag(mcgrd), stat = istat)
                       if ( istat == 0 .and. .not.allocated(s) ) allocate (s(mcgrd), stat = istat)
                       if ( istat == 0 .and. .not.allocated(r) ) allocate (r(mcgrd), stat = istat)
                       if ( istat == 0 .and. .not.allocated(z) ) allocate (z(mcgrd), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      diag = 1.
+                      s    = 0.
+                      r    = 0.
+                      z    = 0.
+                      !
                    else
-                      if ( .not.allocated(diag) ) allocate (diag(ncells), stat = istat)
-                      if ( istat == 0 .and. .not.allocated(s) ) allocate (s(ncells), stat = istat)
-                      if ( istat == 0 .and. .not.allocated(r) ) allocate (r(ncells), stat = istat)
-                      if ( istat == 0 .and. .not.allocated(z) ) allocate (z(ncells), stat = istat)
+                      !
+                      if ( .not.allocated(diag2) ) allocate (diag2(mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(resd2) ) allocate (resd2(mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(s2   ) ) allocate (s2   (mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(r2   ) ) allocate (r2   (mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(z3   ) ) allocate (z3   (mcgrd), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      diag2 = 1d0
+                      resd2 = 0d0
+                      s2    = 0d0
+                      r2    = 0d0
+                      z3    = 0d0
+                      !
                    endif
-                   !
-                   if ( istat /= 0 ) then
-                      write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
-                      call msgerr ( 4, trim(msgstr) )
-                      return
-                   endif
-                   !
-                   diag = 1.
-                   s    = 0.
-                   r    = 0.
-                   z    = 0.
                    !
                 else
                    !
-                   if ( .not.allocated(diag2) ) allocate (diag2(mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(resd2) ) allocate (resd2(mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(s2   ) ) allocate (s2   (mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(r2   ) ) allocate (r2   (mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(z3   ) ) allocate (z3   (mcgrd), stat = istat)
+                   ! integer arrays to be used for the CSR format
                    !
-                   if ( istat /= 0 ) then
-                      write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
-                      call msgerr ( 4, trim(msgstr) )
-                      return
+                   if ( .not.allocated(ias) ) allocate (ias(ncells+1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(irws) ) allocate (irws(  ncells,1:4), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(jas ) ) allocate (jas (4*ncells    ), stat = istat)
+                   !
+                   if ( istat == 0 .and. .not.allocated(dis ) ) allocate (dis (ncells), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(iplu) ) allocate (iplu(ncells), stat = istat)
+                   !
+                   if ( inewt == 0 ) then
+                      !
+                      if ( istat == 0 .and. .not.allocated(prec2) ) allocate (prec2(0:4*ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(s    ) ) allocate (s    (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(r    ) ) allocate (r    (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(z    ) ) allocate (z    (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(axs2 ) ) allocate (axs2 (  4*ncells), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      prec2 = 0.
+                      s     = 0.
+                      r     = 0.
+                      z     = 0.
+                      axs2  = 0.
+                      !
+                   else
+                      !
+                      if ( istat == 0 .and. .not.allocated(prec3) ) allocate (prec3(0:4*ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(resd2) ) allocate (resd2(    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(s2   ) ) allocate (s2   (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(r2   ) ) allocate (r2   (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(z3   ) ) allocate (z3   (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(axs  ) ) allocate (axs  (  4*ncells), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      prec3 = 0d0
+                      resd2 = 0d0
+                      s2    = 0d0
+                      r2    = 0d0
+                      z3    = 0d0
+                      axs   = 0d0
+                      !
                    endif
                    !
-                   diag2 = 1d0
-                   resd2 = 0d0
-                   s2    = 0d0
-                   r2    = 0d0
-                   z3    = 0d0
+                   ! fill CSR arrays
+                   !
+                   call csrf ( ias, jas, irws, dis, 1, 3 )
                    !
                 endif
                 !
              endif
              !
-             if ( newton ) then
+             if ( inewt /= 0 ) then
                 !
-                if ( .not.allocated(amatn) ) allocate (amatn(mcgrd,5), stat = istat)
-                if ( istat == 0 .and. .not.allocated(rhsn ) ) allocate (rhsn (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(lon  ) ) allocate (lon  (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(upn  ) ) allocate (upn  (mcgrd  ), stat = istat)
-                !
-                if ( istat == 0 .and. .not.allocated(p0   ) ) allocate (p0   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(p1   ) ) allocate (p1   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q0   ) ) allocate (q0   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q1   ) ) allocate (q1   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(amata) ) allocate (amata(mcgrd,5), stat = istat)
-                if ( istat == 0 .and. .not.allocated(rhsa ) ) allocate (rhsa (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(sol  ) ) allocate (sol  (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(vt   ) ) allocate (vt   (mcgrd  ), stat = istat)
+                if ( optg /= 5 ) then
+                   if ( .not.allocated(amatn) ) allocate (amatn(mcgrd,5), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsn ) ) allocate (rhsn (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(lon  ) ) allocate (lon  (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(upn  ) ) allocate (upn  (mcgrd  ), stat = istat)
+                   !
+                   if ( istat == 0 .and. .not.allocated(p0   ) ) allocate (p0   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(p1   ) ) allocate (p1   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(q0   ) ) allocate (q0   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(q1   ) ) allocate (q1   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(sola ) ) allocate (sola (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(amata) ) allocate (amata(mcgrd,5), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsa ) ) allocate (rhsa (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(vt   ) ) allocate (vt   (mcgrd  ), stat = istat)
+                else
+                   if ( .not.allocated(amatn) ) allocate (amatn(ncells,0:3), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsn ) ) allocate (rhsn (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(lon  ) ) allocate (lon  (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(upn  ) ) allocate (upn  (ncells    ), stat = istat)
+                   !
+                   if ( istat == 0 .and. .not.allocated(sol0 ) ) allocate (sol0 (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(sol1 ) ) allocate (sol1 (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(amata) ) allocate (amata(ncells,0:3), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsa ) ) allocate (rhsa (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(vt   ) ) allocate (vt   (ncells    ), stat = istat)
+                endif
                 !
                 if ( istat /= 0 ) then
-                   write (msgstr, '(a,i6)') 'allocation problem: variables for nested Newton iteration and return code is ',istat
+                   write (msgstr, '(a,i6)') 'allocation problem: variables for Newton iteration and return code is ',istat
                    call msgerr ( 4, trim(msgstr) )
                    return
                 endif
@@ -4106,13 +4278,19 @@ subroutine SwashCheckPrep
                 lon   = 0d0
                 upn   = 0d0
                 !
-                p0    = 1d0
-                p1    = 1d0
-                q0    = 0d0
-                q1    = 0d0
+                if ( optg /= 5 ) then
+                   p0   = 1d0
+                   p1   = 1d0
+                   q0   = 0d0
+                   q1   = 0d0
+                   sola = 0d0
+                else
+                   sol0 = 0d0
+                   sol1 = 0d0
+                endif
+                !
                 amata = 0d0
                 rhsa  = 0d0
-                sol   = 0d0
                 vt    = 0d0
                 !
              endif
@@ -4137,35 +4315,52 @@ subroutine SwashCheckPrep
                 !
                 if ( ihydro == 1 ) then
                    !
-                   ! arrays to be used in sparskit routines
+                   ! integer arrays to be used for the CSR format
                    !
                    if ( .not.allocated(ia) ) allocate (ia(ncells+1), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(iw ) ) allocate (iw (2*ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(ja ) ) allocate (ja (4*ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(jau) ) allocate (jau(7*ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(ju ) ) allocate (ju (  ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(ax ) ) allocate (ax (4*ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(au ) ) allocate (au (7*ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(rs ) ) allocate (rs (  ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(sol) ) allocate (sol(  ncells), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(wk ) ) allocate (wk (8*ncells), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(irw) ) allocate (irw(  ncells,1:4), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(ja ) ) allocate (ja (4*ncells    ), stat = istat)
                    !
-                   ia  = 0
-                   iw  = 0
-                   ja  = 0
-                   jau = 0
-                   ju  = 0
-                   ax  = 0d0
-                   au  = 0d0
-                   rs  = 0d0
-                   sol = 0d0
-                   wk  = 0d0
+                   if ( istat == 0 .and. .not.allocated(di  ) ) allocate (di  (ncells), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(iplu) ) allocate (iplu(ncells), stat = istat)
+                   !
+                   if ( icond == 2 ) then
+                      if ( istat == 0 .and. .not.allocated(diag) ) allocate (diag(ncells), stat = istat)
+                   else if ( icond == 3 ) then
+                      if ( istat == 0 .and. .not.allocated(prec2) ) allocate (prec2(0:4*ncells), stat = istat)
+                   endif
+                   if ( istat == 0 .and. .not.allocated(res ) ) allocate (res (ncells,1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(res0) ) allocate (res0(ncells,1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(p   ) ) allocate (p   (ncells,1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(v   ) ) allocate (v   (ncells,1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(u   ) ) allocate (u   (ncells,1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(t   ) ) allocate (t   (ncells,1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(ax2 ) ) allocate (ax2 (4*ncells), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(w2  ) ) allocate (w2  (ncells  ), stat = istat)
+                   !
+                   if ( icond == 2 ) then
+                      diag = 1.
+                   else if ( icond == 3 ) then
+                      prec2 = 0.
+                   endif
+                   res  = 0.
+                   res0 = 0.
+                   p    = 0.
+                   v    = 0.
+                   u    = 0.
+                   t    = 0.
+                   ax2  = 0.
+                   w2   = 0.
                    !
                    if ( istat /= 0 ) then
                       write (msgstr, '(a,i6)') 'allocation problem: variables for system of equations and return code is ',istat
                       call msgerr ( 4, trim(msgstr) )
                       return
                    endif
+                   !
+                   ! fill CSR arrays
+                   !
+                   call csrf ( ia, ja, irw, di, 1, 3 )
                    !
                 endif
                 !
@@ -4193,14 +4388,14 @@ subroutine SwashCheckPrep
           if ( .not.allocated(lon) ) allocate (lon(0))
           if ( .not.allocated(upn) ) allocate (upn(0))
           !
-          if ( .not.allocated(p0 ) ) allocate (p0 (0))
-          if ( .not.allocated(p1 ) ) allocate (p1 (0))
-          if ( .not.allocated(q0 ) ) allocate (q0 (0))
-          if ( .not.allocated(q1 ) ) allocate (q1 (0))
-          if ( .not.allocated(ba ) ) allocate (ba (0))
-          if ( .not.allocated(da ) ) allocate (da (0))
-          if ( .not.allocated(sol) ) allocate (sol(0))
-          if ( .not.allocated(vt ) ) allocate (vt (0))
+          if ( .not.allocated(p0  ) ) allocate (p0  (0))
+          if ( .not.allocated(p1  ) ) allocate (p1  (0))
+          if ( .not.allocated(q0  ) ) allocate (q0  (0))
+          if ( .not.allocated(q1  ) ) allocate (q1  (0))
+          if ( .not.allocated(ba  ) ) allocate (ba  (0))
+          if ( .not.allocated(da  ) ) allocate (da  (0))
+          if ( .not.allocated(sola) ) allocate (sola(0))
+          if ( .not.allocated(vt  ) ) allocate (vt  (0))
           !
           if ( .not.allocated(amat) ) allocate (amat(0,0))
           if ( .not.allocated(rhs ) ) allocate (rhs (0  ))
@@ -4217,11 +4412,23 @@ subroutine SwashCheckPrep
           if ( .not.allocated(r2   ) ) allocate (r2   (0))
           if ( .not.allocated(z3   ) ) allocate (z3   (0))
           !
+          if ( .not.allocated(prec2) ) allocate (prec2(0))
+          if ( .not.allocated(prec3) ) allocate (prec3(0))
+          !
+          if ( .not.allocated(ias ) ) allocate (ias (0))
+          if ( .not.allocated(irws) ) allocate (irws(0,0))
+          if ( .not.allocated(dis ) ) allocate (dis (0))
+          if ( .not.allocated(jas ) ) allocate (jas (0))
+          if ( .not.allocated(axs ) ) allocate (axs (0))
+          if ( .not.allocated(axs2) ) allocate (axs2(0))
+          !
           if ( .not.allocated(amatn) ) allocate (amatn(0,0))
           if ( .not.allocated(rhsn ) ) allocate (rhsn (0  ))
           !
           if ( .not.allocated(amata) ) allocate (amata(0,0))
           if ( .not.allocated(rhsa ) ) allocate (rhsa (0  ))
+          if ( .not.allocated(sol0 ) ) allocate (sol0 (0  ))
+          if ( .not.allocated(sol1 ) ) allocate (sol1 (0  ))
           !
           if ( .not.allocated(cmat) ) allocate (cmat(0,0))
           !
@@ -4229,18 +4436,18 @@ subroutine SwashCheckPrep
           if ( .not.allocated(res0) ) allocate (res0(0,0))
           if ( .not.allocated(p   ) ) allocate (p   (0,0))
           if ( .not.allocated(v   ) ) allocate (v   (0,0))
+          if ( .not.allocated(w   ) ) allocate (w   (0,0))
           if ( .not.allocated(u   ) ) allocate (u   (0,0))
           if ( .not.allocated(t   ) ) allocate (t   (0,0))
           !
+          if ( .not.allocated(iplu) ) allocate (iplu(0))
+          !
           if ( .not.allocated(ia ) ) allocate (ia (0))
-          if ( .not.allocated(iw ) ) allocate (iw (0))
+          if ( .not.allocated(irw) ) allocate (irw(0,0))
+          if ( .not.allocated(di ) ) allocate (di (0))
           if ( .not.allocated(ja ) ) allocate (ja (0))
-          if ( .not.allocated(jau) ) allocate (jau(0))
-          if ( .not.allocated(ju ) ) allocate (ju (0))
-          if ( .not.allocated(ax ) ) allocate (ax (0))
-          if ( .not.allocated(au ) ) allocate (au (0))
-          if ( .not.allocated(rs ) ) allocate (rs (0))
-          if ( .not.allocated(wk ) ) allocate (wk (0))
+          if ( .not.allocated(ax2) ) allocate (ax2(0))
+          if ( .not.allocated(w2 ) ) allocate (w2 (0))
           !
        endif
        !
@@ -4297,7 +4504,7 @@ subroutine SwashCheckPrep
                 z1 = 0.
                 z2 = 0.
                 !
-                if ( newton ) then
+                if ( inewt /= 0 ) then
                    !
                    if ( .not.allocated(z12) ) allocate (z12(mcgrd), stat = istat)
                    if ( istat == 0 .and. .not.allocated(z22) ) allocate (z22(mcgrd), stat = istat)
@@ -4315,7 +4522,7 @@ subroutine SwashCheckPrep
                 !
              endif
              !
-             if ( newton ) then
+             if ( inewt /= 0 ) then
                 !
                 if ( .not.allocated(an) ) allocate (an(mcgrd), stat = istat)
                 if ( istat == 0 .and. .not.allocated(bn ) ) allocate (bn (mcgrd), stat = istat)
@@ -4324,17 +4531,17 @@ subroutine SwashCheckPrep
                 if ( istat == 0 .and. .not.allocated(lon) ) allocate (lon(mcgrd), stat = istat)
                 if ( istat == 0 .and. .not.allocated(upn) ) allocate (upn(mcgrd), stat = istat)
                 !
-                if ( istat == 0 .and. .not.allocated(p0 ) ) allocate (p0 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(p1 ) ) allocate (p1 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q0 ) ) allocate (q0 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q1 ) ) allocate (q1 (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(ba ) ) allocate (ba (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(da ) ) allocate (da (mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(sol) ) allocate (sol(mcgrd), stat = istat)
-                if ( istat == 0 .and. .not.allocated(vt ) ) allocate (vt (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(p0  ) ) allocate (p0  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(p1  ) ) allocate (p1  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(q0  ) ) allocate (q0  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(q1  ) ) allocate (q1  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(ba  ) ) allocate (ba  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(da  ) ) allocate (da  (mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(sola) ) allocate (sola(mcgrd), stat = istat)
+                if ( istat == 0 .and. .not.allocated(vt  ) ) allocate (vt  (mcgrd), stat = istat)
                 !
                 if ( istat /= 0 ) then
-                   write (msgstr, '(a,i6)') 'allocation problem: variables for nested Newton iteration and return code is ',istat
+                   write (msgstr, '(a,i6)') 'allocation problem: variables for Newton iteration and return code is ',istat
                    call msgerr ( 4, trim(msgstr) )
                    return
                 endif
@@ -4352,7 +4559,7 @@ subroutine SwashCheckPrep
                 q1  = 0d0
                 ba  = 1d0
                 da  = 0d0
-                sol = 0d0
+                sola= 0d0
                 vt  = 0d0
                 !
              endif
@@ -4381,73 +4588,142 @@ subroutine SwashCheckPrep
              !
              if ( mtimei == 2 ) then
                 !
-                if ( .not.newton ) then
+                if ( optg /= 5 ) then
                    !
-                   if ( optg /= 5 ) then
+                   if ( inewt == 0 ) then
+                      !
                       if ( .not.allocated(diag) ) allocate (diag(mcgrd), stat = istat)
                       if ( istat == 0 .and. .not.allocated(s) ) allocate (s(mcgrd), stat = istat)
                       if ( istat == 0 .and. .not.allocated(r) ) allocate (r(mcgrd), stat = istat)
                       if ( istat == 0 .and. .not.allocated(z) ) allocate (z(mcgrd), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      diag = 1.
+                      s    = 0.
+                      r    = 0.
+                      z    = 0.
+                      !
                    else
-                      if ( .not.allocated(diag) ) allocate (diag(ncells), stat = istat)
-                      if ( istat == 0 .and. .not.allocated(s) ) allocate (s(ncells), stat = istat)
-                      if ( istat == 0 .and. .not.allocated(r) ) allocate (r(ncells), stat = istat)
-                      if ( istat == 0 .and. .not.allocated(z) ) allocate (z(ncells), stat = istat)
+                      !
+                      if ( .not.allocated(diag2) ) allocate (diag2(mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(resd2) ) allocate (resd2(mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(s2   ) ) allocate (s2   (mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(r2   ) ) allocate (r2   (mcgrd), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(z3   ) ) allocate (z3   (mcgrd), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      diag2 = 1d0
+                      resd2 = 0d0
+                      s2    = 0d0
+                      r2    = 0d0
+                      z3    = 0d0
+                      !
                    endif
-                   !
-                   if ( istat /= 0 ) then
-                      write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
-                      call msgerr ( 4, trim(msgstr) )
-                      return
-                   endif
-                   !
-                   diag = 1.
-                   s    = 0.
-                   r    = 0.
-                   z    = 0.
                    !
                 else
                    !
-                   if ( .not.allocated(diag2) ) allocate (diag2(mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(resd2) ) allocate (resd2(mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(s2   ) ) allocate (s2   (mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(r2   ) ) allocate (r2   (mcgrd), stat = istat)
-                   if ( istat == 0 .and. .not.allocated(z3   ) ) allocate (z3   (mcgrd), stat = istat)
+                   ! integer arrays to be used for the CSR format
                    !
-                   if ( istat /= 0 ) then
-                      write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
-                      call msgerr ( 4, trim(msgstr) )
-                      return
+                   if ( .not.allocated(ias) ) allocate (ias(ncells+1), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(irws) ) allocate (irws(  ncells,1:4), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(jas ) ) allocate (jas (4*ncells    ), stat = istat)
+                   !
+                   if ( istat == 0 .and. .not.allocated(dis ) ) allocate (dis (ncells), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(iplu) ) allocate (iplu(ncells), stat = istat)
+                   !
+                   if ( inewt == 0 ) then
+                      !
+                      if ( istat == 0 .and. .not.allocated(prec2) ) allocate (prec2(0:4*ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(s    ) ) allocate (s    (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(r    ) ) allocate (r    (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(z    ) ) allocate (z    (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(axs2 ) ) allocate (axs2 (  4*ncells), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      prec2 = 0.
+                      s     = 0.
+                      r     = 0.
+                      z     = 0.
+                      axs2  = 0.
+                      !
+                   else
+                      !
+                      if ( istat == 0 .and. .not.allocated(prec3) ) allocate (prec3(0:4*ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(resd2) ) allocate (resd2(    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(s2   ) ) allocate (s2   (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(r2   ) ) allocate (r2   (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(z3   ) ) allocate (z3   (    ncells), stat = istat)
+                      if ( istat == 0 .and. .not.allocated(axs  ) ) allocate (axs  (  4*ncells), stat = istat)
+                      !
+                      if ( istat /= 0 ) then
+                         write (msgstr, '(a,i6)') 'allocation problem: variables for CG solver and return code is ',istat
+                         call msgerr ( 4, trim(msgstr) )
+                         return
+                      endif
+                      !
+                      prec3 = 0d0
+                      resd2 = 0d0
+                      s2    = 0d0
+                      r2    = 0d0
+                      z3    = 0d0
+                      axs   = 0d0
+                      !
                    endif
                    !
-                   diag2 = 1d0
-                   resd2 = 0d0
-                   s2    = 0d0
-                   r2    = 0d0
-                   z3    = 0d0
+                   ! fill CSR arrays
+                   !
+                   call csrf ( ias, jas, irws, dis, 1, 3 )
                    !
                 endif
                 !
              endif
              !
-             if ( newton ) then
+             if ( inewt /= 0 ) then
                 !
-                if ( .not.allocated(amatn) ) allocate (amatn(mcgrd,5), stat = istat)
-                if ( istat == 0 .and. .not.allocated(rhsn ) ) allocate (rhsn (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(lon  ) ) allocate (lon  (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(upn  ) ) allocate (upn  (mcgrd  ), stat = istat)
-                !
-                if ( istat == 0 .and. .not.allocated(p0   ) ) allocate (p0   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(p1   ) ) allocate (p1   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q0   ) ) allocate (q0   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(q1   ) ) allocate (q1   (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(amata) ) allocate (amata(mcgrd,5), stat = istat)
-                if ( istat == 0 .and. .not.allocated(rhsa ) ) allocate (rhsa (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(sol  ) ) allocate (sol  (mcgrd  ), stat = istat)
-                if ( istat == 0 .and. .not.allocated(vt   ) ) allocate (vt   (mcgrd  ), stat = istat)
+                if ( optg /= 5 ) then
+                   if ( .not.allocated(amatn) ) allocate (amatn(mcgrd,5), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsn ) ) allocate (rhsn (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(lon  ) ) allocate (lon  (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(upn  ) ) allocate (upn  (mcgrd  ), stat = istat)
+                   !
+                   if ( istat == 0 .and. .not.allocated(p0   ) ) allocate (p0   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(p1   ) ) allocate (p1   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(q0   ) ) allocate (q0   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(q1   ) ) allocate (q1   (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(sola ) ) allocate (sola (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(amata) ) allocate (amata(mcgrd,5), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsa ) ) allocate (rhsa (mcgrd  ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(vt   ) ) allocate (vt   (mcgrd  ), stat = istat)
+                else
+                   if ( .not.allocated(amatn) ) allocate (amatn(ncells,0:3), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsn ) ) allocate (rhsn (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(lon  ) ) allocate (lon  (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(upn  ) ) allocate (upn  (ncells    ), stat = istat)
+                   !
+                   if ( istat == 0 .and. .not.allocated(sol0 ) ) allocate (sol0 (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(sol1 ) ) allocate (sol1 (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(amata) ) allocate (amata(ncells,0:3), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(rhsa ) ) allocate (rhsa (ncells    ), stat = istat)
+                   if ( istat == 0 .and. .not.allocated(vt   ) ) allocate (vt   (ncells    ), stat = istat)
+                endif
                 !
                 if ( istat /= 0 ) then
-                   write (msgstr, '(a,i6)') 'allocation problem: variables for nested Newton iteration and return code is ',istat
+                   write (msgstr, '(a,i6)') 'allocation problem: variables for Newton iteration and return code is ',istat
                    call msgerr ( 4, trim(msgstr) )
                    return
                 endif
@@ -4457,13 +4733,19 @@ subroutine SwashCheckPrep
                 lon   = 0d0
                 upn   = 0d0
                 !
-                p0    = 1d0
-                p1    = 1d0
-                q0    = 0d0
-                q1    = 0d0
+                if ( optg /= 5 ) then
+                   p0   = 1d0
+                   p1   = 1d0
+                   q0   = 0d0
+                   q1   = 0d0
+                   sola = 0d0
+                else
+                   sol0 = 0d0
+                   sol1 = 0d0
+                endif
+                !
                 amata = 0d0
                 rhsa  = 0d0
-                sol   = 0d0
                 vt    = 0d0
                 !
              endif
@@ -4504,14 +4786,14 @@ subroutine SwashCheckPrep
           if ( .not.allocated(lon) ) allocate (lon(0))
           if ( .not.allocated(upn) ) allocate (upn(0))
           !
-          if ( .not.allocated(p0 ) ) allocate (p0 (0))
-          if ( .not.allocated(p1 ) ) allocate (p1 (0))
-          if ( .not.allocated(q0 ) ) allocate (q0 (0))
-          if ( .not.allocated(q1 ) ) allocate (q1 (0))
-          if ( .not.allocated(ba ) ) allocate (ba (0))
-          if ( .not.allocated(da ) ) allocate (da (0))
-          if ( .not.allocated(sol) ) allocate (sol(0))
-          if ( .not.allocated(vt ) ) allocate (vt (0))
+          if ( .not.allocated(p0  ) ) allocate (p0  (0))
+          if ( .not.allocated(p1  ) ) allocate (p1  (0))
+          if ( .not.allocated(q0  ) ) allocate (q0  (0))
+          if ( .not.allocated(q1  ) ) allocate (q1  (0))
+          if ( .not.allocated(ba  ) ) allocate (ba  (0))
+          if ( .not.allocated(da  ) ) allocate (da  (0))
+          if ( .not.allocated(sola) ) allocate (sola(0))
+          if ( .not.allocated(vt  ) ) allocate (vt  (0))
           !
           if ( .not.allocated(amat) ) allocate (amat(0,0))
           if ( .not.allocated(rhs ) ) allocate (rhs (0  ))
@@ -4528,13 +4810,27 @@ subroutine SwashCheckPrep
           if ( .not.allocated(r2   ) ) allocate (r2   (0))
           if ( .not.allocated(z3   ) ) allocate (z3   (0))
           !
+          if ( .not.allocated(prec2) ) allocate (prec2(0))
+          if ( .not.allocated(prec3) ) allocate (prec3(0))
+          !
+          if ( .not.allocated(ias ) ) allocate (ias (0))
+          if ( .not.allocated(irws) ) allocate (irws(0,0))
+          if ( .not.allocated(dis ) ) allocate (dis (0))
+          if ( .not.allocated(jas ) ) allocate (jas (0))
+          if ( .not.allocated(axs ) ) allocate (axs (0))
+          if ( .not.allocated(axs2) ) allocate (axs2(0))
+          !
           if ( .not.allocated(amatn) ) allocate (amatn(0,0))
           if ( .not.allocated(rhsn ) ) allocate (rhsn (0  ))
           !
           if ( .not.allocated(amata) ) allocate (amata(0,0))
           if ( .not.allocated(rhsa ) ) allocate (rhsa (0  ))
+          if ( .not.allocated(sol0 ) ) allocate (sol0 (0  ))
+          if ( .not.allocated(sol1 ) ) allocate (sol1 (0  ))
           !
           if ( .not.allocated(cmat) ) allocate (cmat(0,0))
+          !
+          if ( .not.allocated(iplu) ) allocate (iplu(0))
           !
        endif
        !
@@ -4592,23 +4888,33 @@ subroutine SwashCheckPrep
              if ( istat == 0 .and. .not.allocated(vt2  ) ) allocate (vt2  (mcgrd,   qmax          ), stat = istat)
           else
              !
-             ! arrays to be used in sparskit routines
+             ! integer arrays to be used for the CSR format
              !
              if ( .not.allocated(ia) ) allocate (ia(ncells*qmax+1), stat = istat)
-             if ( istat == 0 .and. .not.allocated(iw ) ) allocate (iw (         2*ncells*qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(irw) ) allocate (irw(           ncells,1:4 ), stat = istat)
              if ( istat == 0 .and. .not.allocated(ja ) ) allocate (ja ((nconct+1)*ncells*qmax), stat = istat)
-             if ( istat == 0 .and. .not.allocated(jau) ) allocate (jau(         7*ncells*qmax), stat = istat)
-             if ( istat == 0 .and. .not.allocated(ju ) ) allocate (ju (           ncells*qmax), stat = istat)
-             if ( istat == 0 .and. .not.allocated(ax ) ) allocate (ax ((nconct+1)*ncells*qmax), stat = istat)
-             if ( istat == 0 .and. .not.allocated(au ) ) allocate (au (         7*ncells*qmax), stat = istat)
-             if ( istat == 0 .and. .not.allocated(rs ) ) allocate (rs (           ncells*qmax), stat = istat)
-             if ( istat == 0 .and. .not.allocated(wk ) ) allocate (wk (         8*ncells*qmax), stat = istat)
              !
-             if ( istat == 0 .and. .not.allocated(sol) ) then
-                allocate (sol(ncells*qmax), stat = istat)
-             else if ( size(sol) == 0 ) then
-                deallocate(sol)
-                allocate (sol(ncells*qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(di   ) ) allocate (di   (ncells*qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(iplu3) ) allocate (iplu3(ncells*qmax), stat = istat)
+             !
+             ! arrays to be used in bicgstab3 routine
+             !
+             if ( istat == 0 .and. .not.allocated(res ) ) allocate (res (ncells,qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(res0) ) allocate (res0(ncells,qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(p   ) ) allocate (p   (ncells,qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(v   ) ) allocate (v   (ncells,qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(u   ) ) allocate (u   (ncells,qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(t   ) ) allocate (t   (ncells,qmax), stat = istat)
+             !
+             if ( istat == 0 .and. .not.allocated(prec4) ) allocate (prec4(0:(nconct+1)*ncells*qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(w2   ) ) allocate (w2  (              ncells*qmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(ax2  ) ) allocate (ax2 (   (nconct+1)*ncells*qmax), stat = istat)
+             !
+             if ( istat == 0 .and. .not.allocated(sol3) ) then
+                allocate (sol3(ncells*qmax), stat = istat)
+             else if ( size(sol3) == 0 ) then
+                deallocate(sol3)
+                allocate (sol3(ncells*qmax), stat = istat)
              endif
              !
           endif
@@ -4662,16 +4968,21 @@ subroutine SwashCheckPrep
              t     = 0.
              vt2   = 0.
           else
-             ia  = 0
-             iw  = 0
-             ja  = 0
-             jau = 0
-             ju  = 0
-             ax  = 0d0
-             au  = 0d0
-             rs  = 0d0
-             sol = 0d0
-             wk  = 0d0
+             iplu3 = 0
+             prec4 = 0.
+             res   = 0.
+             res0  = 0.
+             p     = 0.
+             v     = 0.
+             u     = 0.
+             t     = 0.
+             w2    = 0.
+             ax2   = 0.
+             sol3  = 0.
+             !
+             ! fill CSR arrays
+             !
+             call csrf ( ia, ja, irw, di, qmax, nconct )
           endif
           !
        else
@@ -4694,22 +5005,25 @@ subroutine SwashCheckPrep
           if ( .not.allocated(vt2  ) ) allocate (vt2  (0,0  ))
           !
           if ( .not.allocated(ia ) ) allocate (ia (0))
-          if ( .not.allocated(iw ) ) allocate (iw (0))
           if ( .not.allocated(ja ) ) allocate (ja (0))
-          if ( .not.allocated(jau) ) allocate (jau(0))
-          if ( .not.allocated(ju ) ) allocate (ju (0))
-          if ( .not.allocated(ax ) ) allocate (ax (0))
-          if ( .not.allocated(au ) ) allocate (au (0))
-          if ( .not.allocated(rs ) ) allocate (rs (0))
-          if ( .not.allocated(sol) ) allocate (sol(0))
-          if ( .not.allocated(wk ) ) allocate (wk (0))
+          !
+          if ( .not.allocated(iplu3) ) allocate (iplu3(0))
+          if ( .not.allocated(prec4) ) allocate (prec4(0))
+          if ( .not.allocated(ax2  ) ) allocate (ax2  (0))
+          if ( .not.allocated(w2   ) ) allocate (w2   (0))
+          if ( .not.allocated(sol3 ) ) allocate (sol3 (0))
           !
        endif
        !
        if ( itrans /= 0 ) then
           !
-          if ( .not.allocated(amatc) ) allocate (amatc(mcgrd,kmax,3), stat = istat)
-          if ( istat == 0 .and. .not.allocated(rhsc) ) allocate (rhsc(mcgrd,kmax), stat = istat)
+          if ( optg /= 5 ) then
+             if ( .not.allocated(amatc) ) allocate (amatc(mcgrd,kmax,3), stat = istat)
+             if ( istat == 0 .and. .not.allocated(rhsc) ) allocate (rhsc(mcgrd,kmax), stat = istat)
+          else
+             if ( .not.allocated(amatc) ) allocate (amatc(ncells,kmax,3), stat = istat)
+             if ( istat == 0 .and. .not.allocated(rhsc) ) allocate (rhsc(ncells,kmax), stat = istat)
+          endif
           !
           if ( istat /= 0 ) then
              write (msgstr, '(a,i6)') 'allocation problem: variables for system of equations and return code is ',istat
@@ -4729,12 +5043,17 @@ subroutine SwashCheckPrep
        !
        if ( iturb /= 0 ) then
           !
-          if ( oned ) then
-             if ( .not.allocated(amatt) ) allocate (amatt(mcgrd,0:kmax,3), stat = istat)
+          if ( optg /= 5 ) then
+             if ( oned ) then
+                if ( .not.allocated(amatt) ) allocate (amatt(mcgrd,0:kmax,3), stat = istat)
+             else
+                if ( .not.allocated(amatt) ) allocate (amatt(mcgrd,0:kmax,5), stat = istat)
+             endif
+             if ( istat == 0 .and. .not.allocated(rhst) ) allocate (rhst(mcgrd,0:kmax), stat = istat)
           else
-             if ( .not.allocated(amatt) ) allocate (amatt(mcgrd,0:kmax,5), stat = istat)
+             if ( .not.allocated(amatt) ) allocate (amatt(ncells,0:kmax,3), stat = istat)
+             if ( istat == 0 .and. .not.allocated(rhst) ) allocate (rhst(ncells,0:kmax), stat = istat)
           endif
-          if ( istat == 0 .and. .not.allocated(rhst) ) allocate (rhst(mcgrd,0:kmax), stat = istat)
           !
           if ( istat /= 0 ) then
              write (msgstr, '(a,i6)') 'allocation problem: variables for system of equations and return code is ',istat
@@ -4927,7 +5246,11 @@ subroutine SwashCheckPrep
     !
     if ( ltraoutp ) then
        !
-       if ( .not.allocated(mcons) ) allocate (mcons(mcgrd,kmax,ltrans), stat = istat)
+       if ( optg /= 5 ) then
+          if ( .not.allocated(mcons) ) allocate (mcons(mcgrd,kmax,ltrans), stat = istat)
+       else
+          if ( .not.allocated(mcons) ) allocate (mcons(ncells,kmax,ltrans), stat = istat)
+       endif
        !
     else
        !
@@ -4951,8 +5274,13 @@ subroutine SwashCheckPrep
     !
     if ( lturoutp ) then
        !
-       if ( .not.allocated(mtke) ) allocate (mtke(mcgrd,0:kmax), stat = istat)
-       if ( istat == 0 .and. .not.allocated(meps) ) allocate (meps(mcgrd,0:kmax), stat = istat)
+       if ( optg /= 5 ) then
+          if ( .not.allocated(mtke) ) allocate (mtke(mcgrd,0:kmax), stat = istat)
+          if ( istat == 0 .and. .not.allocated(meps) ) allocate (meps(mcgrd,0:kmax), stat = istat)
+       else
+          if ( .not.allocated(mtke) ) allocate (mtke(ncells,0:kmax), stat = istat)
+          if ( istat == 0 .and. .not.allocated(meps) ) allocate (meps(ncells,0:kmax), stat = istat)
+       endif
        !
     else
        !
@@ -5060,7 +5388,7 @@ subroutine SwashCheckPrep
        if ( optg /= 5 ) then
           call SwashBotFrict ( u1, v1 )
        else
-          call SwashUBotFrict
+          call SwashUBotFrict ( u1 )
        endif
     endif
 !TIMG    call SWTSTO(55)

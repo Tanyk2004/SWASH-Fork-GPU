@@ -87,6 +87,8 @@ subroutine SwashElemOutp ( oqproc, mip, nvoqp, nvoqk, voqr, voq, voqk )
 !
     if (ltrace) call strace (ient,'SwashElemOutp')
     !
+    if ( oqproc(95) .or. oqproc(96) ) call chkdiv
+    !
     ! water depth
     !
     if ( oqproc(4) ) voq(:,voqr(4)) = hs(:)
@@ -297,6 +299,18 @@ subroutine SwashElemOutp ( oqproc, mip, nvoqp, nvoqk, voqr, voq, voqk )
        enddo
     endif
     !
+    ! salinity
+    !
+    if ( oqproc(19) ) voq(:,voqr(19)) = rp(:,1,lsal)
+    !
+    ! temperature
+    !
+    if ( oqproc(20) ) voq(:,voqr(20)) = rp(:,1,ltemp)
+    !
+    ! suspended sediment
+    !
+    if ( oqproc(39) ) voq(:,voqr(39)) = rp(:,1,lsed)
+    !
     ! inundation depth / maximum horizontal runup
     !
     if ( oqproc(21) ) voq(:,voqr(21)) = hindun(:)
@@ -405,6 +419,18 @@ subroutine SwashElemOutp ( oqproc, mip, nvoqp, nvoqk, voqr, voq, voqk )
           endif
        enddo
     endif
+    !
+    ! time-averaged or mean salinity
+    !
+    if ( oqproc(42) ) voq(:,voqr(42)) = mcons(:,1,lsal)
+    !
+    ! time-averaged or mean temperature
+    !
+    if ( oqproc(43) ) voq(:,voqr(43)) = mcons(:,1,ltemp)
+    !
+    ! time-averaged or mean suspended sediment
+    !
+    if ( oqproc(44) ) voq(:,voqr(44)) = mcons(:,1,lsed)
     !
     ! layer interfaces
     !
@@ -666,6 +692,70 @@ subroutine SwashElemOutp ( oqproc, mip, nvoqp, nvoqk, voqr, voq, voqk )
                 voqk(i,k,voqr(85)) = ovexcv(85)
              endif
           enddo
+       enddo
+    endif
+    !
+    ! layer-dependent salinity
+    !
+    if ( oqproc(89) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(89)) = rp(:,k,lsal)
+       enddo
+    endif
+    !
+    ! layer-dependent temperature
+    !
+    if ( oqproc(90) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(90)) =  rp(:,k,ltemp)
+       enddo
+    endif
+    !
+    ! layer-dependent suspended sediment
+    !
+    if ( oqproc(91) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(91)) =  rp(:,k,lsed)
+       enddo
+    endif
+    !
+    ! time-averaged or mean layer-dependent salinity
+    !
+    if ( oqproc(92) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(92)) = mcons(:,k,lsal)
+       enddo
+    endif
+    !
+    ! time-averaged or mean layer-dependent temperature
+    !
+    if ( oqproc(93) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(93)) = mcons(:,k,ltemp)
+       enddo
+    endif
+    !
+    ! time-averaged or mean layer-dependent suspended sediment
+    !
+    if ( oqproc(94) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(94)) = mcons(:,k,lsed)
+       enddo
+    endif
+    !
+    ! horizontal divergence of flow velocity
+    !
+    if ( oqproc(95) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(95)) = divu(:,k)
+       enddo
+    endif
+    !
+    ! horizontal divergence of mass flux
+    !
+    if ( oqproc(96) ) then
+       do k = 1, kmax
+          voqk(:,k,voqr(96)) = divq(:,k)
        enddo
     endif
     !

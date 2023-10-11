@@ -159,8 +159,10 @@ subroutine SwashImpLayP1DHflow ( ibl, ibr, kgrpnt )
     real                            :: kwd      ! =1. if layer k-1 exists otherwise 0.
     real                            :: kwu      ! =1. if layer k+1 exists otherwise 0.
     real                            :: moutf    ! net mass outflow
+    real                            :: qf       ! updated mass flux at present face
     real                            :: rdx      ! reciprocal of mesh size
     real                            :: rhou     ! density of water in velocity point
+    real                            :: sumqf    ! sum of outgoing mass fluxes over present cell
     real                            :: theta    ! implicitness factor for time integration of continuity equation
     real                            :: theta2   ! implicitness factor for water level gradient
     real                            :: theta3   ! implicitness factor for non-hydrostatic pressure gradient
@@ -1617,6 +1619,63 @@ subroutine SwashImpLayP1DHflow ( ibl, ibr, kgrpnt )
        !
     enddo
     !
+    ! check positivity of the water depth in each cell of the domain, if appropriate
+    !
+    if ( inewt == 0 ) then
+       !
+       cflmax = -999.
+       !
+       do m = mfu, ml
+          !
+          md = m - 1
+          !
+          nm  = kgrpnt(m )
+          nmd = kgrpnt(md)
+          !
+          ! compute the sum of mass fluxes leaving the cell
+          !
+          sumqf = 0.
+          !
+          qf = 0.
+          do k = 1, kmax
+             qf = qf + hku(nm,k) * ( theta*u1(nm,k) + (1.-theta)*u0(nm,k) )
+          enddo
+          !
+          if ( qf > 0. ) sumqf = sumqf + qf
+          !
+          qf = 0.
+          do k = 1, kmax
+             qf = qf + hku(nmd,k) * ( theta*u1(nmd,k) + (1.-theta)*u0(nmd,k) )
+          enddo
+          !
+          if ( qf < 0. ) sumqf = sumqf - qf
+          !
+          ! compute the "flow" Courant number
+          !
+          if ( hs(nm) > epsdry ) then
+             !
+             cfl = sumqf * dt * rdx / hs(nm)
+             if ( cfl > cflmax ) cflmax = cfl
+             !
+          endif
+          !
+       enddo
+       !
+       ! find maximum of CFL number over all subdomains
+       !
+       call SWREDUCE ( cflmax, 1, SWREAL, SWMAX )
+       !
+       ! give warning in case of CFL > 1
+       !
+       if ( .not. cflmax < 1. .and. INODE == MASTER ) then
+          !
+          call msgerr ( 1, 'positivity of the water depth cannot be guaranteed')
+          call msgerr ( 0, 'It is advised to reduce the time step' )
+          !
+       endif
+       !
+    endif
+    !
     ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
     !
     if ( ibl /= 2 .and. ibl /= 6 .and. LMXF ) s1(nmf ) = s1(nmfu)
@@ -2986,7 +3045,7 @@ subroutine SwashImpLayP1DHflow ( ibl, ibr, kgrpnt )
           !
           nm = kgrpnt(m)
           !
-          qx(nm,k) = hku(nm,k)*u1(nm,k)
+          qx(nm,k) = hku(nm,k) * ( theta*u1(nm,k) + (1.-theta)*u0(nm,k) )
           !
        enddo
        !
@@ -3006,7 +3065,7 @@ subroutine SwashImpLayP1DHflow ( ibl, ibr, kgrpnt )
              !
              do k = 1, kmax
                 !
-                udep(nm) = udep(nm) + qx(nm,k)
+                udep(nm) = udep(nm) + hku(nm,k)*u1(nm,k)
                 !
              enddo
              !

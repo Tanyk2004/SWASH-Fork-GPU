@@ -81,7 +81,7 @@ subroutine SwashUDryWet
     !
     do iface = 1, nfaces
        !
-       if ( hu(iface) > epsdry ) then
+       if ( hu(iface) > epshu ) then
           !
           wetu(iface) = 1
           !

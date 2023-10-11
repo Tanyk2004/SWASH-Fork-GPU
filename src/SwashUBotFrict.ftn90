@@ -1,4 +1,4 @@
-subroutine SwashUBotFrict
+subroutine SwashUBotFrict ( u )
 !
 !   --|-----------------------------------------------------------|--
 !     | Delft University of Technology                            |
@@ -41,13 +41,14 @@ subroutine SwashUBotFrict
 !
 !   Method
 !
-!   Based on 5 roughness methods:
+!   Based on 6 roughness methods:
 !
 !   1) a dimensionless constant,
 !   2) Chezy formulation,
 !   3) Manning formulation,
-!   4) Colebrook-White formulation, or
-!   5) linear bottom friction
+!   4) Colebrook-White formulation,
+!   5) Nikuradse roughness height (logarithmic velocity profile assumed), or
+!   6) linear bottom friction
 !
 !   Modules used
 !
@@ -61,19 +62,33 @@ subroutine SwashUBotFrict
 !
     implicit none
 !
+!   Argument variables
+!
+    real, dimension(nfaces), intent(in) :: u ! depth-averaged flow velocity at faces
+!
 !   Parameter variables
 !
-    real, parameter :: cfix = 1.0129 ! minimum value for argument of log10 function in Colebrook-White
+    integer, parameter :: maxnit = 100    ! maximum number of iterations
+!
+    real   , parameter :: cfix   = 1.0129 ! minimum value for argument of log10 function in Colebrook-White
+    real   , parameter :: eps    = 0.01   ! convergence criterion
+    real   , parameter :: erough = 33.0   ! empirical constant for logarithmic log-law in case of rough beds
+    real   , parameter :: esmoot = 9.0    ! empirical constant for logarithmic log-law in case of smooth beds
+    real   , parameter :: ev     = 11.6   ! edge of viscous sublayer
 !
 !   Local variables
 !
     integer, save :: ient = 0 ! number of entries in this subroutine
     integer       :: iface    ! loop counter over faces
+    integer       :: nit      ! number of iterations
     integer       :: vf1      ! first vertex of present face
     integer       :: vf2      ! second vertex of present face
 !
     real          :: cf       ! local friction coefficient
     real          :: cz       ! Chezy value
+    real          :: r        ! Reynolds number
+    real          :: s        ! magnitude u/ustar
+    real          :: sold     ! ratio u/ustar at previous iteration
     !
     type(facetype), dimension(:), pointer :: face ! datastructure for faces with their attributes
 !
@@ -179,6 +194,127 @@ subroutine SwashUBotFrict
              if ( hum(iface) > 0. ) then
                 !
                 cfricu(iface) = grav * pbot(1) * pbot(1) / hum(iface)**(1./3.)
+                !
+             endif
+             !
+          enddo
+          !
+       endif
+       !
+    else if ( irough == 4 ) then
+       !
+       ! Nikuradse roughness height
+       !
+       if ( varfr ) then
+          !
+          do iface = 1, nfaces
+             !
+             vf1 = face(iface)%atti(FACEV1)
+             vf2 = face(iface)%atti(FACEV2)
+             !
+             cf = 0.5 * ( fricf(vf1,2) + fricf(vf2,2) )
+             !
+             if ( hum(iface) > 0. ) then
+                !
+                if ( cf /= 0. ) then
+                   !
+                   cfricu(iface) = ( vonkar / log( erough*hum(iface)/(exp(1.)*cf) ) )**2.
+                   !
+                else
+                   !
+                   r = abs(u(iface))*hum(iface)/(exp(1.)*kinvis)
+                   if ( r < 0.001 ) r = 0.001
+                   !
+                   if ( r > ev**2 ) then
+                      !
+                      nit = 0
+                      !
+                      ! initial value for s
+                      !
+                      s    = sqrt(r)
+                      sold = 0.
+                      !
+                      ! Newton-Raphson iteration
+                      !
+                      do
+                         if ( abs(sold-s) < (eps*s) ) exit
+                         !
+                         nit  = nit + 1
+                         sold = s
+                         s    = sold*(1.+log(esmoot*r/sold))/(1.+vonkar*sold)
+                         !
+                         if ( .not. nit < maxnit ) then
+                            call msgerr (1, 'no convergence in bottom friction computation')
+                            s = sqrt(r)
+                            exit
+                         endif
+                         !
+                      enddo
+                      !
+                   else
+                      !
+                      s = sqrt(r)
+                      !
+                   endif
+                   !
+                   cfricu(iface) = 1./(s*s)
+                   !
+                endif
+                !
+             endif
+             !
+          enddo
+          !
+       else
+          !
+          do iface = 1, nfaces
+             !
+             if ( hum(iface) > 0. ) then
+                !
+                if ( pbot(2) /= 0. ) then
+                   !
+                   cfricu(iface) = ( vonkar / log( erough*hum(iface)/(exp(1.)*pbot(2)) ) )**2.
+                   !
+                else
+                   !
+                   r = abs(u(iface))*hum(iface)/(exp(1.)*kinvis)
+                   if ( r < 0.001 ) r = 0.001
+                   !
+                   if ( r > ev**2 ) then
+                      !
+                      nit = 0
+                      !
+                      ! initial value for s
+                      !
+                      s    = sqrt(r)
+                      sold = 0.
+                      !
+                      ! Newton-Raphson iteration
+                      !
+                      do
+                         if ( abs(sold-s) < (eps*s) ) exit
+                         !
+                         nit  = nit + 1
+                         sold = s
+                         s    = sold*(1.+log(esmoot*r/sold))/(1.+vonkar*sold)
+                         !
+                         if ( .not. nit < maxnit ) then
+                            call msgerr (1, 'no convergence in bottom friction computation')
+                            s = sqrt(r)
+                            exit
+                         endif
+                         !
+                      enddo
+                      !
+                   else
+                      !
+                      s = sqrt(r)
+                      !
+                   endif
+                   !
+                   cfricu(iface) = 1./(s*s)
+                   !
+                endif
                 !
              endif
              !

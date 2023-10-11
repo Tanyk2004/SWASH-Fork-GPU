@@ -1,4 +1,4 @@
-subroutine SwanPrintGridInfo
+subroutine SwashPrintGridInfo
 !
 !   --|-----------------------------------------------------------|--
 !     | Delft University of Technology                            |
@@ -29,15 +29,15 @@ subroutine SwanPrintGridInfo
 !
 !   Authors
 !
-!   40.80: Marcel Zijlema
+!    1.00: Marcel Zijlema
 !
 !   Updates
 !
-!   40.80, July 2007: New subroutine
+!    1.00, March 2023: New subroutine
 !
 !   Purpose
 !
-!   Prints some relevant information concerning the grid
+!   Prints some relevant information concerning the mesh
 !
 !   Modules used
 !
@@ -49,16 +49,15 @@ subroutine SwanPrintGridInfo
 !
 !   Local variables
 !
-    integer                               :: i         ! loop counter
     integer, save                         :: ient = 0  ! number of entries in this subroutine
-    integer                               :: iface     ! actual face of the present cell
-    integer                               :: j         ! loop counter
+    integer                               :: iface     ! loop counter over faces
     integer                               :: ncellsi   ! number of internal cells
     integer                               :: nfacesi   ! number of internal faces
     !
-    real                                  :: area      ! area of cell
+    real                                  :: avegsiz   ! average gridsize
     real                                  :: gridsize  ! actual gridsize of cell
-    real, dimension(3)                    :: h         ! altitudes of triangle
+    real                                  :: npav      ! counter for computing average gridsize
+    real                                  :: rdx       ! reciprocal of distance between circumcenters adjacent to face
     !
     character(80), dimension(2)           :: helptxt   ! auxiliary textlines
     !
@@ -71,7 +70,7 @@ subroutine SwanPrintGridInfo
 !
 !   Source text
 !
-    if (ltrace) call strace (ient,'SwanPrintGridInfo')
+    if (ltrace) call strace (ient,'SwashPrintGridInfo')
     !
     ! point to cell and face objects
     !
@@ -116,40 +115,49 @@ subroutine SwanPrintGridInfo
     write(PRINTF,100) trim(helptxt(1)), trim(helptxt(2)), nverts, ncells, &
                       ncellsi, ncellsb, nfaces, nfacesi, nfacesb
     !
-    ! determine minimum and maximum gridsize of the grid
+    ! determine minimum, maximum and average gridsize of the grid
     !
     mingsiz = 1.0e10
     maxgsiz = 0.0
+    avegsiz = 0.
+    npav    = 0.
     !
-    do i = 1, ncells
+    do iface = 1, nfaces
        !
-       ! area of cell
-       !
-       area = cell(i)%attr(CELLAREA)
-       !
-       ! altitude of cell
-       !
-       do j = 1, cell(i)%nof
-          iface  = cell(i)%face(j)%atti(FACEID)
-          h(j) = 2.*area/face(iface)%attr(FACELEN)
-       enddo
-       !
-       ! compute gridsize of current cell
-       !
-       gridsize = 1./sqrt((h(1)**(-2)+h(2)**(-2)+h(3)**(-2))/3.)
-       !
-       ! determine minimum and maximum gridsize
-       !
-       if ( gridsize < mingsiz ) then
-          mingsiz = gridsize
-       elseif ( gridsize > maxgsiz ) then
-          maxgsiz = gridsize
+       if ( face(iface)%atti(FMARKER) == 0 ) then   ! internal face
+          !
+          ! reciprocal of distance between adjacent centroids of current face
+          !
+          rdx = face(iface)%attr(FACEDISTG)
+          !
+          if ( rdx /= 0. ) then
+             !
+             ! compute gridsize relevant to discretization
+             !
+             gridsize = 1./rdx
+             !
+             ! compute minimum, maximum and average gridsize
+             !
+             if ( gridsize < mingsiz ) then
+                mingsiz = gridsize
+             elseif ( gridsize > maxgsiz ) then
+                maxgsiz = gridsize
+             endif
+             !
+             avegsiz = avegsiz + gridsize
+             npav    = npav    + 1.
+             !
+          endif
+          !
        endif
        !
     enddo
     !
+    avegsiz = avegsiz / npav
+    !
     write(PRINTF,200) mingsiz
     write(PRINTF,300) maxgsiz
+    write(PRINTF,400) avegsiz
     !
     ! format statements
     !
@@ -163,5 +171,6 @@ subroutine SwanPrintGridInfo
                '    Number of boundary faces = ',i7//)
  200 format(' The minimum gridsize =',f12.5)
  300 format(' The maximum gridsize =',f12.5)
-
-end subroutine SwanPrintGridInfo
+ 400 format(' The average gridsize =',f12.5)
+    !
+end subroutine SwashPrintGridInfo

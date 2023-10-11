@@ -52,6 +52,7 @@ subroutine SwashDensity
     use ocpcomm4
     use SwashCommdata3
     use SwashFlowdata, only: rho, rp
+    use SwanGriddata
 !
     implicit none
 !
@@ -59,7 +60,8 @@ subroutine SwashDensity
 !
     integer, save :: ient = 0 ! number of entries in this subroutine
     integer       :: k        ! loop counter over vertical layers
-    integer       :: nm       ! loop counter
+    integer       :: n        ! loop counter over grid elements
+    integer       :: ntot     ! number of grid elements
     !
     real*8        :: c        ! local sediment volume concentration
     real*8        :: fac      ! a factor
@@ -79,6 +81,12 @@ subroutine SwashDensity
 !
     if (ltrace) call strace (ient,'SwashDensity')
     !
+    if ( optg /= 5 ) then
+       ntot = mcgrd
+    else
+       ntot = ncells
+    endif
+    !
     ! initialize local salinity and temperature
     !
     s = dble(salw )
@@ -89,15 +97,15 @@ subroutine SwashDensity
        ! both space varying salinity and temperature are taken into account
        !
        do k = 1, kmax
-          do nm = 1, mcgrd
+          do n = 1, ntot
              !
-             s = dble(rp(nm,k,lsal ))
-             t = dble(rp(nm,k,ltemp))
+             s = dble(rp(n,k,lsal ))
+             t = dble(rp(n,k,ltemp))
              !
              p0        =  5890d0  + (  38d0  - 375d-3*t)*t +              3d0*s
              lambda    = 17795d-1 + (1125d-2 - 745d-4*t)*t - (38d-1 + 1d-2*t)*s
              !
-             rho(nm,k) = p0/(lambda+0.698*p0)
+             rho(n,k) = p0/(lambda+0.698*p0)
              !
           enddo
        enddo
@@ -111,14 +119,14 @@ subroutine SwashDensity
        rval3 =    38d-1 +                 1d-2*t
        !
        do k = 1, kmax
-          do nm = 1, mcgrd
+          do n = 1, ntot
              !
-             s = dble(rp(nm,k,lsal))
+             s = dble(rp(n,k,lsal))
              !
              p0        = rval1 +   3d0*s
              lambda    = rval2 - rval3*s
              !
-             rho(nm,k) = p0/(lambda+0.698*p0)
+             rho(n,k) = p0/(lambda+0.698*p0)
              !
           enddo
        enddo
@@ -131,14 +139,14 @@ subroutine SwashDensity
        rval2 = 17795d-1 - 38d-1*s
        !
        do k = 1, kmax
-          do nm = 1, mcgrd
+          do n = 1, ntot
              !
-             t = dble(rp(nm,k,ltemp))
+             t = dble(rp(n,k,ltemp))
              !
              p0        = rval1 + (  38d0           - 375d-3*t)*t
              lambda    = rval2 + (1125d-2 - 1d-2*s - 745d-4*t)*t
              !
-             rho(nm,k) = p0/(lambda+0.698*p0)
+             rho(n,k) = p0/(lambda+0.698*p0)
              !
           enddo
        enddo
@@ -161,11 +169,11 @@ subroutine SwashDensity
        fac = dble(rhos-rhow)
        !
        do k = 1, kmax
-          do nm = 1, mcgrd
+          do n = 1, ntot
              !
-             c = dble(rp(nm,k,lsed))
+             c = dble(rp(n,k,lsed))
              !
-             rho(nm,k) = c * fac + rho(nm,k) * (1d0 - c)
+             rho(n,k) = c * fac + rho(n,k) * (1d0 - c)
              !
           enddo
        enddo

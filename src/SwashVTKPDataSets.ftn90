@@ -269,7 +269,7 @@ subroutine SwashVTKPDataSets ( upvt, pstype, nvar, ivtyp, mxk, myk, vtkfile, upv
           do iproc = 1, NPROC-1
              !
              if ( iarr(1,iproc-1) <= iarr(2,iproc-1) .and. iarr(1,iproc) <= iarr(2,iproc) ) then
-                if ( iarr(1,iproc) /= iarr(2,iproc-1) ) then
+                if ( iarr(1,iproc) /= iarr(2,iproc-1)-1 ) then
                    write (msgstr, '(a,i3,a,i3)') 'inconsistency found in SwashVTKPDataSets: the end of subdomain ',iproc,' does not match the start of subdomain ',iproc+1
                    call msgerr ( 2, trim(msgstr) )
                    write (msgstr, '(a,a8)') 'name of output grid is ',psname
@@ -284,7 +284,7 @@ subroutine SwashVTKPDataSets ( upvt, pstype, nvar, ivtyp, mxk, myk, vtkfile, upv
           do iproc = 1, NPROC-1
              !
              if ( iarr(3,iproc-1) <= iarr(4,iproc-1) .and. iarr(3,iproc) <= iarr(4,iproc) ) then
-                if ( iarr(3,iproc) /= iarr(4,iproc-1) ) then
+                if ( iarr(3,iproc) /= iarr(4,iproc-1)-1 ) then
                    write (msgstr, '(a,i3,a,i3)') 'inconsistency found in SwashVTKPDataSets: the end of subdomain ',iproc,' does not match the start of subdomain ',iproc+1
                    call msgerr ( 2, trim(msgstr) )
                    write (msgstr, '(a,a8)') 'name of output grid is ',psname

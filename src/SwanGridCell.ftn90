@@ -89,7 +89,7 @@ subroutine SwanGridCell ( ncells, nverts, xcugrd, ycugrd, kvertc )
     real                                  :: dy1      ! first component of covariant base vector a_(2)
     real                                  :: dy2      ! second component of covariant base vector a_(2)
     real                                  :: fac      ! factor
-    real                                  :: rdet     ! reciproke of determinant
+    real                                  :: rdet     ! reciprocal of determinant
     real                                  :: rproc    ! auxiliary variable with percentage of cells which are non-Delaunay
     real                                  :: th1      ! direction of one face pointing to present vertex
     real                                  :: th2      ! direction of another face pointing to present vertex
@@ -107,7 +107,7 @@ subroutine SwanGridCell ( ncells, nverts, xcugrd, ycugrd, kvertc )
     !
     logical                               :: nxtcell  ! indicate whether there is next cell in counterclockwise direction
     !
-    character(80)                         :: msgstr   ! string to pass message
+    character(120)                        :: msgstr   ! string to pass message
     !
     type(verttype), dimension(:), pointer :: vert     ! datastructure for vertices with their attributes
     type(celltype), dimension(:), pointer :: cell     ! datastructure for cells with their attributes
@@ -233,17 +233,17 @@ subroutine SwanGridCell ( ncells, nverts, xcugrd, ycugrd, kvertc )
        !
        ! store coordinates of circumcenter
        !
-       x1 = xcugrd(kvertc(1,icell))
-       y1 = ycugrd(kvertc(1,icell))
-       x2 = xcugrd(kvertc(2,icell))
-       y2 = ycugrd(kvertc(2,icell))
-       x3 = xcugrd(kvertc(3,icell))
-       y3 = ycugrd(kvertc(3,icell))
+       x1 = xcugrd(v(1))
+       y1 = ycugrd(v(1))
+       x2 = xcugrd(v(2))
+       y2 = ycugrd(v(2))
+       x3 = xcugrd(v(3))
+       y3 = ycugrd(v(3))
        fac = ( (x2-x3)*(x3-x1)+(y2-y3)*(y3-y1) )/( (x1-x2)*(y3-y1)-(y1-y2)*(x3-x1) )
        xc = 0.5 * ( fac*(y1-y2) + x1+x2 )
        yc = 0.5 * ( fac*(x2-x1) + y1+y2 )
        !
-       if ( .not.ccn ) then
+       if ( ccn ) then
           !
           ! check if circumcenter is in the cell
           !
@@ -285,6 +285,7 @@ subroutine SwanGridCell ( ncells, nverts, xcugrd, ycugrd, kvertc )
           cell(icell)%attr(CELLCCX) = xc
           cell(icell)%attr(CELLCCY) = yc
        else
+          ! current cell is obtuse and will be corrected by replacing circumcenter by centroid
           ncc = ncc + 1
           cell(icell)%attr(CELLCCX) = cell(icell)%attr(CELLCX)
           cell(icell)%attr(CELLCCY) = cell(icell)%attr(CELLCY)
@@ -300,16 +301,14 @@ subroutine SwanGridCell ( ncells, nverts, xcugrd, ycugrd, kvertc )
        !
     enddo
     !
-    ! give warning in case of non-Delaunay cells
+    ! give info in case of non-Delaunay (obtuse) cells
     !
-    if ( ncc > 0 ) then
+    if ( ncc > 0 .and. ITEST >= 30 ) then
        !
        rproc = 100.*real(ncc)/real(ncells)
        !
-       if ( .not. rproc < 1. .and. ITEST >= 30 ) then
-          write (msgstr,'(a,f5.1)') 'percentage of cells that are non-Delaunay = ',rproc
-          call msgerr (1, trim(msgstr) )
-       endif
+       write (msgstr,'(a,i6,a,i6,a,f5.1,a)') 'corrected ',ncc,' of ',ncells,' cells with angles > 90 degrees (',rproc,'%)'
+       call msgerr (0, trim(msgstr) )
        !
     endif
     !
