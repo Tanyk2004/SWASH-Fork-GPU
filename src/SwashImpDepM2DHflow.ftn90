@@ -73,7 +73,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
     use SwashTimecomm
     use m_genarr, only: kgrpnt, guu, guv, gvu, gvv, gsqs, gsqsu, gsqsv
     use m_parall
-    use SwashSolvedata, only: newton, iamout
+    use SwashSolvedata, only: iamout
     use SwashFlowdata, rhotmp    => rho   , &
                        u1tmp     => u1    , &
                        u0tmp     => u0    , &
@@ -186,6 +186,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
     real                                       :: hdb      ! water depth in depth point (m+1/2, n-1/2)
     real                                       :: hdl      ! water depth in depth point (m-1/2, n+1/2)
     real                                       :: moutf    ! net mass outflow
+    real                                       :: qf       ! updated mass flux at present face
     real                                       :: reps     ! accuracy of the final approximation
     real                                       :: res      ! residual
     real                                       :: resm     ! maximum error
@@ -200,6 +201,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
     real                                       :: ryysu    ! component of Reynolds stress tensor Ryy in wl-point up from point of consideration
     real                                       :: ryyu     ! component of Reynolds stress tensor Ryy in current u/v-point
     real                                       :: s0mx     ! maximum value of water level
+    real                                       :: sumqf    ! sum of outgoing mass fluxes over present cell
     real                                       :: theta3   ! implicitness factor for non-hydrostatic pressure gradient
     real                                       :: u        ! u-velocity at point different from its point of definition
     real                                       :: utot     ! velocity magnitude
@@ -1558,7 +1560,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
        !
        ! first, build the equation for water level correction
        !
-       if ( .not.newton ) then
+       if ( inewt == 0 ) then
           !
           do n = nfu, nl
              do m = mfu, ml
@@ -1949,6 +1951,69 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
              !
           enddo
        enddo
+       !
+       ! check positivity of the water depth in each cell of the domain, if appropriate
+       !
+       if ( inewt == 0 ) then
+          !
+          cflmax = -999.
+          !
+          do n = nfu, nl
+             do m = mfu, ml
+                !
+                md = m - 1
+                nd = n - 1
+                !
+                nm  = kgrpnt(m ,n )
+                nmd = kgrpnt(md,n )
+                ndm = kgrpnt(m ,nd)
+                !
+                ! compute the sum of mass fluxes leaving the cell
+                !
+                sumqf = 0.
+                !
+                qf = hu(nm) * guu(nm) * ( tetau(nm)*u1(nm) + (1.-tetau(nm))*u0(nm) )
+                !
+                if ( qf > 0. ) sumqf = sumqf + qf
+                !
+                qf = hu(nmd) * guu(nmd) * ( tetau(nmd)*u1(nmd) + (1.-tetau(nmd))*u0(nmd) )
+                !
+                if ( qf < 0. ) sumqf = sumqf - qf
+                !
+                qf = hv(nm) * gvv(nm) * ( tetav(nm)*v1(nm) + (1.-tetav(nm))*v0(nm) )
+                !
+                if ( qf > 0. ) sumqf = sumqf + qf
+                !
+                qf = hv(ndm) * gvv(ndm) * ( tetav(ndm)*v1(ndm) + (1.-tetav(ndm))*v0(ndm) )
+                !
+                if ( qf < 0. ) sumqf = sumqf - qf
+                !
+                ! compute the "flow" Courant number
+                !
+                if ( hs(nm) > epsdry ) then
+                   !
+                   cfl = sumqf * dt / hs(nm) / gsqs(nm)
+                   if ( cfl > cflmax ) cflmax = cfl
+                   !
+                endif
+                !
+             enddo
+          enddo
+          !
+          ! find maximum of CFL number over all subdomains
+          !
+          call SWREDUCE ( cflmax, 1, SWREAL, SWMAX )
+          !
+          ! give warning in case of CFL > 1
+          !
+          if ( .not. cflmax < 1. .and. INODE == MASTER ) then
+             !
+             call msgerr ( 1, 'positivity of the water depth cannot be guaranteed')
+             call msgerr ( 0, 'It is advised to reduce the time step' )
+             !
+          endif
+          !
+       endif
        !
        ! copy to virtual cells at boundaries except for Riemann invariant openings
        !
@@ -2605,7 +2670,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
           !
           nm = kgrpnt(m,n)
           !
-          qx(nm) = hu(nm)*guu(nm)*u1(nm)
+          qx(nm) = hu(nm) * guu(nm) * ( tetau(nm)*u1(nm) + (1.-tetau(nm))*u0(nm) )
           !
        enddo
     enddo
@@ -2617,7 +2682,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
           !
           nm = kgrpnt(m,n)
           !
-          qy(nm) = hv(nm)*gvv(nm)*v1(nm)
+          qy(nm) = hv(nm) * gvv(nm) * ( tetav(nm)*v1(nm) + (1.-tetav(nm))*v0(nm) )
           !
        enddo
     enddo

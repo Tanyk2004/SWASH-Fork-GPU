@@ -51,6 +51,7 @@ subroutine SwashInitCond
     use m_genarr
     use m_parall
     use SwanGriddata
+    use SwanGridobjects
     use SwashFlowdata
 !
     implicit none
@@ -59,6 +60,7 @@ subroutine SwashInitCond
 !
     integer       :: i         ! loop counter
     integer, save :: ient = 0  ! number of entries in this subroutine
+    integer       :: iface     ! loop counter of faces
     integer       :: iiopt     ! time coding option at hot-start file
     integer       :: ilpos     ! actual length of error message filename
     integer       :: indx      ! point index
@@ -76,6 +78,9 @@ subroutine SwashInitCond
     integer       :: numqua    ! number of quantities at hot-start file
     !
     real          :: efac      ! reference factor for flow variables
+    real          :: nx        ! x-component of normal to face
+    real          :: ny        ! y-component of normal to face
+    real          :: un        ! velocity normal to face
     real          :: vx        ! initial constant value for u-velocity
     real          :: vy        ! initial constant value for v-velocity
     real          :: wlev      ! initial constant value for water level
@@ -88,6 +93,8 @@ subroutine SwashInitCond
     logical       :: STPNOW    ! indicates that program must stop
     !
     character(80) :: rline     ! a line to be read
+    !
+    type(facetype), dimension(:), pointer :: face ! datastructure for faces with their attributes
 !
 !   Structure
 !
@@ -96,6 +103,10 @@ subroutine SwashInitCond
 !   Source text
 !
     call strace (ient,'SwashInitCond')
+    !
+    ! point to face object
+    !
+    face => gridobject%face_grid
     !
     ! ==========================================================================
     !
@@ -472,8 +483,8 @@ subroutine SwashInitCond
        call INREAL('EPSILON', epsini, 'UNC',0.)
        !
        s1 = wlev
-       u1 = vx
        if ( optg /= 5 ) then
+          u1 = vx
           if ( .not.oned ) v1 = vy
           if ( kmax > 1 ) then
              udep = vx
@@ -489,6 +500,14 @@ subroutine SwashInitCond
              udep(1) = 0.
              if ( .not.oned ) vdep(1) = 0.
           endif
+       else
+          do iface = 1, nfaces
+             nx = face(iface)%attr(FACENORMX)
+             ny = face(iface)%attr(FACENORMY)
+             un = nx * vx + ny * vy
+             u1(iface,:) = un
+             if ( kmax > 1 ) udep(iface) = un
+          enddo
        endif
        !
     endif

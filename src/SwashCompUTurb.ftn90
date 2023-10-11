@@ -1,4 +1,4 @@
-subroutine SwashCompUnstruc
+subroutine SwashCompUTurb
 !
 !   --|-----------------------------------------------------------|--
 !     | Delft University of Technology                            |
@@ -6,7 +6,7 @@ subroutine SwashCompUnstruc
 !     | Environmental Fluid Mechanics Section                     |
 !     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
 !     |                                                           |
-!     | Programmer: Marcel Zijlema                                |
+!     | Programmers: The SWASH team                               |
 !   --|-----------------------------------------------------------|--
 !
 !
@@ -33,24 +33,33 @@ subroutine SwashCompUnstruc
 !
 !   Updates
 !
-!    1.00, January 2017: New subroutine
+!    1.00, February 2023: New subroutine
 !
 !   Purpose
 !
-!   Performs one full simulation step with unstructured grid
+!   Computes turbulence quantities by means of solving a 3D turbulence model on triangular mesh
+!
+!   Method
+!
+!   The well-known standard k-epsilon closure of Launder and Spalding (1974)
+!   is employed for vertical mixing with which 3D turbulence is mainly generated
+!   by vertical velocity gradients and bottom friction. Typically, its length
+!   scale is smaller than the water depth.
+!
+!   B.E. Launder and D.B. Spalding, "The numerical computation of turbulent
+!   flows", Comput. Meth. Appl. Mech. Engng., vol. 3, p. 269-289, 1974
 !
 !   Modules used
 !
     use ocpcomm4
     use SwashCommdata3
-    use SwashFlowdata
+    use outp_data, only: lturoutp
 !
     implicit none
 !
 !   Local variables
 !
     integer, save :: ient = 0 ! number of entries in this subroutine
-    !
     logical       :: STPNOW   ! indicates that program must stop
 !
 !   Structure
@@ -59,58 +68,21 @@ subroutine SwashCompUnstruc
 !
 !   Source text
 !
-    if (ltrace) call strace (ient,'SwashCompUnstruc')
+    if (ltrace) call strace (ient,'SwashCompUTurb')
     !
-    ! compute flow
+    ! calculate turbulence quantities
     !
-!TIMG    call SWTSTA(51)
-    if ( .not.momskip ) call SwashCompUFlow
-!TIMG    call SWTSTO(51)
-    if (STPNOW()) return
-    !
-    ! update water depths
-    !
-!TIMG    call SWTSTA(52)
-    if ( kmax == 1 ) then
-       call SwashUpdateUDepths ( u1 )
-    else
-       call SwashUpdateUDepths ( udep )
+    if ( iturb == 1 ) then
+       !
+       ! standard k-epsilon model
+       !
+       call SwashUKepsMod
+       if (STPNOW()) return
+       !
     endif
-!TIMG    call SWTSTO(52)
-    if (STPNOW()) return
     !
-    ! update layer interfaces
+    ! update/compute mean turbulence quantities for output purposes
     !
-!TIMG    call SWTSTA(53)
-    if ( kmax > 1 ) call SwashLayUIntfaces
-!TIMG    call SWTSTO(53)
+    if ( lturoutp ) call SwashAverOutp ( 3 )
     !
-    ! update mask arrays for wetting and drying
-    !
-!TIMG    call SWTSTA(54)
-    call SwashUDryWet
-!TIMG    call SWTSTO(54)
-    if (STPNOW()) return
-    !
-    ! update mask array for wave breaking
-    !
-!TIMG    call SWTSTA(54)
-    if ( isurf /= 0 ) call SwashUBreakPoint
-!TIMG    call SWTSTO(54)
-    if (STPNOW()) return
-    !
-    ! compute transport
-    !
-!TIMG    call SWTSTA(101)
-    if ( itrans /= 0 ) call SwashCompUTrans
-!TIMG    call SWTSTO(101)
-    if (STPNOW()) return
-    !
-    ! compute 3D turbulence
-    !
-!TIMG    call SWTSTA(102)
-    if ( iturb /= 0 ) call SwashCompUTurb
-!TIMG    call SWTSTO(102)
-    if (STPNOW()) return
-    !
-end subroutine SwashCompUnstruc
+end subroutine SwashCompUTurb

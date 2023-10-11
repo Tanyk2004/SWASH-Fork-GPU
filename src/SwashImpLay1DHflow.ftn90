@@ -85,7 +85,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
     use SwashTimecomm
     use m_genarr, only: work
     use m_parall
-    use SwashSolvedata, only: icond, newton, iamout
+    use SwashSolvedata, only: icond, iamout
     use SwashFlowdata, ibltmp => ibl, &
                        ibrtmp => ibr
 !
@@ -153,6 +153,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
     real                            :: kwd      ! =1. if layer k-1 exists otherwise 0.
     real                            :: kwu      ! =1. if layer k+1 exists otherwise 0.
     real                            :: moutf    ! net mass outflow
+    real                            :: qf       ! updated mass flux at present face
     real                            :: rdx      ! reciprocal of mesh size
     real                            :: reps     ! accuracy of the final approximation
     real                            :: res      ! residual
@@ -160,6 +161,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
     real                            :: rhou     ! density of water in velocity point
     real                            :: rval     ! auxiliary real
     real                            :: s0mx     ! maximum value of water level
+    real                            :: sumqf    ! sum of outgoing mass fluxes over present cell
     real                            :: theta3   ! implicitness factor for non-hydrostatic pressure gradient
     real                            :: thetau   ! implicitness factor for vertical terms in u-momentum equation
     real                            :: thetaw   ! implicitness factor for vertical terms in w-momentum equation
@@ -1466,7 +1468,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
        !
        ! first, build the equation for water level correction
        !
-       if ( .not.newton ) then
+       if ( inewt == 0 ) then
           !
           do m = mfu, ml
              !
@@ -1814,6 +1816,63 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
           s1(nm) = s0(nm) + ds(nm)
           !
        enddo
+       !
+       ! check positivity of the water depth in each cell of the domain, if appropriate
+       !
+       if ( inewt == 0 ) then
+          !
+          cflmax = -999.
+          !
+          do m = mfu, ml
+             !
+             md = m - 1
+             !
+             nm  = kgrpnt(m )
+             nmd = kgrpnt(md)
+             !
+             ! compute the sum of mass fluxes leaving the cell
+             !
+             sumqf = 0.
+             !
+             qf = 0.
+             do k = 1, kmax
+                qf = qf + hku(nm,k) * ( teta(nm)*u1(nm,k) + (1.-teta(nm))*u0(nm,k) )
+             enddo
+             !
+             if ( qf > 0. ) sumqf = sumqf + qf
+             !
+             qf = 0.
+             do k = 1, kmax
+                qf = qf + hku(nmd,k) * ( teta(nmd)*u1(nmd,k) + (1.-teta(nmd))*u0(nmd,k) )
+             enddo
+             !
+             if ( qf < 0. ) sumqf = sumqf - qf
+             !
+             ! compute the "flow" Courant number
+             !
+             if ( hs(nm) > epsdry ) then
+                !
+                cfl = sumqf * dt * rdx / hs(nm)
+                if ( cfl > cflmax ) cflmax = cfl
+                !
+             endif
+             !
+          enddo
+          !
+          ! find maximum of CFL number over all subdomains
+          !
+          call SWREDUCE ( cflmax, 1, SWREAL, SWMAX )
+          !
+          ! give warning in case of CFL > 1
+          !
+          if ( .not. cflmax < 1. .and. INODE == MASTER ) then
+             !
+             call msgerr ( 1, 'positivity of the water depth cannot be guaranteed')
+             call msgerr ( 0, 'It is advised to reduce the time step' )
+             !
+          endif
+          !
+       endif
        !
        ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
        !
@@ -2882,7 +2941,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
           !
           nm = kgrpnt(m)
           !
-          qx(nm,k) = hku(nm,k)*u1(nm,k)
+          qx(nm,k) = hku(nm,k) * ( teta(nm)*u1(nm,k) + (1.-teta(nm))*u0(nm,k) )
           !
        enddo
        !
@@ -2900,7 +2959,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
           !
           do k = 1, kmax
              !
-             udep(nm) = udep(nm) + qx(nm,k)
+             udep(nm) = udep(nm) + hku(nm,k)*u1(nm,k)
              !
           enddo
           !

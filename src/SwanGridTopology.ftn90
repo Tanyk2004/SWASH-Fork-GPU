@@ -93,6 +93,6 @@ subroutine SwanGridTopology
     !
     ! print some info about the mesh
     !
-    call SwanPrintGridInfo
+    call SwashPrintGridInfo
     !
 end subroutine SwanGridTopology

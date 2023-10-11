@@ -270,6 +270,8 @@ subroutine SwashPrintSettings
           write (PRINTF, 233) pnums(1), pnums(4)
        endif
        !
+       if ( inewt /= 0 ) write (PRINTF,*) 'Newton-type iteration is employed'
+       !
        if ( ihydro /= 0 ) then
           write (PRINTF, 234) pnums(5)
        endif

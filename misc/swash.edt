@@ -6,7 +6,7 @@
 !   SET [level] [nor] [depmin] [maxmes] [maxerr] [seed]                        &
 !       [grav] [rhowat] [temp] [salinity] [dynvis] [rhoair] [rhosed]           &
 !       [cdcap] [prmean] [backvisc] [kappa]                                    &
-!       CORIolis  CARTesian|NAUTical  CC                                       &
+!       CORIolis  CARTesian|NAUTical  [epshu]  CC                              &
 !       [printf]  [prtest]  [outlev]
 !
 !   MODE  DYNamic  / -> TWODimensional \  (SKIPMOMentum)
@@ -256,11 +256,11 @@
 !   DPSopt  MIN|MEAN|MAX|SHIFt
 !
 !
-!               | -> EXPL [cfllow] [cflhig]                        |
-!               |                                                  |
-!   TIMEI METH <     IMPL [thetac] [thetas] &                       >          &
-!               |                                                  |
-!               |         SOLVer [tol] [maxiter] [weight]  NEWTon  |
+!               | EXPL [cfllow] [cflhig]                        |
+!               |                                               |
+!   TIMEI METH <  IMPL [thetac] [thetas] &                       >             &
+!               |                                               |
+!               |      SOLVer [tol] [maxiter] [weight]  NEWTon  |
 !
 !         VERTical [thetau] [thetaw] [thetat]
 !

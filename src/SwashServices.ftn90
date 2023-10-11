@@ -440,7 +440,7 @@ real function fluxlim ( a, b )
        !
        fac = min( mbound, 0.5 * ( 1. + kappa ) * r + 0.5 * (1. - kappa ) )
        !
-       fluxlim = max( 0., min( 2.*r, fac ) ) * b
+       fluxlim = max( 0., min( mbound*r, fac ) ) * b
        !
     else
        !

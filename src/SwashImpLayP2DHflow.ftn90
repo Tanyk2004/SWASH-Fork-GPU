@@ -173,6 +173,7 @@ subroutine SwashImpLayP2DHflow
     real                               :: kwd      ! =1. if layer k-1 exists otherwise 0.
     real                               :: kwu      ! =1. if layer k+1 exists otherwise 0.
     real                               :: moutf    ! net mass outflow
+    real                               :: qf       ! updated mass flux at present face
     real                               :: rhou     ! density of water in velocity point
     real                               :: rxxs     ! component of Reynolds stress tensor Rxx in current wl-point
     real                               :: rxxsu    ! component of Reynolds stress tensor Rxx in wl-point right from point of consideration
@@ -183,6 +184,7 @@ subroutine SwashImpLayP2DHflow
     real                               :: ryys     ! component of Reynolds stress tensor Ryy in current wl-point
     real                               :: ryysu    ! component of Reynolds stress tensor Ryy in wl-point up from point of consideration
     real                               :: ryyu     ! component of Reynolds stress tensor Ryy in current u/v-point
+    real                               :: sumqf    ! sum of outgoing mass fluxes over present cell
     real                               :: theta    ! implicitness factor for time integration of continuity equation
     real                               :: theta2   ! implicitness factor for water level gradient
     real                               :: theta3   ! implicitness factor for non-hydrostatic pressure gradient
@@ -4295,6 +4297,81 @@ subroutine SwashImpLayP2DHflow
        enddo
     enddo
     !
+    ! check positivity of the water depth in each cell of the domain, if appropriate
+    !
+    if ( inewt == 0 ) then
+       !
+       cflmax = -999.
+       !
+       do n = nfu, nl
+          do m = mfu, ml
+             !
+             md = m - 1
+             nd = n - 1
+             !
+             nm  = kgrpnt(m ,n )
+             nmd = kgrpnt(md,n )
+             ndm = kgrpnt(m ,nd)
+             !
+             ! compute the sum of mass fluxes leaving the cell
+             !
+             sumqf = 0.
+             !
+             qf = 0.
+             do k = 1, kmax
+                qf = qf + hku(nm,k) * guu(nm) * ( theta*u1(nm,k) + (1.-theta)*u0(nm,k) )
+             enddo
+             !
+             if ( qf > 0. ) sumqf = sumqf + qf
+             !
+             qf = 0.
+             do k = 1, kmax
+                qf = qf + hku(nmd,k) * guu(nmd) * ( theta*u1(nmd,k) + (1.-theta)*u0(nmd,k) )
+             enddo
+             !
+             if ( qf < 0. ) sumqf = sumqf - qf
+             !
+             qf = 0.
+             do k = 1, kmax
+                qf = qf + hkv(nm,k) * gvv(nm) * ( theta*v1(nm,k) + (1.-theta)*v0(nm,k) )
+             enddo
+             !
+             if ( qf > 0. ) sumqf = sumqf + qf
+             !
+             qf = 0.
+             do k = 1, kmax
+                qf = qf + hkv(ndm,k) * gvv(ndm) * ( theta*v1(ndm,k) + (1.-theta)*v0(ndm,k) )
+             enddo
+             !
+             if ( qf < 0. ) sumqf = sumqf - qf
+             !
+             ! compute the "flow" Courant number
+             !
+             if ( hs(nm) > epsdry ) then
+                !
+                cfl = sumqf * dt / hs(nm) / gsqs(nm)
+                if ( cfl > cflmax ) cflmax = cfl
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! find maximum of CFL number over all subdomains
+       !
+       call SWREDUCE ( cflmax, 1, SWREAL, SWMAX )
+       !
+       ! give warning in case of CFL > 1
+       !
+       if ( .not. cflmax < 1. .and. INODE == MASTER ) then
+          !
+          call msgerr ( 1, 'positivity of the water depth cannot be guaranteed')
+          call msgerr ( 0, 'It is advised to reduce the time step' )
+          !
+       endif
+       !
+    endif
+    !
     ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
     !
     if ( .not.lreptx ) then
@@ -6402,7 +6479,7 @@ subroutine SwashImpLayP2DHflow
              !
              nm = kgrpnt(m,n)
              !
-             qx(nm,k) = hku(nm,k)*guu(nm)*u1(nm,k)
+             qx(nm,k) = hku(nm,k) * guu(nm) * ( theta*u1(nm,k) + (1.-theta)*u0(nm,k) )
              !
           enddo
        enddo
@@ -6418,7 +6495,7 @@ subroutine SwashImpLayP2DHflow
              !
              nm = kgrpnt(m,n)
              !
-             qy(nm,k) = hkv(nm,k)*gvv(nm)*v1(nm,k)
+             qy(nm,k) = hkv(nm,k) * gvv(nm) * ( theta*v1(nm,k) + (1.-theta)*v0(nm,k) )
              !
           enddo
        enddo
@@ -6440,7 +6517,7 @@ subroutine SwashImpLayP2DHflow
                 !
                 do k = 1, kmax
                    !
-                   udep(nm) = udep(nm) + qx(nm,k)
+                   udep(nm) = udep(nm) + hku(nm,k)*guu(nm)*u1(nm,k)
                    !
                 enddo
                 !
@@ -6462,7 +6539,7 @@ subroutine SwashImpLayP2DHflow
                 !
                 do k = 1, kmax
                    !
-                   vdep(nm) = vdep(nm) + qy(nm,k)
+                   vdep(nm) = vdep(nm) + hkv(nm,k)*gvv(nm)*v1(nm,k)
                    !
                 enddo
                 !

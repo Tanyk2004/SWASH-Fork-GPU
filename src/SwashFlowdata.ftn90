@@ -144,6 +144,8 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: aporu        ! laminar friction factor in u-point
     real  , dimension(:)      , save, allocatable :: aporv        ! laminar friction factor in v-point
     real  , dimension(:)      , save, allocatable :: b            ! main diagonal of tri-diagonal matrix
+    real  , dimension(:,:,:)  , save, allocatable :: bcrp         ! prescribed constituent at boundary face (current time level)
+    real  , dimension(:,:,:)  , save, allocatable :: bcrpo        ! prescribed constituent at boundary face (previous time level)
     real  , dimension(:)      , save, allocatable :: bcs          ! prescribed water level at boundary face (current time level)
     real  , dimension(:)      , save, allocatable :: bcso         ! prescribed water level at boundary face (previous time level)
     real*8, dimension(:)      , save, allocatable :: bn           ! main diagonal of tri-diagonal matrix of mildly nonlinear system
@@ -159,6 +161,7 @@ module SwashFlowdata
     real  , dimension(:,:,:)  , save, allocatable :: cbndl        ! boundary condition of Dirichlet type for transport constituent at left boundary
     real  , dimension(:,:,:)  , save, allocatable :: cbndr        ! boundary condition of Dirichlet type for transport constituent at right boundary
     real  , dimension(:,:,:)  , save, allocatable :: cbndt        ! boundary condition of Dirichlet type for transport constituent at upper boundary
+    real  , dimension(:,:,:)  , save, allocatable :: cbndu        ! boundary condition of Dirichlet type for transport constituent at boundary of unstructured mesh
     real  , dimension(:)      , save, allocatable :: cfricu       ! friction coefficient in u-point
     real  , dimension(:)      , save, allocatable :: cfricv       ! friction coefficient in v-point
     real*8, dimension(:)      , save, allocatable :: cn           ! upper diagonal of tri-diagonal matrix of mildly nonlinear system
@@ -166,6 +169,7 @@ module SwashFlowdata
     real  , dimension(:,:)    , save, allocatable :: coutl        ! computed salinity at left open boundary when tidal flow returns inward
     real  , dimension(:,:)    , save, allocatable :: coutr        ! computed salinity at right open boundary when tidal flow returns inward
     real  , dimension(:,:)    , save, allocatable :: coutt        ! computed salinity at upper open boundary when tidal flow returns inward
+    real  , dimension(:,:)    , save, allocatable :: coutu        ! computed salinity at open boundary when tidal flow returns inward (unstructured mesh)
     real  , dimension(:,:)    , save, allocatable :: cpoks        ! added mass coefficient of porous medium flow at center of layer interfaces
     real  , dimension(:,:)    , save, allocatable :: cpomu        ! added mass coefficient of porous medium flow in u-point based on mean porosity
     real  , dimension(:,:)    , save, allocatable :: cpomv        ! added mass coefficient of porous medium flow in v-point based on mean porosity
@@ -177,6 +181,8 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: cwndu        ! wind stress coefficient in u-point
     real  , dimension(:)      , save, allocatable :: cwndv        ! wind stress coefficient in v-point
     real  , dimension(:)      , save, allocatable :: d            ! right-hand side of tri-diagonal system of equations
+    real  , dimension(:,:)    , save, allocatable :: divu         ! divergence of flow velocity per cell/layer
+    real  , dimension(:,:)    , save, allocatable :: divq         ! divergence of mass flux per cell/layer
     real  , dimension(:,:,:)  , save, allocatable :: dmat         ! divergence matrix (structured grids)
     real  , dimension(:,:,:,:), save, allocatable :: dmatu        ! divergence matrix (unstructured grids)
     real*8, dimension(:)      , save, allocatable :: dn           ! right-hand side of tri-diagonal matrix of mildly nonlinear system
@@ -196,6 +202,7 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: flou         ! draft of floating object in u-point
     real  , dimension(:)      , save, allocatable :: flov         ! draft of floating object in v-point
     real  , dimension(:,:,:)  , save, allocatable :: flux         ! total flux at cell-faces for transport constituent
+    real  , dimension(:,:)    , save, allocatable :: fluxt        ! total flux at unstructured mesh faces for transport constituent
     real  , dimension(:,:,:)  , save, allocatable :: gmatu        ! gradient matrix for pressure in u-point
     real  , dimension(:,:,:)  , save, allocatable :: gmatuv       ! gradient matrix for pressure in u-point in a velocity layer
     real  , dimension(:,:)    , save, allocatable :: gmatu0       ! gradient matrix for pressure in u-point in one pressure layer
@@ -237,6 +244,7 @@ module SwashFlowdata
     real  , dimension(:,:)    , save, allocatable :: icretl       ! step counter for constituent return time at left open boundary (countdown)
     real  , dimension(:,:)    , save, allocatable :: icretr       ! step counter for constituent return time at right open boundary (countdown)
     real  , dimension(:,:)    , save, allocatable :: icrett       ! step counter for constituent return time at upper open boundary (countdown)
+    real  , dimension(:,:)    , save, allocatable :: icretu       ! step counter for constituent return time at open boundary of unstructured mesh (countdown)
     real  , dimension(:,:)    , save, allocatable :: logfrc       ! bottom friction coefficients based on logarithmic wall-law in wl-point
     real  , dimension(:,:)    , save, allocatable :: logwlb       ! wall shear stress at lower boundary based on logarithmic wall-law
     real  , dimension(:,:)    , save, allocatable :: logwll       ! wall shear stress at left boundary based on logarithmic wall-law
@@ -313,7 +321,7 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: vdep         ! depth-averaged v-velocity
     real  , dimension(:,:)    , save, allocatable :: vi           ! intermediate v-velocity in iterative process of pressure projection method
     real  , dimension(:)      , save, allocatable :: visc         ! horizontal viscosity terms for momentum equations
-    real  , dimension(:)      , save, allocatable :: vnu2d        ! horizontal eddy viscosity coefficient in depth point (2DH) or wl-point (1DH)
+    real  , dimension(:)      , save, allocatable :: vnu2d        ! horizontal eddy viscosity coefficient in depth point (2DH), wl-point (1DH) or cell face (unstructured)
     real  , dimension(:,:)    , save, allocatable :: vnu3d        ! vertical eddy viscosity coefficient at center of layer interfaces
     real  , dimension(:,:)    , save, allocatable :: w0           ! w-velocity at previous time level
     real  , dimension(:)      , save, allocatable :: w0bot        ! w-velocity at bottom at previous time level (1DH/2DH)

@@ -80,9 +80,13 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
 !   Local variables
 !
     integer                               :: i        ! loop counter
-    integer                               :: icell    ! cell index
+    integer                               :: icell    ! cell index / loop counter over cells
+    integer                               :: icelll   ! left cell of present face
+    integer                               :: icellr   ! right cell of present face
     integer, save                         :: ient = 0 ! number of entries in this subroutine
     integer                               :: iface    ! face index
+    integer                               :: ihlx     ! width of halo area in x-direction
+    integer                               :: ihly     ! width of halo area in y-direction
     integer                               :: indx     ! point index
     integer                               :: indxb    ! index of point below from point of consideration
     integer                               :: indxl    ! index of point left from point of consideration
@@ -98,6 +102,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
     integer                               :: iye      ! end point index in y-direction
     integer                               :: j        ! loop counter
     integer                               :: jc       ! loop counter
+    integer                               :: jf       ! loop counter
     integer                               :: jvx      ! index of u-velocity component
     integer                               :: jvy      ! index of v-velocity component
     integer                               :: k        ! loop counter over vertical layers
@@ -119,10 +124,14 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
     real                                  :: fac      ! a factor
     real                                  :: fac1     ! another factor
     real                                  :: fac2     ! some other factor
+    real                                  :: lf       ! length of face
     real                                  :: mub      ! time-averaged u-velocity below from point of consideration
     real                                  :: muu      ! time-averaged u-velocity up from point of consideration
     real                                  :: mvl      ! time-averaged v-velocity left from point of consideration
     real                                  :: mvr      ! time-averaged v-velocity right from point of consideration
+    real                                  :: nx       ! x-component of normal to face
+    real                                  :: ny       ! y-component of normal to face
+    real                                  :: qf       ! sum of mass fluxes over faces of present cell
     real                                  :: qxb      ! u-discharge below from point of consideration
     real                                  :: qxu      ! u-discharge up from point of consideration
     real                                  :: qyl      ! v-discharge left from point of consideration
@@ -130,6 +139,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
     real                                  :: rdist    ! a distance
     real                                  :: rdx      ! increment in x-direction
     real                                  :: rdy      ! increment in y-direction
+    real                                  :: rsgn     ! sign for indicating face orientation
     real                                  :: rval1    ! a value
     real                                  :: rval2    ! another value
     real                                  :: totarea  ! total area of all cells around vertex
@@ -137,6 +147,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
     real                                  :: ub       ! u-velocity below from point of consideration
     real                                  :: ufb      ! u-component of friction velocity below from point of consideration
     real                                  :: ufu      ! u-component of friction velocity up from point of consideration
+    real                                  :: ugradz   ! u times grad z
     real                                  :: uu       ! u-velocity up from point of consideration
     real                                  :: v        ! v-velocity at point different from its point of definition
     real                                  :: vfl      ! v-component of friction velocity left from point of consideration
@@ -146,13 +157,13 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
     real                                  :: xp       ! local x-coordinate
     real                                  :: yp       ! local y-coordinate
     !
-    logical                               :: cvtk     ! computational grid output for VTK
     logical                               :: EQREAL   ! compares two reals
     logical, dimension(:), allocatable    :: ltmp     ! a temporary array of type logical
     logical                               :: reqvel   ! velocity/discharge components are requested
     logical                               :: reqzsc   ! layer-dependent scalars are requested
     logical                               :: reqzvl   ! layer-dependent velocity/discharge components are requested
     !
+    type(facetype), dimension(:), pointer :: face     ! datastructure for faces with their attributes
     type(celltype), dimension(:), pointer :: cell     ! datastructure for cells with their attributes
     type(verttype), dimension(:), pointer :: vert     ! datastructure for vertices with their attributes
 !
@@ -164,8 +175,9 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
 !
     if (ltrace) call strace (ient,'SwashQuanOutp')
     !
-    ! point to cell and vertex objects
+    ! point to face, cell and vertex objects
     !
+    face => gridobject%face_grid
     cell => gridobject%cell_grid
     vert => gridobject%vert_grid
     !
@@ -537,6 +549,159 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
              endif
              !
           endif
+          !
+       else
+          !
+          ! compute cell-based velocity vector
+          !
+          call perot ( u1, 1, kmax )
+          !
+          do icell = 1, ncells
+             !
+             if ( wets(icell) == 1 ) then
+                !
+                u = uvc(icell,kmax,1)
+                v = uvc(icell,kmax,2)
+                !
+                ugradz = 0.
+                qf     = 0.
+                !
+                do jf = 1, cell(icell)%nof
+                   !
+                   ! face identifier
+                   !
+                   iface = cell(icell)%face(jf)%atti(FACEID)
+                   !
+                   ! get length of current face
+                   !
+                   lf = face(iface)%attr(FACELEN)
+                   !
+                   nx = face(iface)%attr(FACENORMX)
+                   ny = face(iface)%attr(FACENORMY)
+                   !
+                   ! consider left and right cells of current face
+                   !
+                   icelll = face(iface)%atti(FACECL)
+                   icellr = face(iface)%atti(FACECR)
+                   !
+                   ! take into account orientation of the current face
+                   !
+                   if ( icell == icelll ) then
+                      rsgn =  1.
+                   else if ( icell == icellr ) then
+                      rsgn = -1.
+                   endif
+                   !
+                   ugradz = ugradz + rsgn * lf * zku(iface,kmax) * ( nx * u + ny * v )
+                   qf     = qf     + rsgn * lf * hku(iface,kmax) * u1(iface,kmax)
+                   !
+                enddo
+                !
+                ! area of cell
+                !
+                area = cell(icell)%attr(CELLAREA)
+                !
+                wphy(icell,kmax) = ugradz / area
+                !
+                fac = -qf / area
+                !
+                do k = kmax-1, 1, -1
+                   !
+                   u = ( uvc(icell,k+1,1) * hks(icell,k) + uvc(icell,k,1) * hks(icell,k+1) ) / ( hks(icell,k) + hks(icell,k+1) )
+                   v = ( uvc(icell,k+1,2) * hks(icell,k) + uvc(icell,k,2) * hks(icell,k+1) ) / ( hks(icell,k) + hks(icell,k+1) )
+                   !
+                   ugradz = 0.
+                   qf     = 0.
+                   !
+                   do jf = 1, cell(icell)%nof
+                      !
+                      ! face identifier
+                      !
+                      iface = cell(icell)%face(jf)%atti(FACEID)
+                      !
+                      ! get length of current face
+                      !
+                      lf = face(iface)%attr(FACELEN)
+                      !
+                      nx = face(iface)%attr(FACENORMX)
+                      ny = face(iface)%attr(FACENORMY)
+                      !
+                      ! consider left and right cells of current face
+                      !
+                      icelll = face(iface)%atti(FACECL)
+                      icellr = face(iface)%atti(FACECR)
+                      !
+                      ! take into account orientation of the current face
+                      !
+                      if ( icell == icelll ) then
+                         rsgn =  1.
+                      else if ( icell == icellr ) then
+                         rsgn = -1.
+                      endif
+                      !
+                      ugradz = ugradz + rsgn * lf * zku(iface,k) * ( nx * u + ny * v )
+                      qf     = qf     + rsgn * lf * hku(iface,k) * u1(iface,k)
+                      !
+                   enddo
+                   !
+                   ! area of cell
+                   !
+                   area = cell(icell)%attr(CELLAREA)
+                   !
+                   wphy(icell,k) = fac + ugradz / area
+                   !
+                   fac = fac - qf / area
+                   !
+                enddo
+                !
+                u = uvc(icell,1,1)
+                v = uvc(icell,1,2)
+                !
+                ugradz = 0.
+                !
+                do jf = 1, cell(icell)%nof
+                   !
+                   ! face identifier
+                   !
+                   iface = cell(icell)%face(jf)%atti(FACEID)
+                   !
+                   ! get length of current face
+                   !
+                   lf = face(iface)%attr(FACELEN)
+                   !
+                   nx = face(iface)%attr(FACENORMX)
+                   ny = face(iface)%attr(FACENORMY)
+                   !
+                   ! consider left and right cells of current face
+                   !
+                   icelll = face(iface)%atti(FACECL)
+                   icellr = face(iface)%atti(FACECR)
+                   !
+                   ! take into account orientation of the current face
+                   !
+                   if ( icell == icelll ) then
+                      rsgn =  1.
+                   else if ( icell == icellr ) then
+                      rsgn = -1.
+                   endif
+                   !
+                   ugradz = ugradz + rsgn * lf * zku(iface,0) * ( nx * u + ny * v )
+                   !
+                enddo
+                !
+                ! area of cell
+                !
+                area = cell(icell)%attr(CELLAREA)
+                !
+                wphy(icell,0) = fac + ugradz / area
+                !
+             else
+                !
+                wphy(icell,:) = 0.
+                !
+             endif
+             !
+          enddo
           !
        endif
        !
@@ -1618,11 +1783,23 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
        !
     else
        !
+       if ( irough == 4 .and. kmax > 1 ) then
+          !
+          ! compute cell-based velocity vector
+          !
+          call perot ( u1, 1, kmax )
+          !
+       endif
+       !
        if ( EQREAL(outpar(3),0.) ) then
           !
           do ivert = 1, nverts
              !
              totarea = 0.
+             !
+             fac  = 0.
+             fac1 = 0.
+             fac2 = 0.
              !
              do jc = 1, vert(ivert)%noc
                 !
@@ -1632,6 +1809,14 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                 !
                 oparr(ivert, 2) = oparr(ivert, 2) + area *     s1(icell)
                 oparr(ivert,16) = oparr(ivert,16) + area * hindun(icell)
+                !
+                if ( irough == 4 .and. kmax > 1 ) then
+                   !
+                   fac  = fac  + area * logfrc(icell,1)*logfrc(icell,2)
+                   fac1 = fac1 + area * uvc(icell,kmax,1)
+                   fac2 = fac2 + area * uvc(icell,kmax,2)
+                   !
+                endif
                 !
                 if ( ihydro /= 0 ) then
                    !
@@ -1647,6 +1832,26 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                 endif
                 !
                 oparr(ivert,24) = oparr(ivert,24) + area * real(brks(icell))
+                !
+                ! salinity, temperature and sediment
+                !
+                if ( itrans /= 0 ) then
+                   !
+                   if ( lsal  > 0 ) oparr(ivert,25) = oparr(ivert,25) + area * rp(icell,1,lsal )
+                   if ( ltemp > 0 ) oparr(ivert,26) = oparr(ivert,26) + area * rp(icell,1,ltemp)
+                   if ( lsed  > 0 ) oparr(ivert,27) = oparr(ivert,27) + area * rp(icell,1,lsed )
+                   !
+                endif
+                !
+                ! time-averaged or mean salinity, temperature and sediment
+                !
+                if ( ltraoutp ) then
+                   !
+                   if ( lsal  > 0 ) oparr(ivert,28) = oparr(ivert,28) + area * mcons(icell,1,lsal )
+                   if ( ltemp > 0 ) oparr(ivert,29) = oparr(ivert,29) + area * mcons(icell,1,ltemp)
+                   if ( lsed  > 0 ) oparr(ivert,30) = oparr(ivert,30) + area * mcons(icell,1,lsed )
+                   !
+                endif
                 !
                 ! layer-dependent scalars, if requested
                 !
@@ -1665,7 +1870,37 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                       !
                    endif
                    !
+                   if ( iturb /= 0 ) then
+                      !
+                      oparrk(ivert,0:kmax,15) = oparrk(ivert,0:kmax,15) + area * rtur(icell,0:kmax,1)
+                      oparrk(ivert,0:kmax,16) = oparrk(ivert,0:kmax,16) + area * rtur(icell,0:kmax,2)
+                      !
+                   endif
+                   !
                    oparrk(ivert,0:kmax,17) = oparrk(ivert,0:kmax,17) + area * vnu3d(icell,0:kmax)
+                   !
+                   if ( lturoutp ) then
+                      !
+                      oparrk(ivert,0:kmax,22) = oparrk(ivert,0:kmax,22) + area * mtke(icell,0:kmax)
+                      oparrk(ivert,0:kmax,23) = oparrk(ivert,0:kmax,23) + area * meps(icell,0:kmax)
+                      !
+                   endif
+                   !
+                   if ( itrans /= 0 ) then
+                      !
+                      if ( lsal  > 0 ) oparrk(ivert,1:kmax,25) = oparrk(ivert,1:kmax,25) + area * rp(icell,1:kmax,lsal )
+                      if ( ltemp > 0 ) oparrk(ivert,1:kmax,26) = oparrk(ivert,1:kmax,26) + area * rp(icell,1:kmax,ltemp)
+                      if ( lsed  > 0 ) oparrk(ivert,1:kmax,27) = oparrk(ivert,1:kmax,27) + area * rp(icell,1:kmax,lsed )
+                      !
+                   endif
+                   !
+                   if ( ltraoutp ) then
+                      !
+                      if ( lsal  > 0 ) oparrk(ivert,1:kmax,28) = oparrk(ivert,1:kmax,28) + area * mcons(icell,1:kmax,lsal )
+                      if ( ltemp > 0 ) oparrk(ivert,1:kmax,29) = oparrk(ivert,1:kmax,29) + area * mcons(icell,1:kmax,ltemp)
+                      if ( lsed  > 0 ) oparrk(ivert,1:kmax,30) = oparrk(ivert,1:kmax,30) + area * mcons(icell,1:kmax,lsed )
+                      !
+                   endif
                    !
                 endif
                 !
@@ -1679,6 +1914,24 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
              oparr(ivert, 1) = oparr(ivert, 2) + depf(ivert)
              oparr(ivert,16) = oparr(ivert,16) / totarea
              !
+             ! friction velocity based on logarithmic wall-law
+             !
+             if ( irough == 4 .and. kmax > 1 ) then
+                !
+                fac  = fac  / totarea
+                fac1 = fac1 / totarea
+                fac2 = fac2 / totarea
+                !
+                if ( fac1 /= 0. .or. fac2 /= 0. ) then
+                   oparr(ivert,11) = fac * fac1 / sqrt( fac1*fac1 + fac2*fac2 )
+                   oparr(ivert,12) = fac * fac2 / sqrt( fac1*fac1 + fac2*fac2 )
+                else
+                   oparr(ivert,11) = 0.
+                   oparr(ivert,12) = 0.
+                endif
+                !
+             endif
+             !
              ! non-hydrostatic pressure at bottom
              !
              oparr(ivert,13) = oparr(ivert,13) / totarea
@@ -1690,6 +1943,15 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
              !
              oparr(ivert,24) = oparr(ivert,24) / totarea
              !
+             ! constituents
+             !
+             oparr(ivert,25) = oparr(ivert,25) / totarea
+             oparr(ivert,26) = oparr(ivert,26) / totarea
+             oparr(ivert,27) = oparr(ivert,27) / totarea
+             oparr(ivert,28) = oparr(ivert,28) / totarea
+             oparr(ivert,29) = oparr(ivert,29) / totarea
+             oparr(ivert,30) = oparr(ivert,30) / totarea
+             !
              ! layer-dependent scalars, if requested
              !
              if ( reqzsc ) then
@@ -1697,7 +1959,19 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                 oparrk(ivert,0:kmax,11) = oparrk(ivert,0:kmax,11) / totarea
                 oparrk(ivert,0:kmax,12) = oparrk(ivert,0:kmax,12) / totarea
                 oparrk(ivert,1:kmax,13) = oparrk(ivert,1:kmax,13) / totarea
+                !
+                oparrk(ivert,0:kmax,15) = oparrk(ivert,0:kmax,15) / totarea
+                oparrk(ivert,0:kmax,16) = oparrk(ivert,0:kmax,16) / totarea
                 oparrk(ivert,0:kmax,17) = oparrk(ivert,0:kmax,17) / totarea
+                oparrk(ivert,0:kmax,22) = oparrk(ivert,0:kmax,22) / totarea
+                oparrk(ivert,0:kmax,23) = oparrk(ivert,0:kmax,23) / totarea
+                !
+                oparrk(ivert,1:kmax,25) = oparrk(ivert,1:kmax,25) / totarea
+                oparrk(ivert,1:kmax,26) = oparrk(ivert,1:kmax,26) / totarea
+                oparrk(ivert,1:kmax,27) = oparrk(ivert,1:kmax,27) / totarea
+                oparrk(ivert,1:kmax,28) = oparrk(ivert,1:kmax,28) / totarea
+                oparrk(ivert,1:kmax,29) = oparrk(ivert,1:kmax,29) / totarea
+                oparrk(ivert,1:kmax,30) = oparrk(ivert,1:kmax,30) / totarea
                 !
              endif
              !
@@ -3257,32 +3531,31 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
        if ( .not.EQREAL(yp,ovexcv(2)) ) voq(i,2) = yp + yoffs
     enddo
     !
-    ! scan comp. grid as output frame in case of VTK format
-    !
-    cvtk = lcompgrd .and. rtype == 'BLKV'
-    !
     ! in case of parallel run, mark location points inside own subdomain
     !
     if ( PARLL ) then
-       ixb = 1 + IHALOX
-       if ( LMXF ) ixb = 1
-       ixe = mxc - IHALOX
-       if ( LMXL ) ixe = mxc
-       iyb = 1 + IHALOY
-       if ( LMYF ) iyb = 1
-       iye = myc - IHALOY
-       if ( LMYL ) iye = myc
-       if (rtype == 'BLKV' ) then
-          ixe = ixe + 1
-          iye = iye + 1
+       if ( rtype /= 'BLKV' ) then
+          ihlx = IHALOX
+          ihly = IHALOY
+       else
+          ihlx = 2
+          ihly = 2
        endif
+       ixb = 1 + ihlx
+       if ( LMXF ) ixb = 1
+       ixe = mxc - ihlx
+       if ( LMXL ) ixe = mxc
+       iyb = 1 + ihly
+       if ( LMYF ) iyb = 1
+       iye = myc - ihly
+       if ( LMYL ) iye = myc
        do i = 1, mip
           ix = int(xc(i))
           iy = int(yc(i))
           rval1 = float(ix)
           rval2 = float(iy)
-          if ( .not.( cvtk .or. EQREAL(xc(i),rval1) ) .or. EQREAL(xc(i),0.) ) ix = ix + 1
-          if ( .not.( cvtk .or. EQREAL(yc(i),rval2) ) .or. EQREAL(yc(i),0.) ) iy = iy + 1
+          if ( .not.EQREAL(xc(i),rval1) .or. EQREAL(xc(i),0.) .or. rtype == 'BLKV' ) ix = ix + 1
+          if ( .not.EQREAL(yc(i),rval2) .or. EQREAL(yc(i),0.) .or. rtype == 'BLKV' ) iy = iy + 1
           if ( ix >= ixb .and. ix <= ixe .and. iy >= iyb .and. iy <= iye ) ionod(i) = INODE
        enddo
     endif
