@@ -11,7 +11,7 @@ subroutine SwashReadInput ( comput )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -97,11 +97,16 @@ subroutine SwashReadInput ( comput )
     integer                            :: indl               ! indicator of layer thickness (see command VERT)
     integer                            :: iostat             ! I/O status in call FOR
     integer                            :: ipp                ! an index or pair of indices for test points
+    integer                            :: iside              ! selected side of domain where sponge layer is given (see command SPON)
     integer                            :: itmp1              ! auxiliary integer
     integer                            :: itmp2              ! auxiliary integer
     integer                            :: itmp3              ! auxiliary integer
     integer                            :: ivtype             ! type of output quantity
+    integer                            :: ix                 ! loop counter in x-direction
+    integer                            :: iy                 ! loop counter in y-direction
     integer                            :: j                  ! loop counter
+    integer                            :: kc1                ! index of boundary point of consideration (see command SPON)
+    integer                            :: kc2                ! index of subsequent boundary point (see command SPON)
     integer                            :: labl               ! label of rigid body
     integer                            :: mxs                ! user-defined number of cells in x-direction
     integer                            :: mys                ! user-defined number of cells in y-direction
@@ -110,6 +115,7 @@ subroutine SwashReadInput ( comput )
     integer                            :: nmli               ! number of mooring lines per rigid body (see command BODY MLINE)
     integer                            :: nn                 ! number of stems (see command VEGET)
     integer                            :: numlay             ! actual number of vertical layers (see command VERT)
+    integer                            :: nump               ! number of boundary points of selected side (see command SPON)
     integer                            :: nvar               ! actual number of output quantities (see command QUANT)
     integer                            :: vm                 ! boundary marker
     !
@@ -125,9 +131,15 @@ subroutine SwashReadInput ( comput )
     real                               :: cgx                ! x-component of center of gravity of rigid body (see command BODY)
     real                               :: cgy                ! y-component of center of gravity of rigid body (see command BODY)
     real                               :: cgz                ! z-component of center of gravity of rigid body (see command BODY)
+    real                               :: cosdir             ! cosine of a direction (see command SPON)
+    real                               :: crdm               ! largest crdp resulting in a side to be selected (see command SPON)
+    real                               :: crdp               ! cosine of direction of the normal to side (see command SPON)
     real                               :: DEGCNV             ! indicates Cartesian or nautical degrees
     real                               :: dd                 ! stem diameter (see command VEGET)
     real*8                             :: diff               ! difference between end and begin times
+    real                               :: dirref             ! user-defined direction of the normal to a side w.r.t. positive x-axis (pointing east) (see command SPON)
+    real                               :: dirsi              ! user-defined direction of the normal to a side of domain (see command SPON)
+    real                               :: dirsid             ! direction of the normal to a side to be selected (see command SPON)
     real                               :: el                 ! equilibrium length of the mooring line
     real                               :: fx                 ! x-component of mooring line/fender attachment point at floating body relative to center of gravity
     real                               :: fy                 ! y-component of mooring line/fender attachment point at floating body relative to center of gravity
@@ -140,6 +152,7 @@ subroutine SwashReadInput ( comput )
     real                               :: moiz               ! z-component of moment of inertia of rigid body (see command BODY)
     real                               :: per                ! wave period of regular wave (see command SOURCE)
     real*8                             :: rtmp               ! auxiliary double precision
+    real                               :: sindir             ! sine of a direction (see command SPON)
     real, dimension(5)                 :: spparm             ! parameters used for computation of internal-generated spectrum (see command SOURCE)
                                                              ! =1; wave height (significant or rms)
                                                              ! =2; wave period (peak or mean)
@@ -147,6 +160,8 @@ subroutine SwashReadInput ( comput )
                                                              ! =4; directional distribution coefficient
                                                              ! =5; cyclic period of time series
     real                               :: spwid              ! width of sponge layer
+    real                               :: sumx               ! sum of mesh sizes in x-direction (see command SPON)
+    real                               :: sumy               ! sum of mesh sizes in y-direction (see command SPON)
     real                               :: tsmo               ! period for smoothing internal-generated values during cold start (see command SOURCE)
     real                               :: wdir               ! incident or peak wave direction with respect to problem coordinates (see command SOURCE)
     real                               :: xc                 ! x-coordinate of centroids
@@ -368,9 +383,11 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
-    !        |    STAtionary    |     | -> TWODimensional |
-    ! MODE  <                    >   <                     >  (SKIPMOMentum)
-    !        | -> NONSTationary |     |    ONEDimensional |
+    !       |    STAtionary    |    | -> TWODimensional |
+    ! MODE <                    >  <                     >   &
+    !       | -> NONSTationary |    |    ONEDimensional |
+    !
+    !       (SKIPMOMentum) (LINear) (not documented)
     !
     ! ==========================================================================
     !
@@ -405,6 +422,13 @@ subroutine SwashReadInput ( comput )
        call INKEYW ('STA', ' ')
        if (KEYWIS ('SKIPMOM')) then
           momskip = .true.
+       endif
+       !
+       ! with this optional command the linearized shallow water equations are to be dealt with
+       !
+       call INKEYW ('STA', ' ')
+       if (KEYWIS ('LIN')) then
+          linswe = .true.
        endif
        !
        goto 100
@@ -447,7 +471,7 @@ subroutine SwashReadInput ( comput )
           else
              call INCTIM (ITMOPT,'TBEGC',tinic,'STA',timco)
           endif
-          if ( tinic < timco ) then
+          if ( tinic < timco-1.01*dt ) then
              call msgerr (2, 'start time [tbegc] before current time')
              tinic = timco
           endif
@@ -1518,31 +1542,163 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
-    !               | LEft  [width] |
-    !               |               |
-    !               | RIght [width] |
-    ! SPONgelayer  <                 > | < [k]  [width] >
-    !               | LOwer [width] |
-    !               |               |
-    !               | UPper [width] |
+    !               | North [width] |
+    !               | NW    [width] |
+    !               | West  [width] |
+    !               | SW    [width] |
+    ! SPONgelayer  <  South [width]  > | < [k]  [width] >
+    !               | SE    [width] |
+    !               | East  [width] |
+    !               | NE    [width] |
     !
     ! ==========================================================================
     !
     if ( KEYWIS ('SPON') ) then
        if ( optg /= 5 ) then
-          call INKEYW ('STA',' ')
-          if ( KEYWIS('LE') .or. KEYWIS ('W') ) then
-             call INREAL('WIDTH',spwidl,'REQ',0.)
-          else if ( KEYWIS('RI') .or. KEYWIS ('E') ) then
-             call INREAL('WIDTH',spwidr,'REQ',0.)
-          else if ( KEYWIS('LO') .or. KEYWIS ('S') ) then
-             call INREAL('WIDTH',spwidb,'REQ',0.)
-          else if ( KEYWIS('UP') .or. KEYWIS ('N') ) then
-             call INREAL('WIDTH',spwidt,'REQ',0.)
+          !
+          ! structured grid
+          !
+          call INKEYW ('REQ',' ')
+          if ( KEYWIS ('NW') ) then
+             dirsi = 45.
+          else if ( KEYWIS ('SW') ) then
+             dirsi = 135.
+          else if ( KEYWIS ('SE') ) then
+             dirsi = -135.
+          else if ( KEYWIS ('NE') ) then
+             dirsi = -45.
+          else if ( KEYWIS ('N') .or. KEYWIS('UP') ) then
+             dirsi = 0.
+          else if ( KEYWIS ('W') .or. KEYWIS('LE') ) then
+             dirsi = 90.
+          else if ( KEYWIS ('S') .or. KEYWIS('LO') ) then
+             dirsi = 180.
+          else if ( KEYWIS ('E') .or. KEYWIS('RI') ) then
+             dirsi = -90.
           else
              call WRNKEY
           endif
+          call INREAL('WIDTH',spwid,'REQ',0.)
+          !
+          ! select side in the chosen direction
+          !
+          crdm   = -1.e10
+          iside  = 0
+          if ( oned ) then
+             cosdir = cos(pi*(dnorth+dirsi)/180.)
+             sindir = sin(pi*(dnorth+dirsi)/180.)
+             do i = 1, 4
+                sumx = 0.
+                sumy = 0.
+                nump = 0
+                if ( i == 2 ) then
+                   if ( kgrpnt(mxc-1,1) > 1 ) then
+                      sumx = xcgrid(mxc-1,1)
+                      sumy = ycgrid(mxc-1,1)
+                      nump = 1
+                   endif
+                else if ( i == 4 ) then
+                   if ( kgrpnt(1,1) > 1 ) then
+                      sumx = xcgrid(1,1)
+                      sumy = ycgrid(1,1)
+                      nump = 1
+                   endif
+                endif
+                if ( nump > 0 ) then
+                   crdp = cosdir*sumx + sindir*sumy
+                   ! side with largest crdp is the one selected
+                   if ( crdp > crdm ) then
+                      crdm = crdp
+                      iside = i
+                   endif
+                endif
+             enddo
+          else
+             do i = 1, 4
+                sumx = 0.
+                sumy = 0.
+                nump = 0
+                if ( i == 1 ) then
+                   do ix = 1, mxc-1
+                      kc2 = kgrpnt(ix,1)
+                      if ( ix > 1 ) then
+                         if ( kc1 > 1 .and. kc2 > 1 ) then
+                            sumx = sumx + xcgrid(ix,1) - xcgrid(ix-1,1)
+                            sumy = sumy + ycgrid(ix,1) - ycgrid(ix-1,1)
+                            nump = nump + 1
+                         endif
+                      endif
+                      kc1 = kc2
+                   enddo
+                else if ( i == 2 ) then
+                   do iy = 1, myc-1
+                      kc2 = kgrpnt(mxc-1,iy)
+                      if ( iy > 1 ) then
+                         if ( kc1 > 1 .and. kc2 > 1 ) then
+                            sumx = sumx + xcgrid(mxc-1,iy) - xcgrid(mxc-1,iy-1)
+                            sumy = sumy + ycgrid(mxc-1,iy) - ycgrid(mxc-1,iy-1)
+                            nump = nump + 1
+                         endif
+                      endif
+                      kc1 = kc2
+                   enddo
+                else if ( i == 3 ) then
+                   do ix = 1, mxc-1
+                      kc2 = kgrpnt(ix,myc-1)
+                      if ( ix > 1 ) then
+                         if ( kc1 > 1 .and. kc2 > 1 ) then
+                            sumx = sumx + xcgrid(ix-1,myc-1) - xcgrid(ix,myc-1)
+                            sumy = sumy + ycgrid(ix-1,myc-1) - ycgrid(ix,myc-1)
+                            nump = nump + 1
+                         endif
+                      endif
+                      kc1 = kc2
+                   enddo
+                else if ( i == 4 ) then
+                   do iy = 1, myc-1
+                      kc2 = kgrpnt(1,iy)
+                      if ( iy > 1 ) then
+                         if ( kc1 > 1 .and. kc2 > 1 ) then
+                            sumx = sumx + xcgrid(1,iy-1) - xcgrid(1,iy)
+                            sumy = sumy + ycgrid(1,iy-1) - ycgrid(1,iy)
+                            nump = nump + 1
+                         endif
+                      endif
+                      kc1 = kc2
+                   enddo
+                endif
+                if ( nump > 0 ) then
+                   dirsid = atan2(sumy,sumx)
+                   dirref = pi*(dnorth+dirsi)/180.
+                   if ( cvleft ) then
+                      crdp = cos(dirsid - 0.5*pi - dirref)
+                   else
+                      crdp = cos(dirsid + 0.5*pi - dirref)
+                   endif
+                   ! side with largest crdp is the one selected
+                   if ( crdp > crdm ) then
+                      crdm = crdp
+                      iside = i
+                   endif
+                endif
+             enddo
+          endif
+          if ( iside == 0 ) call msgerr (2, 'no sponge layer found')
+          !
+          if ( iside == 1 ) then
+             spwidb = spwid
+          else if ( iside == 2 ) then
+             spwidr = spwid
+          else if ( iside == 3 ) then
+             spwidt = spwid
+          else if ( iside == 4 ) then
+             spwidl = spwid
+          endif
+          !
        else
+          !
+          ! unstructured mesh
+          !
           nspl     = 0
           frstsp%k = 0
           frstsp%w = 0.
@@ -1648,7 +1804,9 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
-    !             | -> EXPL [cfllow] [cflhig]                                 |
+    !             | -> EXPL [cfllow] [cflhig] &                               |
+    !             |                                                           |
+    !             |    EULer (not documented)                                 |
     ! TIMEI METH <                                                             > &
     !             |    IMPL [thetac] [thetas] &                               |
     !             |                                                           |
@@ -1684,6 +1842,9 @@ subroutine SwashReadInput ( comput )
              mtimei = 1
              call INREAL ('CFLLOW', pnums(2), 'STA', 0.4)
              call INREAL ('CFLHIG', pnums(3), 'STA', 0.8)
+             !
+             call INKEYW ('STA',' ')
+             if ( KEYWIS ('EUL') ) jhk = 2
           endif
        else
           call WRNKEY

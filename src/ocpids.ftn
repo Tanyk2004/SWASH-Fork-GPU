@@ -27,7 +27,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -99,7 +99,7 @@
       DATA PRCTIM /0,0,0,0,0,0,0/
 !
 !     version of initialisation file                                      10.16
-      INIVER = 5                                                           1.10 40.41 40.31
+      INIVER = 6                                                          10.01 1.10 40.41 40.31
       INIVEF = -1                                                         40.00
       INERR  = 0                                                          34.01
 !
@@ -109,6 +109,8 @@
       END IF
 !
       KPART = 1                                                            1.10
+!     by default, merge the individual output files
+      IMRGE = 1                                                           10.01
 !
 !     see whether initialisation file exists
 !
@@ -150,6 +152,7 @@
         END IF
         READ (11, *,   ERR=930, END=930) ITMOPT
         IF (INIVEF.GT.4) READ (11, *,   ERR=930, END=930) KPART            1.10
+        IF (INIVEF.GT.5) READ (11, *,   ERR=930, END=930) IMRGE           10.01
         IF (INIVEF.GT.3) THEN
            IF (PARLL) THEN
               DO JJ = 1, NPROC
@@ -254,6 +257,7 @@
            WRITE (12, 230) DIRCH2, 'dir sep char replacing previous one'  40.00
            WRITE (12, 210) ITMOPT, 'default time coding option'
            WRITE (12, 210) KPART,  'grid partitioning option'              1.10
+           WRITE (12, 210) IMRGE,  'option to merge output files'         10.01
            IF (PARLL) THEN
               DO II = 1, NPROC
                  WRITE (12, 240) IWEIG(II), 'speed of processor ',II
@@ -353,7 +357,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -450,7 +454,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -579,7 +583,7 @@
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by

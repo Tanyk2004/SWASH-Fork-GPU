@@ -11,7 +11,7 @@ subroutine SwashExpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ibl, i
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -259,7 +259,12 @@ subroutine SwashExpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ibl, i
        nmd = kgrpnt(md)
        nmu = kgrpnt(mu)
        !
-       if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
+       if ( linswe ) then
+          !
+          fac1 = 0.
+          fac2 = 0.
+          !
+       else if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
           !
           fac1 = 0.5 * ( ua(nmu) + ua(nm) )
           fac2 = fac1
@@ -284,7 +289,7 @@ subroutine SwashExpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ibl, i
        !
     enddo
     !
-    if ( slimp ) then    ! described water level at left boundary point
+    if ( slimp .and. .not.linswe ) then    ! described water level at left boundary point
        !
        if ( qm(nmfu) > 1.0e-5 ) then
           !
@@ -298,7 +303,7 @@ subroutine SwashExpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ibl, i
        !
     endif
     !
-    if ( srimp ) then    ! described water level at right boundary point
+    if ( srimp .and. .not.linswe ) then    ! described water level at right boundary point
        !
        if ( qm(nml) > 1.0e-5 ) then
           !
@@ -1008,7 +1013,7 @@ subroutine SwashExpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ibl, i
     !
     ! solve global continuity equation by means of the second order Hancock scheme
     !
-    do j = 1, 2
+    do j = jhk, 2
        !
        if ( j == 1 ) then
           !
@@ -1026,13 +1031,27 @@ subroutine SwashExpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ibl, i
        !
        ! update the mass flux
        !
-       do m = mf, ml
+       if ( .not.linswe ) then
           !
-          nm = kgrpnt(m)
+          do m = mf, ml
+             !
+             nm = kgrpnt(m)
+             !
+             qx(nm) = hu(nm)*u1(nm)
+             !
+          enddo
           !
-          qx(nm) = hu(nm)*u1(nm)
+       else
           !
-       enddo
+          do m = mf, ml
+             !
+             nm = kgrpnt(m)
+             !
+             qx(nm) = dpu(nm)*u1(nm)
+             !
+          enddo
+          !
+       endif
        !
        ! compute the water level
        !

@@ -38,6 +38,8 @@ ${SRC}/SwashBCspecfile.f90
 ${SRC}/SwashBCspectrum.f90
 ${SRC}/SwashBCshortwave.f90
 ${SRC}/SwashBCboundwave.f90
+${SRC}/SwashBCStokeswave.f90
+${SRC}/SwashBCtransferfnc.f90
 ${SRC}/SwashIntWavgen.f90
 ${SRC}/SwashReqOutL.f90
 ${SRC}/SwashReqOutQ.f90

@@ -11,7 +11,7 @@ subroutine SwashCheckPrep
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -90,6 +90,12 @@ subroutine SwashCheckPrep
     integer                                     :: indxr       ! index of point right from point of consideration
     integer                                     :: indxu       ! index of point up from point of consideration
     integer                                     :: istat       ! indicate status of allocation
+    integer                                     :: istok       ! indicates the order of Stokes wave theory
+                                                               ! = 0; use hyperbolic cosine distribution for velocity (Airy wave theory)
+                                                               ! = 1; first order Stokes wave (Airy wave theory)
+                                                               ! = 2; second order Stokes wave
+                                                               ! = 3; second order sub- and super-harmonic transfer functions
+    integer                                     :: itmp        ! temporary stored integer
     integer                                     :: ix          ! loop counter in x-direction of subdomain
     integer                                     :: ixgl        ! counter in x-direction of global domain
     integer                                     :: iy          ! loop counter in y-direction of subdomain
@@ -536,12 +542,19 @@ subroutine SwashCheckPrep
     !
     ! check dispersion relation
     !
-    if ( ( ihydro == 1 .and. kpmax < 4 .and. qlay == 0 ) .or. ihydro == 3 ) then
+    if ( ( ihydro == 1 .and. kpmax < 5 .and. qlay == 0 ) .or. ihydro == 3 ) then
        numdisp = .true.
     else
        numdisp = .false.
     endif
     if ( nonequi .or. fixlay ) numdisp = .false.
+    if ( .not. numdisp ) then
+       ! use hyperbolic cosine profile in case of exact dispersion relation
+       istok = 0
+    else
+       istok = -999
+    endif
+    if ( numdisp .and. kpmax > 3 ) numdisp = .false.
     !
     ! check default time integration with reference to computational mesh
     !
@@ -1389,6 +1402,17 @@ subroutine SwashCheckPrep
        endif
     endif
     !
+    ! check whether linearized shallow water equations are employed
+    !
+    if ( linswe ) then
+       !
+       jhk      = 2
+       pnums(6) = 1.
+       horwinc  = .false.
+       verwinc  = .false.
+       !
+    endif
+    !
     ! allocate arrays for storing flow variables at previous time level in case of nonstationary run
     !
     if ( nstatc == 1 ) then
@@ -1524,6 +1548,24 @@ subroutine SwashCheckPrep
        enddo
     endif
     !
+    ! check whether Stokes waves are imposed at open boundaries
+    !
+    do i = 1, nbgrpt
+       itmp = bgridp(9*i-1)
+       if ( itmp == -1 ) then
+          if ( istok  < 0 ) istok = 0
+       elseif ( itmp == -11 ) then
+          if ( istok  < 0 ) istok = 1
+          if ( istok == 0 ) bgridp(9*i-1) = -1
+       elseif ( itmp == -21 ) then
+          if ( istok  < 0 ) istok = 2
+          if ( istok == 0 ) bgridp(9*i-1) = -1
+       elseif ( itmp == -31 ) then
+          if ( istok  < 0 ) istok = 3
+          if ( istok == 0 ) bgridp(9*i-1) = -1
+       endif
+    enddo
+    !
     ! allocate arrays for incident short and bound wave components, if appropriate
     !
     if ( nfreq > 0 ) then
@@ -1545,6 +1587,72 @@ subroutine SwashCheckPrep
           zetab  = (0.,0.)
           fluxbu = (0.,0.)
           fluxbv = (0.,0.)
+          !
+          if ( istok /= 0 ) then
+             !
+             if ( .not.allocated(stku1c) ) allocate(stku1c(nbgrpt,nfreq,kmax))
+             if ( .not.allocated(stku1s) ) allocate(stku1s(nbgrpt,nfreq,kmax))
+             !
+             if ( .not.allocated(stkz1c) ) allocate(stkz1c(nbgrpt,nfreq))
+             if ( .not.allocated(stkz1s) ) allocate(stkz1s(nbgrpt,nfreq))
+             !
+             stku1c = 0.
+             stku1s = 0.
+             !
+             stkz1c = 0.
+             stkz1s = 0.
+             !
+             if ( istok > 1 ) then
+                !
+                if ( .not.allocated(stku2c) ) allocate(stku2c(nbgrpt,nfreq,kmax))
+                if ( .not.allocated(stku2s) ) allocate(stku2s(nbgrpt,nfreq,kmax))
+                !
+                if ( .not.allocated(stkz2c) ) allocate(stkz2c(nbgrpt,nfreq))
+                if ( .not.allocated(stkz2s) ) allocate(stkz2s(nbgrpt,nfreq))
+                !
+                stku2c = 0.
+                stku2s = 0.
+                !
+                stkz2c = 0.
+                stkz2s = 0.
+                !
+                if ( istok == 3 ) then
+                   !
+                   if ( .not.allocated(subuc) ) allocate(subuc(nbgrpt,nfreq,kmax))
+                   if ( .not.allocated(supuc) ) allocate(supuc(nbgrpt,nfreq,kmax))
+                   if ( .not.allocated(subus) ) allocate(subus(nbgrpt,nfreq,kmax))
+                   if ( .not.allocated(supus) ) allocate(supus(nbgrpt,nfreq,kmax))
+                   !
+                   if ( .not.allocated(subvc) ) allocate(subvc(nbgrpt,nfreq,kmax))
+                   if ( .not.allocated(supvc) ) allocate(supvc(nbgrpt,nfreq,kmax))
+                   if ( .not.allocated(subvs) ) allocate(subvs(nbgrpt,nfreq,kmax))
+                   if ( .not.allocated(supvs) ) allocate(supvs(nbgrpt,nfreq,kmax))
+                   !
+                   if ( .not.allocated(subzc) ) allocate(subzc(nbgrpt,nfreq))
+                   if ( .not.allocated(supzc) ) allocate(supzc(nbgrpt,nfreq))
+                   if ( .not.allocated(subzs) ) allocate(subzs(nbgrpt,nfreq))
+                   if ( .not.allocated(supzs) ) allocate(supzs(nbgrpt,nfreq))
+                   !
+                   subuc = 0.
+                   supuc = 0.
+                   subus = 0.
+                   supus = 0.
+                   !
+                   subvc = 0.
+                   supvc = 0.
+                   subvs = 0.
+                   supvs = 0.
+                   !
+                   subzc = 0.
+                   supzc = 0.
+                   subzs = 0.
+                   supzs = 0.
+                   !
+                endif
+                !
+             endif
+             !
+          endif
           !
        else if ( iwvgen /= 0 ) then
           !
@@ -1862,7 +1970,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( wlevf(0,0) )
+          if ( .not.allocated(wlevf) ) allocate ( wlevf(0,0) )
           !
        endif
        !
@@ -1881,8 +1989,8 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( uxf(0,0) )
-          allocate ( uyf(0,0) )
+          if ( .not.allocated(uxf) ) allocate ( uxf(0,0) )
+          if ( .not.allocated(uyf) ) allocate ( uyf(0,0) )
           !
        endif
        !
@@ -1897,7 +2005,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( fricf(0,0) )
+          if ( .not.allocated(fricf) ) allocate ( fricf(0,0) )
           !
        endif
        !
@@ -1916,8 +2024,8 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( wxf(0,0) )
-          allocate ( wyf(0,0) )
+          if ( .not.allocated(wxf) ) allocate ( wxf(0,0) )
+          if ( .not.allocated(wyf) ) allocate ( wyf(0,0) )
           !
        endif
        !
@@ -1932,7 +2040,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( presf(0,0) )
+          if ( .not.allocated(presf) ) allocate ( presf(0,0) )
           !
        endif
        !
@@ -1947,7 +2055,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( nporf(0) )
+          if ( .not.allocated(nporf) ) allocate ( nporf(0) )
           !
        endif
        !
@@ -1962,7 +2070,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( gsizf(0) )
+          if ( .not.allocated(gsizf) ) allocate ( gsizf(0) )
           !
        endif
        !
@@ -1977,7 +2085,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( hporf(0) )
+          if ( .not.allocated(hporf) ) allocate ( hporf(0) )
           !
        endif
        !
@@ -1992,7 +2100,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( nplaf(0) )
+          if ( .not.allocated(nplaf) ) allocate ( nplaf(0) )
           !
        endif
        !
@@ -2007,7 +2115,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( salf(0,0) )
+          if ( .not.allocated(salf) ) allocate ( salf(0,0) )
           !
        endif
        !
@@ -2022,7 +2130,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( tempf(0,0) )
+          if ( .not.allocated(tempf) ) allocate ( tempf(0,0) )
           !
        endif
        !
@@ -2037,7 +2145,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( sedf(0,0) )
+          if ( .not.allocated(sedf) ) allocate ( sedf(0,0) )
           !
        endif
        !
@@ -2052,7 +2160,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( flobjf(0) )
+          if ( .not.allocated(flobjf) ) allocate ( flobjf(0) )
           !
        endif
        !
@@ -2067,7 +2175,7 @@ subroutine SwashCheckPrep
           !
        else
           !
-          allocate ( lbodf(0) )
+          if ( .not.allocated(lbodf) ) allocate ( lbodf(0) )
           !
        endif
        !

@@ -11,7 +11,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -66,13 +66,14 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer                                      :: bcimp            ! indicate how boundary condition is imposed
                                                                      ! = 1; Fourier series
                                                                      ! = 2; regular wave
-                                                                     ! = 3; parametric spectrum
-                                                                     ! = 4; time series
-                                                                     ! = 5; spectrum from file
-                                                                     ! = 6; spectra from SWAN file
+                                                                     ! = 3; bichromatic wave
+                                                                     ! = 4; parametric spectrum
+                                                                     ! = 5; time series
+                                                                     ! = 6; spectrum from file
+                                                                     ! = 7; spectra from SWAN file
     integer                                      :: blayk            ! indicate how boundary condition is specified for each layer
                                                                      ! = -2; logarithmic distribution of velocity in the vertical
-                                                                     ! = -1; hyperbolic cosine distribution of velocity in the vertical
+                                                                     ! = -1; hyperbolic cosine/Stokes wave distribution of velocity in the vertical
                                                                      ! =  0; uniform distribution of boundary condition in the vertical
                                                                      ! >  0; layer number for which boundary condition is applied
     integer, dimension(:), allocatable           :: bpix             ! indices of boundary points in x-direction
@@ -95,6 +96,11 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer                                      :: iiopt            ! time coding option
     integer                                      :: ish              ! shift index
     integer                                      :: iside            ! selected side of domain where boundary values are imposed
+    integer                                      :: istok            ! indicates the order of Stokes wave theory
+                                                                     ! = 0; use hyperbolic cosine distribution for velocity (Airy wave theory)
+                                                                     ! = 1; first order Stokes wave (Airy wave theory)
+                                                                     ! = 2; second order Stokes wave
+                                                                     ! = 3; second order sub- and super-harmonic transfer functions
     integer                                      :: itmp             ! temporary stored integer
     integer                                      :: ix               ! index of point in x-direction
     integer                                      :: ix1              ! index of first endpoint in x-direction
@@ -135,10 +141,14 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     real                                         :: dirref           ! user-defined direction of the normal to a side w.r.t. positive x-axis (pointing east)
     real                                         :: dirsi            ! user-defined direction of the normal to a side of domain
     real                                         :: dirsid           ! direction of the normal to a side to be selected
+    real                                         :: dir1             ! first wave direction of bichromatic wave
+    real                                         :: dir2             ! second wave direction of bichromatic wave
     real                                         :: dxa              ! an arbitrary mesh size in x-direction
     real                                         :: dya              ! an arbitrary mesh size in y-direction
     real                                         :: fac              ! an auxiliary factor
     real                                         :: height           ! wave height of regular wave
+    real                                         :: h1               ! first wave height of bichromatic wave
+    real                                         :: h2               ! second wave height of bichromatic wave
     real                                         :: omega            ! angular frequency of a Fourier component
     real                                         :: per              ! wave period of regular wave
     real                                         :: phase            ! phase of a Fourier component
@@ -157,6 +167,8 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     real                                         :: sumy             ! sum of mesh sizes in y-direction
     real                                         :: tcycl            ! cyclic period of time record
     real                                         :: tsmo             ! period for smoothing boundary values during cold start
+    real                                         :: t1               ! first wave period of bichromatic wave
+    real                                         :: t2               ! second wave period of bichromatic wave
     real                                         :: wdir             ! incident or peak wave direction with respect to problem coordinates
     real                                         :: x1               ! x-coordinate of boundary point of consideration
     real                                         :: x2               ! x-coordinate of subsequent boundary point
@@ -317,18 +329,20 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
        !
        !   SMOOthing [period] SEC|MIN|HR|DAY                                      &
        !
-       !   ADDBoundwave                                                           &
+       !   ADDBoundwave | ADDIG                                                   &
        !
-       !               | FOURier  [azero] < [ampl] [omega] [phase] >
-       !               | REGular  [h] [per] [dir]
-       !   | UNIForm  <  SPECTrum [h] [per] [dir] [dd] [cycle] SEC|MIN|HR|DAY
-       !   |           | SERIes   'fname' [itmopt]
-       !   |           | SPECFile 'fname' [cycle] SEC|MIN|HR|DAY
+       !               | FOURier     [azero] < [ampl] [omega] [phase] >
+       !               | REGular     [h] [per] [dir]
+       !               | BICHromatic [h1] [h2] [per1] [per2] [dir1] [dir2]
+       !   | UNIForm  <  SPECTrum    [h] [per] [dir] [dd] [cycle] SEC|MIN|HR|DAY
+       !   |           | SERIes      'fname' [itmopt]
+       !   |           | SPECFile    'fname' [cycle] SEC|MIN|HR|DAY
        !  <                                                                       &
        !   |           | FOURier  < [len] [azero] < [ampl] [omega] [phase] > >
        !   |           | REGular  < [len] [h] [per] [dir] >
-       !   |           | SPECTrum < [len] [h] [per] [dir] [dd] [cycle] S|MI|HR|DA >
-       !   | VARiable <  SERIes   < [len] 'fname' [itmopt] >
+       !   |           | BICHrom  < [len] [h1] [h2] [per1] [per2] [dir1] [dir2] >
+       !   | VARiable <  SPECTrum < [len] [h] [per] [dir] [dd] [cycle] S|MI|HR|DA >
+       !               | SERIes   < [len] 'fname' [itmopt] >
        !               | SPECFile < [len] 'fname' [cycle] SEC|MIN|HR|DAY >
        !               | SPECSwan 'fname' [cycle] SEC|MIN|HR|DAY
        !
@@ -894,8 +908,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              blayk = 0
           endif
        else if ( KEYWIS('HYP') ) then
-          blayk   = -1
-          verwinc = .true.
+          blayk = -1
        else if ( KEYWIS('LOG') ) then
           if ( kmax == 1 ) then
              call msgerr (2, 'logarithmic distribution not allowed in depth-averaged mode')
@@ -921,24 +934,32 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
           tsmo = 0.
        endif
        !
-       ! add bound long wave or not?
+       ! add bound waves (optionally)
        !
        call INKEYW ('STA',' ')
-       if ( KEYWIS('ADDB') .or. KEYWIS('ADDIG') ) then
+       if ( KEYWIS('ADDB') ) then
+          istok  = 2
+          ibound = 0
+       else if ( KEYWIS('ADDIG') ) then
+          istok  = 1
           ibound = 1
        else
+          istok  = 1
           ibound = 0
        endif
+       if ( blayk == -1 ) istok = 0
        !
-       if ( ibound == 1 .and. btype /= 3 .and. btype /= 7 ) then
-          call msgerr (1, 'addition of bound long wave not applied for this boundary type')
-          ibound = 0
-       endif
-       !
-       if ( blayk /= -1 .and.  ibound == 1 ) then
-          call msgerr (0, 'the vertical hyperbolic cosine profile for velocity at the boundary will be assumed')
-          blayk   = -1
-          verwinc = .true.
+       if ( istok == 2 .or. ibound == 1 ) then
+          if ( btype /= 3 .and. btype /= 7 ) then
+             call msgerr (1, 'addition of bound waves not applied for this boundary type')
+             istok  = 1
+             ibound = 0
+          endif
+          if ( blayk /= -1 .and. blayk /= 0 ) then
+             call msgerr (1, 'addition of bound waves not applied for this vertical distribution')
+             istok  = 1
+             ibound = 0
+          endif
        endif
        !
        ! boundary condition given as Fourier series, spectrum or time series (from file)
@@ -1013,9 +1034,9 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                    io(i) = i
                 enddo
                 !
-                ! in case of bound long wave, sort the frequencies
+                ! in case of bound waves, sort the frequencies
                 !
-                if ( ibound == 1 ) then
+                if ( istok == 2 .or. ibound == 1 ) then
                    do i = 1, nfreq-1
                       do j = i+1, nfreq
                          if ( arrf(i) > arrf(j) ) then
@@ -1061,9 +1082,14 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              if ( .not.oned ) btype = -btype
              !
              if ( blayk /= -1 .and. blayk /= 0 ) then
-                call msgerr (1, 'only hyperbolic cosine distribution for velocity is allowed in case of regular wave')
+                call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of regular wave')
              endif
              blayk = -1
+             !
+             if ( ibound == 1 ) then
+                call msgerr (1, 'addition of bound long wave correction not allowed for regular wave')
+                ibound = 0
+             endif
              !
              call INREAL ('H'  , height, 'REQ', 0.)
              if ( .not. height > 0. ) call msgerr (2, 'wave height is less or equal to zero')
@@ -1111,15 +1137,90 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                 cubfs => bfstmp
              endif
              !
+          else if ( KEYWIS('BICH') ) then
+             !
+             if ( btype /= 3 .and. btype /= 7 ) call msgerr (3, 'bichromatic wave not allowed for this boundary type')
+             if ( .not.oned ) btype = -btype
+             !
+             if ( blayk /= -1 .and. blayk /= 0 ) then
+                call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of bichromatic wave')
+             endif
+             blayk = -1
+             ! also include sub- and super-harmonic transfer functions
+             if ( istok == 2 ) istok = 3
+             !
+             call INREAL ('H1'  , h1, 'REQ', 0.)
+             call INREAL ('H2'  , h2, 'REQ', 0.)
+             if ( .not. h1 > 0. .or. .not. h2 > 0. ) call msgerr (2, 'wave height is less or equal to zero')
+             call INREAL ('PER1', t1, 'REQ', 0.)
+             call INREAL ('PER2', t2, 'REQ', 0.)
+             if ( .not. t1 > 0. .or. .not. t2 > 0. ) call msgerr (2, 'wave period is less or equal to zero')
+             call INREAL ('DIR1', dir1, 'STA', -999.)
+             if ( oned .and. dir1 /= -999. ) then
+                call msgerr (1, 'first incident wave angle normal to boundary in case of 1D computation')
+                dir1 = -999.
+             endif
+             call INREAL ('DIR2', dir2, 'STA', -999.)
+             if ( oned .and. dir2 /= -999. ) then
+                call msgerr (1, 'second incident wave angle normal to boundary in case of 1D computation')
+                dir2 = -999.
+             endif
+             !
+             ! determine incident wave directions with respect to problem coordinates
+             !
+             if ( dir1 /= -999. ) then
+                dir1 = DEGCNV(dir1)
+                dir1 = pi2 * (dir1/360. - nint(dir1/360.))
+             endif
+             if ( dir2 /= -999. ) then
+                dir2 = DEGCNV(dir2)
+                dir2 = pi2 * (dir2/360. - nint(dir2/360.))
+             endif
+             !
+             nbval = nbval + 1
+             nbvl  = nbval
+             allocate(bfstmp)
+             bfstmp%nbfs      = nbval
+             bfstmp%nfreq     = 2
+             bfstmp%azero     = -1.e10
+             bfstmp%spparm(3) = -888.   ! to indicate bichromatic wave
+             !
+             allocate(bfstmp%ampl (2))
+             allocate(bfstmp%omega(2))
+             allocate(bfstmp%phase(2))
+             allocate(bfstmp%theta(2))
+             !
+             bfstmp%ampl (1) = h1/2.
+             bfstmp%omega(1) = pi2/t1
+             bfstmp%phase(1) = 0.
+             bfstmp%theta(1) = dir1
+             !
+             bfstmp%ampl (2) = h2/2.
+             bfstmp%omega(2) = pi2/t2
+             bfstmp%phase(2) = 0.
+             bfstmp%theta(2) = dir2
+             !
+             nullify(bfstmp%nextbfs)
+             if ( .not.lbfs ) then
+                fbfs = bfstmp
+                cubfs => fbfs
+                lbfs = .true.
+             else
+                cubfs%nextbfs => bfstmp
+                cubfs => bfstmp
+             endif
+             !
           else if ( KEYWIS('SPECT') ) then
              !
              if ( btype /= 3 .and. btype /= 7 ) call msgerr (3, 'spectrum not allowed for this boundary type')
              if ( .not.oned ) btype = -btype
              !
              if ( blayk /= -1 .and. blayk /= 0 ) then
-                call msgerr (1, 'only hyperbolic cosine distribution for velocity is allowed in case of spectrum')
+                call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of spectrum')
              endif
              blayk = -1
+             ! also include sub- and super-harmonic transfer functions
+             if ( istok == 2 ) istok = 3
              !
              call INREAL ('H'  , spparm(1), 'REQ', 0.)
              if ( .not. spparm(1) > 0. ) call msgerr (2, 'wave height is less or equal to zero')
@@ -1228,9 +1329,11 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              if ( .not.oned ) btype = -btype
              !
              if ( blayk /= -1 .and. blayk /= 0 ) then
-                call msgerr (1, 'only hyperbolic cosine distribution for velocity is allowed in case of spectrum')
+                call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of spectrum')
              endif
              blayk = -1
+             ! also include sub- and super-harmonic transfer functions
+             if ( istok == 2 ) istok = 3
              !
              call INCSTR ('FNAME', FILENM, 'REQ', ' ')
              !
@@ -1263,6 +1366,17 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              bgptmp%bgp(5) = 0
              bgptmp%bgp(6) = 1
              bgptmp%bgp(7) = nint(100000.*tsmo)
+             if ( blayk == -1 ) then
+                if ( istok == 0 ) then
+                   blayk = -1
+                elseif ( istok == 1 ) then
+                   blayk = -11
+                elseif ( istok == 2 ) then
+                   blayk = -21
+                elseif ( istok == 3 ) then
+                   blayk = -31
+                endif
+             endif
              bgptmp%bgp(8) = blayk
              if ( .not.lriem ) then
                 bgptmp%bgp(9) = ibound
@@ -1289,20 +1403,24 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              bcimp = 1
           else if ( KEYWIS('REG') .or. KEYWIS('MONO') ) then
              bcimp = 2
-          else if ( KEYWIS('SPECT') ) then
+          else if ( KEYWIS('BICH') ) then
              bcimp = 3
-          else if ( KEYWIS('FILE') .or. KEYWIS('SERI') ) then
+          else if ( KEYWIS('SPECT') ) then
              bcimp = 4
-          else if ( KEYWIS('SPECF') ) then
+          else if ( KEYWIS('FILE') .or. KEYWIS('SERI') ) then
              bcimp = 5
-          else if ( KEYWIS('SPECS') ) then
+          else if ( KEYWIS('SPECF') ) then
              bcimp = 6
+          else if ( KEYWIS('SPECS') ) then
+             bcimp = 7
           endif
           !
-          if ( bcimp == 2 .or. bcimp == 3 .or. bcimp == 5 .or. bcimp == 6 ) then
+          if ( bcimp == 2 .or. bcimp == 3 .or. bcimp == 4 .or. bcimp == 6 .or. bcimp == 7 ) then
              if ( btype /= 3 .and. btype /= 7 ) then
                 if ( bcimp == 2 ) then
                    call msgerr (3, 'regular wave not allowed for this boundary type')
+                else if ( bcimp == 3 ) then
+                   call msgerr (3, 'bichromatic wave not allowed for this boundary type')
                 else
                    call msgerr (3, 'spectrum not allowed for this boundary type')
                 endif
@@ -1310,16 +1428,20 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              if ( .not.oned ) btype = -btype
              if ( blayk /= -1 .and. blayk /= 0 ) then
                 if ( bcimp == 2 ) then
-                   call msgerr (1, 'only hyperbolic cosine distribution for velocity is allowed in case of regular wave')
+                   call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of regular wave')
+                else if ( bcimp == 3 ) then
+                   call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of bichromatic wave')
                 else
-                   call msgerr (1, 'only hyperbolic cosine distribution for velocity is allowed in case of spectrum')
+                   call msgerr (1, 'only vertical velocity profile derived from Stokes wave theory is allowed in case of spectrum')
                 endif
              endif
              blayk = -1
+             ! also include sub- and super-harmonic transfer functions for irregular waves
+             if ( bcimp /= 2 .and. istok == 2 ) istok = 3
           endif
-          if ( bcimp == 4 .and. blayk == -1 ) call msgerr (3, 'time series not allowed for hyperbolic cosine distribution')
+          if ( bcimp == 5 .and. blayk == -1 ) call msgerr (3, 'time series not allowed for hyperbolic cosine distribution')
           !
-          if ( bcimp /= 6 ) then
+          if ( bcimp /= 7 ) then
              !
              rlen1  = -1.e20
              k      = 1
@@ -1404,9 +1526,9 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                             io(i) = i
                          enddo
                          !
-                         ! in case of bound long wave, sort the frequencies
+                         ! in case of bound waves, sort the frequencies
                          !
-                         if ( ibound == 1 ) then
+                         if ( istok == 2 .or. ibound == 1 ) then
                             do i = 1, nfreq-1
                                do j = i+1, nfreq
                                   if ( arrf(i) > arrf(j) ) then
@@ -1447,6 +1569,11 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                       endif
                       !
                    else if ( bcimp == 2 ) then
+                      !
+                      if ( ibound == 1 ) then
+                         call msgerr (1, 'addition of bound long wave correction not allowed for regular wave')
+                         ibound = 0
+                      endif
                       !
                       call INREAL ('H'  , height, 'REQ', 0.)
                       if ( .not. height > 0. ) call msgerr (2, 'wave height is less or equal to zero')
@@ -1496,6 +1623,69 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                       !
                    else if ( bcimp == 3 ) then
                       !
+                      call INREAL ('H1'  , h1, 'REQ', 0.)
+                      call INREAL ('H2'  , h2, 'REQ', 0.)
+                      if ( .not. h1 > 0. .or.  .not. h2 > 0. ) call msgerr (2, 'wave height is less or equal to zero')
+                      call INREAL ('PER1', t1, 'REQ', 0.)
+                      call INREAL ('PER2', t2, 'REQ', 0.)
+                      if ( .not. t1 > 0. .or.  .not. t2 > 0. ) call msgerr (2, 'wave period is less or equal to zero')
+                      call INREAL ('DIR1', dir1, 'STA', -999.)
+                      if ( oned .and. dir1 /= -999. ) then
+                         call msgerr (1, 'first incident wave angle normal to boundary in case of 1D computation')
+                         dir1 = -999.
+                      endif
+                      call INREAL ('DIR2', dir2, 'STA', -999.)
+                      if ( oned .and. dir2 /= -999. ) then
+                         call msgerr (1, 'second incident wave angle normal to boundary in case of 1D computation')
+                         dir2 = -999.
+                      endif
+                      !
+                      ! determine incident wave directions with respect to problem coordinates
+                      !
+                      if ( dir1 /= -999. ) then
+                         dir1 = DEGCNV(dir1)
+                         dir1 = pi2 * (dir1/360. - nint(dir1/360.))
+                      endif
+                      if ( dir2 /= -999. ) then
+                         dir2 = DEGCNV(dir2)
+                         dir2 = pi2 * (dir2/360. - nint(dir2/360.))
+                      endif
+                      !
+                      nbval = nbval + 1
+                      nbv2  = nbval
+                      allocate(bfstmp)
+                      bfstmp%nbfs      = nbval
+                      bfstmp%nfreq     = 2
+                      bfstmp%azero     = -1.e10
+                      bfstmp%spparm(3) = -888.   ! to indicate bichromatic wave
+                      !
+                      allocate(bfstmp%ampl (2))
+                      allocate(bfstmp%omega(2))
+                      allocate(bfstmp%phase(2))
+                      allocate(bfstmp%theta(2))
+                      !
+                      bfstmp%ampl (1) = h1/2.
+                      bfstmp%omega(1) = pi2/t1
+                      bfstmp%phase(1) = 0.
+                      bfstmp%theta(1) = dir1
+                      !
+                      bfstmp%ampl (2) = h2/2.
+                      bfstmp%omega(2) = pi2/t2
+                      bfstmp%phase(2) = 0.
+                      bfstmp%theta(2) = dir2
+                      !
+                      nullify(bfstmp%nextbfs)
+                      if ( .not.lbfs ) then
+                         fbfs = bfstmp
+                         cubfs => fbfs
+                         lbfs = .true.
+                      else
+                         cubfs%nextbfs => bfstmp
+                         cubfs => bfstmp
+                      endif
+                      !
+                   else if ( bcimp == 4 ) then
+                      !
                       call INREAL ('H'  , spparm(1), 'REQ', 0.)
                       if ( .not. spparm(1) > 0. ) call msgerr (2, 'wave height is less or equal to zero')
                       call INREAL ('PER', spparm(2), 'REQ', 0.)
@@ -1544,7 +1734,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                          cubfs => bfstmp
                       endif
                       !
-                   else if ( bcimp == 4 ) then
+                   else if ( bcimp == 5 ) then
                       !
                       if ( lfrst2 ) then
                          call INCSTR ('FNAME', FILENM, 'REQ', ' ')
@@ -1603,7 +1793,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                       endif
                       nbv2 = nbv2 + 1
                       !
-                   else if ( bcimp == 5 ) then
+                   else if ( bcimp == 6 ) then
                       !
                       if ( lfrst3 ) then
                          call INCSTR ('FNAME', FILENM, 'REQ', ' ')
@@ -1663,6 +1853,17 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                    bgptmp%bgp(5) = nint(1000.*(1.-fac))
                    bgptmp%bgp(6) = nbv2
                    bgptmp%bgp(7) = nint(100000.*tsmo)
+                   if ( blayk == -1 ) then
+                      if ( istok == 0 ) then
+                         blayk = -1
+                      elseif ( istok == 1 ) then
+                         blayk = -11
+                      elseif ( istok == 2 ) then
+                         blayk = -21
+                      elseif ( istok == 3 ) then
+                         blayk = -31
+                      endif
+                   endif
                    bgptmp%bgp(8) = blayk
                    if ( .not.lriem ) then
                       bgptmp%bgp(9) = ibound
@@ -1719,6 +1920,18 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                 endif
                 curr => curr%nextxy
              enddo
+             !
+             if ( blayk == -1 ) then
+                if ( istok == 0 ) then
+                   blayk = -1
+                elseif ( istok == 1 ) then
+                   blayk = -11
+                elseif ( istok == 2 ) then
+                   blayk = -21
+                elseif ( istok == 3 ) then
+                   blayk = -31
+                endif
+             endif
              !
              call SwashBCspecfile ( FILENM, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, tcycl, .true., btype, blayk, tsmo )
              if (STPNOW()) return
