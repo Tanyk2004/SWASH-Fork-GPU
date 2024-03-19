@@ -19,7 +19,7 @@ module outp_data
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -304,7 +304,7 @@ module m_bndspec
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -344,105 +344,125 @@ module m_bndspec
 !
 !   Module variables
 !
-    integer                  :: ibound                      ! bound long wave is added (=1) or not added (=0)
+    integer                  :: ibound                        ! bound long wave is added (=1) or not added (=0)
     !
-    integer, dimension(3)    :: spshape = 2                 ! =1; indicates option for value of given wave height concerning the incident spectrum
-                                                            !     = 1; root-mean-square (rms) value of wave height
-                                                            !     = 2; significant wave height
-                                                            ! =2; indicates option for computation of frequency distribution in the incident spectrum
-                                                            !     = 1; Pierson Moskowitz
-                                                            !     = 2; Jonswap
-                                                            !     = 3; TMA
-                                                            ! =3; indicates option for computation of directional distribution in the incident spectrum
-                                                            !     = 1; directional spreading in degrees is given
-                                                            !     = 2; power of cosine is given
+    integer, dimension(3)    :: spshape = 2                   ! =1; indicates option for value of given wave height concerning the incident spectrum
+                                                              !     = 1; root-mean-square (rms) value of wave height
+                                                              !     = 2; significant wave height
+                                                              ! =2; indicates option for computation of frequency distribution in the incident spectrum
+                                                              !     = 1; Pierson Moskowitz
+                                                              !     = 2; Jonswap
+                                                              !     = 3; TMA
+                                                              ! =3; indicates option for computation of directional distribution in the incident spectrum
+                                                              !     = 1; directional spreading in degrees is given
+                                                              !     = 2; power of cosine is given
     !
-    real                     :: gamma = 3.3                 ! peak-enhancement factor
+    real                     :: gamma = 3.3                   ! peak-enhancement factor
     !
-    logical                  :: bcperx = .false.            ! indicates whether incident wave at boundary along x-direction must make periodic or not
-    logical                  :: bcpery = .false.            ! indicates whether incident wave at boundary along y-direction must make periodic or not
+    logical                  :: bcperx = .false.              ! indicates whether incident wave at boundary along x-direction must make periodic or not
+    logical                  :: bcpery = .false.              ! indicates whether incident wave at boundary along y-direction must make periodic or not
     !
-    integer   , dimension(:)  , save, allocatable :: seed   ! seed used to generate pseudorandom phases
+    integer   , dimension(:)    , save, allocatable :: seed   ! seed used to generate pseudorandom phases
     !
-    real      , dimension(:,:), save, allocatable :: kwave  ! wave number of a Fourier component
-    real      , dimension(:,:), save, allocatable :: comp1  ! first free wave component for synthesizing time series
-    real      , dimension(:,:), save, allocatable :: comp2  ! second free wave component for synthesizing time series
-    complex(8), dimension(:,:), save, allocatable :: fluxbu ! mass flux of bound long wave for U-velocity component
-    complex(8), dimension(:,:), save, allocatable :: fluxbv ! mass flux of bound long wave for V-velocity component
-    complex(8), dimension(:,:), save, allocatable :: zetab  ! surface elevation of bound long wave
+    real      , dimension(:,:)  , save, allocatable :: kwave  ! wave number of a Fourier component
+    real      , dimension(:,:)  , save, allocatable :: comp1  ! first free wave component for synthesizing time series
+    real      , dimension(:,:)  , save, allocatable :: comp2  ! second free wave component for synthesizing time series
+    complex(8), dimension(:,:)  , save, allocatable :: fluxbu ! mass flux of bound long wave for U-velocity component
+    complex(8), dimension(:,:)  , save, allocatable :: fluxbv ! mass flux of bound long wave for V-velocity component
+    real      , dimension(:,:,:), save, allocatable :: stku1c ! first order Stokes component of horizontal velocity associated with cosine of phase
+    real      , dimension(:,:,:), save, allocatable :: stku2c ! second order Stokes component of horizontal velocity associated with cosine of phase
+    real      , dimension(:,:,:), save, allocatable :: stku1s ! first order Stokes component of horizontal velocity associated with sine of phase
+    real      , dimension(:,:,:), save, allocatable :: stku2s ! second order Stokes component of horizontal velocity associated with sine of phase
+    real      , dimension(:,:)  , save, allocatable :: stkz1c ! first order Stokes component of surface elevation associated with cosine of phase
+    real      , dimension(:,:)  , save, allocatable :: stkz2c ! second order Stokes component of surface elevation associated with cosine of phase
+    real      , dimension(:,:)  , save, allocatable :: stkz1s ! first order Stokes component of surface elevation associated with sine of phase
+    real      , dimension(:,:)  , save, allocatable :: stkz2s ! second order Stokes component of surface elevation associated with sine of phase
+    real      , dimension(:,:,:), save, allocatable :: subuc  ! sub-harmonic transfer function of U-velocity component associated with cosine of phase
+    real      , dimension(:,:,:), save, allocatable :: supuc  ! super-harmonic transfer function of U-velocity component associated with cosine of phase
+    real      , dimension(:,:,:), save, allocatable :: subus  ! sub-harmonic transfer function of U-velocity component associated with sine of phase
+    real      , dimension(:,:,:), save, allocatable :: supus  ! super-harmonic transfer function of U-velocity component associated with sine of phase
+    real      , dimension(:,:,:), save, allocatable :: subvc  ! sub-harmonic transfer function of V-velocity component associated with cosine of phase
+    real      , dimension(:,:,:), save, allocatable :: supvc  ! super-harmonic transfer function of V-velocity component associated with cosine of phase
+    real      , dimension(:,:,:), save, allocatable :: subvs  ! sub-harmonic transfer function of V-velocity component associated with sine of phase
+    real      , dimension(:,:,:), save, allocatable :: supvs  ! super-harmonic transfer function of V-velocity component associated with sine of phase
+    real      , dimension(:,:)  , save, allocatable :: subzc  ! sub-harmonic transfer function of surface elevation associated with cosine of phase
+    real      , dimension(:,:)  , save, allocatable :: supzc  ! super-harmonic transfer function of surface elevation associated with cosine of phase
+    real      , dimension(:,:)  , save, allocatable :: subzs  ! sub-harmonic transfer function of surface elevation associated with sine of phase
+    real      , dimension(:,:)  , save, allocatable :: supzs  ! super-harmonic transfer function of surface elevation associated with sine of phase
+    complex(8), dimension(:,:)  , save, allocatable :: zetab  ! surface elevation of bound long wave
     !
     type bfldat
-       integer               :: bfiled(20)                  ! data concerning boundary condition files
-                                                            ! 1.  status; 0: stationary, 1: nonstationary, -1: exhausted
-                                                            ! 2.  not used
-                                                            ! 3.  not used
-                                                            ! 4.  unit reference number of file containing filenames
-                                                            ! 5.  unit reference number of file containing data
-                                                            ! 6.  time coding option for reading time from data file
-                                                            ! 7.  =0: time series, =1: nesting
-                                                            ! 8.  number of locations for which boundary values are in the file
-                                                            ! 9.  not used
-                                                            ! 10. not used
-                                                            ! 11. not used
-                                                            ! 12. not used
-                                                            ! 13. ordering of data on file
-                                                            ! 14. number of heading lines per file
-                                                            ! 15. number of heading lines per time step
-                                                            ! 16. number of heading lines per flow variable
-                                                            ! 17. not used
-                                                            ! 18. =1: Cartesian direction, =2: Nautical direction
-                                                            ! 19. not used
-                                                            ! 20. not used
-       real*8                :: bctime(2)                   ! data containing times of boundary values to be read
-                                                            ! 1. time of boundary values read one before last
-                                                            ! 2. time of boundary values read last
-       integer, pointer      :: bcloc(:)                    ! place in array bndval where to store interpolated boundary value
-       type(bfldat), pointer :: nextbfl                     ! pointer to next boundary condition file in list
+       integer               :: bfiled(20)                    ! data concerning boundary condition files
+                                                              ! 1.  status; 0: stationary, 1: nonstationary, -1: exhausted
+                                                              ! 2.  not used
+                                                              ! 3.  not used
+                                                              ! 4.  unit reference number of file containing filenames
+                                                              ! 5.  unit reference number of file containing data
+                                                              ! 6.  time coding option for reading time from data file
+                                                              ! 7.  =0: time series, =1: nesting
+                                                              ! 8.  number of locations for which boundary values are in the file
+                                                              ! 9.  not used
+                                                              ! 10. not used
+                                                              ! 11. not used
+                                                              ! 12. not used
+                                                              ! 13. ordering of data on file
+                                                              ! 14. number of heading lines per file
+                                                              ! 15. number of heading lines per time step
+                                                              ! 16. number of heading lines per flow variable
+                                                              ! 17. not used
+                                                              ! 18. =1: Cartesian direction, =2: Nautical direction
+                                                              ! 19. not used
+                                                              ! 20. not used
+       real*8                :: bctime(2)                     ! data containing times of boundary values to be read
+                                                              ! 1. time of boundary values read one before last
+                                                              ! 2. time of boundary values read last
+       integer, pointer      :: bcloc(:)                      ! place in array bndval where to store interpolated boundary value
+       type(bfldat), pointer :: nextbfl                       ! pointer to next boundary condition file in list
     end type bfldat
 
-    type(bfldat), save, target :: fbndfil                   ! first boundary condition file in list of files
-    logical, save              :: lbfils = .false.          ! indicates whether linked list of boundary condition file is initialized or not
+    type(bfldat), save, target :: fbndfil                     ! first boundary condition file in list of files
+    logical, save              :: lbfils = .false.            ! indicates whether linked list of boundary condition file is initialized or not
 
     type bfsdat
-       integer                :: nbfs                       ! sequence number
-       integer                :: nfreq                      ! number of Fourier components
-       real                   :: azero                      ! amplitude at zero frequency in Fourier series
-       real, pointer          :: ampl (:)                   ! amplitude of a Fourier component
-       real, pointer          :: omega(:)                   ! angular frequency of a Fourier component
-       real, pointer          :: phase(:)                   ! phase of a Fourier component
-       real, pointer          :: theta(:)                   ! randomly chosen directions assigned to each frequency
-       real, pointer          :: sfamp(:)                   ! source function amplitude
-       real, pointer          :: bshap(:)                   ! shape factor beta of the source area
-       real, dimension(5)     :: spparm                     ! parameters used for computation of incident spectrum and subsequent Fourier series
-                                                            ! =1; wave height (significant or rms)
-                                                            ! =2; wave period (peak or mean)
-                                                            ! =3; incident or peak wave direction w.r.t. normal on the boundary
-                                                            ! =4; directional distribution coefficient
-                                                            ! =5; cyclic period of time series
-       type(bfsdat), pointer  :: nextbfs                    ! pointer to next item in list of Fourier series parameters
+       integer                :: nbfs                         ! sequence number
+       integer                :: nfreq                        ! number of Fourier components
+       real                   :: azero                        ! amplitude at zero frequency in Fourier series
+       real, pointer          :: ampl (:)                     ! amplitude of a Fourier component
+       real, pointer          :: omega(:)                     ! angular frequency of a Fourier component
+       real, pointer          :: phase(:)                     ! phase of a Fourier component
+       real, pointer          :: theta(:)                     ! randomly chosen directions assigned to each frequency
+       real, pointer          :: sfamp(:)                     ! source function amplitude
+       real, pointer          :: bshap(:)                     ! shape factor beta of the source area
+       real, dimension(5)     :: spparm                       ! parameters used for computation of incident spectrum and subsequent Fourier series
+                                                              ! =1; wave height (significant or rms)
+                                                              ! =2; wave period (peak or mean)
+                                                              ! =3; incident or peak wave direction w.r.t. normal on the boundary
+                                                              ! =4; directional distribution coefficient
+                                                              ! =5; cyclic period of time series
+       type(bfsdat), pointer  :: nextbfs                      ! pointer to next item in list of Fourier series parameters
     end type bfsdat
 
-    type(bfsdat), save, target  :: fbfs                     ! first item in list of Fourier series parameters
-    type(bfsdat), save, pointer :: cubfs                    ! current item in list of Fourier series parameters
-    logical, save               :: lbfs   = .false.         ! indicates whether linked list of Fourier series parameters is initialized or not
+    type(bfsdat), save, target  :: fbfs                       ! first item in list of Fourier series parameters
+    type(bfsdat), save, pointer :: cubfs                      ! current item in list of Fourier series parameters
+    logical, save               :: lbfs   = .false.           ! indicates whether linked list of Fourier series parameters is initialized or not
 
     type bgpdat
-       integer                :: bgp(9)                     ! array containing data w.r.t. boundary grid points
-                                                            ! =1; grid point index
-                                                            ! =2; boundary type
-                                                            ! =3; weight factor belonging to start boundary value for interpolation
-                                                            ! =4; sequence number of start boundary value
-                                                            ! =5; weight factor belonging to end boundary value for interpolation
-                                                            ! =6; sequence number of end boundary value
-                                                            ! =7; smoothing period
-                                                            ! =8; layer number
-                                                            ! =9; indicator for addition of bound long wave or linearized Riemann invariant
-       type(bgpdat), pointer  :: nextbgp                    ! pointer to next item in list of boundary grid points
+       integer                :: bgp(9)                       ! array containing data w.r.t. boundary grid points
+                                                              ! =1; grid point index
+                                                              ! =2; boundary type
+                                                              ! =3; weight factor belonging to start boundary value for interpolation
+                                                              ! =4; sequence number of start boundary value
+                                                              ! =5; weight factor belonging to end boundary value for interpolation
+                                                              ! =6; sequence number of end boundary value
+                                                              ! =7; smoothing period
+                                                              ! =8; layer number
+                                                              ! =9; indicator for addition of bound long wave or linearized Riemann invariant
+       type(bgpdat), pointer  :: nextbgp                      ! pointer to next item in list of boundary grid points
     end type bgpdat
 
-    type(bgpdat), save, target  :: fbgp                     ! first item in list of boundary grid points
-    type(bgpdat), save, pointer :: cubgp                    ! current item in list of boundary grid points
-    logical, save               :: lbgp   = .false.         ! indicates whether linked list of boundary grid points is initialized or not
+    type(bgpdat), save, target  :: fbgp                       ! first item in list of boundary grid points
+    type(bgpdat), save, pointer :: cubgp                      ! current item in list of boundary grid points
+    logical, save               :: lbgp   = .false.           ! indicates whether linked list of boundary grid points is initialized or not
 !
 !   Source text
 !
@@ -544,7 +564,7 @@ module m_genarr
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by

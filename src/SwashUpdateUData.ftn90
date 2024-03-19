@@ -11,7 +11,7 @@ subroutine SwashUpdateUData ( it )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -30,10 +30,14 @@ subroutine SwashUpdateUData ( it )
 !   Authors
 !
 !    1.00: Marcel Zijlema
+!   11.01: Panagiotis Vasarmidis
+!   11.02: Panagiotis Vasarmidis
 !
 !   Updates
 !
 !    1.00, February 2020: New subroutine
+!   11.01,  October 2023: extension first and second order Stokes wave at boundaries
+!   11.02, November 2023: extension second order transfer functions at boundaries
 !
 !   Purpose
 !
@@ -90,6 +94,11 @@ subroutine SwashUpdateUData ( it )
     integer               :: indxf    ! index of boundary face
     integer               :: indxn    ! index of next boundary point
     integer               :: indxs    ! index of boundary cell
+    integer               :: istok    ! indicates the order of Stokes wave theory
+                                      ! = 0; use hyperbolic cosine distribution for velocity (Airy wave theory)
+                                      ! = 1; first order Stokes wave (Airy wave theory)
+                                      ! = 2; second order Stokes wave
+                                      ! = 3; second order sub- and super-harmonic transfer functions
     integer               :: itmp     ! temporary stored integer
     integer               :: ix       ! index of point
     integer               :: j        ! loop counter
@@ -132,7 +141,8 @@ subroutine SwashUpdateUData ( it )
     real                  :: nx       ! x-component of normal to face
     real                  :: ny       ! y-component of normal to face
     real                  :: omega    ! angular frequency of a Fourier component
-    real                  :: omegab   ! angular frequency of bound long wave
+    real                  :: omegsb   ! angular frequency of bound sub-harmonic component
+    real                  :: omegsp   ! angular frequency of bound super-harmonic component
     real                  :: phase    ! phase of a Fourier component
     real                  :: rdx      ! reciprocal of distance between cell circumcenter and boundary face
     real                  :: rsgn     ! sign for indicating in- and outflowing depending on boundary
@@ -344,9 +354,16 @@ subroutine SwashUpdateUData ( it )
           !
           bval = fsmo * bval
           !
-          ! get layer number
+          ! get layer number and order of Stokes wave
           !
-          klay = bgridp(9*i-1)
+          itmp  = bgridp(9*i-1)
+          if ( itmp < 0 ) then
+             klay  = mod(itmp,10)
+             istok = -itmp/10
+          else
+             klay  = itmp
+             istok = 0
+          endif
           !
           ! get coordinates of the midface with respect to first vertex of boundary
           !
@@ -436,7 +453,7 @@ subroutine SwashUpdateUData ( it )
                 !
              else if ( klay == -1 ) then
                 !
-                ! hyperbolic cosine distribution in vertical
+                ! hyperbolic cosine distribution / Stokes wave solution in vertical
                 !
                 u1(indxf,:) = 0.
                 !
@@ -469,70 +486,23 @@ subroutine SwashUpdateUData ( it )
                       !
                       if ( it == 0 ) call SwashBCshortwave ( curbfs, nfreq, xp, yp, i, swd, wdir, rsgn, vdir, shape )
                       !
-                      ! determine bound long wave, if appropriate
+                      ! determine bound long wave using Hasselmann (1962) transfer functions (obsolete)
                       !
                       if ( ibnd == 1 .and. it == 0 ) call SwashBCboundwave ( curbfs, nfreq, xp, yp, i, swd, wdir, rsgn, vdir, shape )
                       !
+                      ! determine first and second order Stokes waves
+                      !
+                      if ( istok /= 0 .and. it == 0 ) call SwashBCStokeswave ( curbfs, nfreq, i, swd, istok )
+                      !
+                      ! for irregular waves, compute sub- and super-harmonic transfer functions
+                      !
+                      if ( istok == 3 .and. it == 0 ) call SwashBCtransferfnc ( curbfs, nfreq, xp, yp, i, swd, wdir, rsgn, vdir, shape )
+                      !
                       if ( kmax == 1 .or. ihydro == 3 ) then
                          !
-                         fvalu = 0.
-                         do j = 1, nfreq
+                         if ( istok == 0 ) then
                             !
-                            omega = curbfs%omega(j)
-                            kwav  = kwave(i,j)
-                            !
-                            if ( kwav /= 0. ) then
-                               fac = omega / ( kwav * dep )
-                            else
-                               fac = sqrt( grav / dep )
-                            endif
-                            !
-                            ! synthesize time series
-                            !
-                            fvalu = fvalu + fac * comp1(i,j) * cos( omega*timco ) + fac * comp2(i,j) * sin( omega*timco )
-                            !
-                         enddo
-                         !
-                         ! add bound long wave, if appropriate
-                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
-                         !
-                         if ( ibnd == 1 ) then
-                            !
-                            do j = 1, nfreq-1
-                               !
-                               omegab = curbfs%omega(j+1) - curbfs%omega(1)
-                               !
-                               fvalu = fvalu + real ( fluxbu(i,j) / swd * exp( (0.,1.)*omegab*timco ) )
-                               !
-                            enddo
-                            !
-                         endif
-                         !
-                         u1(indxf,:) = u1(indxf,:) + rsgn * wf * fsmo * fvalu
-                         !
-                      else
-                         !
-                         ! compute bound long wave, if appropriate (uniform distribution in vertical)
-                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
-                         !
-                         fvalbu = 0.
-                         !
-                         if ( ibnd == 1 ) then
-                            !
-                            do j = 1, nfreq-1
-                               !
-                               omegab = curbfs%omega(j+1) - curbfs%omega(1)
-                               !
-                               fvalbu = fvalbu + real ( fluxbu(i,j) / swd * exp( (0.,1.)*omegab*timco ) )
-                               !
-                            enddo
-                            !
-                         endif
-                         !
-                         do k = 1, kmax
-                            !
-                            z2 = zku(indxf,k-1) - zku(indxf,kmax)
-                            z1 = zku(indxf,k  ) - zku(indxf,kmax)
+                            ! hyperbolic cosine distribution
                             !
                             fvalu = 0.
                             do j = 1, nfreq
@@ -540,13 +510,8 @@ subroutine SwashUpdateUData ( it )
                                omega = curbfs%omega(j)
                                kwav  = kwave(i,j)
                                !
-                               ! compute hyperbolic cosine distribution
-                               !
-                               fac1 = sinh(min(30.,kwav*dcor*z2)) - sinh(min(30.,kwav*dcor*z1))
-                               fac2 = kwav * (z2-z1) * sinh(min(30.,kwav*swd))
-                               !
-                               if ( fac2 /= 0. ) then
-                                  fac = omega * fac1 / fac2
+                               if ( kwav /= 0. ) then
+                                  fac = omega / ( kwav * dep )
                                else
                                   fac = sqrt( grav / dep )
                                endif
@@ -557,11 +522,195 @@ subroutine SwashUpdateUData ( it )
                                !
                             enddo
                             !
-                            fvalu = fsmo * ( fvalu + fvalbu )
+                         else if ( istok == 1 ) then
                             !
-                            u1(indxf,k) = u1(indxf,k) + rsgn * wf * fvalu
+                            ! first order Stokes wave solution
                             !
-                         enddo
+                            fvalu = 0.
+                            do j = 1, nfreq
+                               !
+                               omega = curbfs%omega(j)
+                               !
+                               ! synthesize time series
+                               !
+                               fvalu = fvalu + stku1c(i,j,1) * cos( omega*timco ) + stku1s(i,j,1) * sin( omega*timco )
+                               !
+                            enddo
+                            !
+                         else if ( istok > 1 ) then
+                            !
+                            ! second order Stokes wave solution
+                            !
+                            fvalu = 0.
+                            do j = 1, nfreq
+                               !
+                               omega = curbfs%omega(j)
+                               !
+                               ! synthesize time series
+                               !
+                               fvalu = fvalu + stku1c(i,j,1) * cos(    omega*timco ) + stku1s(i,j,1) * sin(    omega*timco ) &
+                                             + stku2c(i,j,1) * cos( 2.*omega*timco ) + stku2s(i,j,1) * sin( 2.*omega*timco )
+                               !
+                            enddo
+                            !
+                            ! add cross-interacting sub- and super-harmonics
+                            ! (note: self-interacting super-harmonics are already included in the foregoing, e.g. stku2c, stkz2c)
+                            !
+                            if ( istok == 3 ) then
+                               !
+                               do j = 1, nfreq-1
+                                  !
+                                  omegsb = curbfs%omega(1) - curbfs%omega(j+1)
+                                  omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                  !
+                                  fvalu = fvalu + subuc(i,j,1) * cos( omegsb*timco ) + subus(i,j,1) * sin( omegsb*timco ) &
+                                                + supuc(i,j,1) * cos( omegsp*timco ) + supus(i,j,1) * sin( omegsp*timco )
+                                  !
+                               enddo
+                               !
+                            endif
+                            !
+                         endif
+                         !
+                         ! add bound long wave based on transfer functions of Hasselmann (obsolete)
+                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
+                         !
+                         if ( ibnd == 1 ) then
+                            !
+                            do j = 1, nfreq-1
+                               !
+                               omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                               !
+                               fvalu = fvalu + real ( fluxbu(i,j) / swd * exp( (0.,1.)*omegsb*timco ) )
+                               !
+                            enddo
+                            !
+                         endif
+                         !
+                         u1(indxf,:) = u1(indxf,:) + rsgn * wf * fsmo * fvalu
+                         !
+                      else
+                         !
+                         ! compute bound long wave (uniform distribution in vertical) based on transfer functions of Hasselmann (obsolete)
+                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
+                         !
+                         fvalbu = 0.
+                         !
+                         if ( ibnd == 1 ) then
+                            !
+                            do j = 1, nfreq-1
+                               !
+                               omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                               !
+                               fvalbu = fvalbu + real ( fluxbu(i,j) / swd * exp( (0.,1.)*omegsb*timco ) )
+                               !
+                            enddo
+                            !
+                         endif
+                         !
+                         if ( istok == 0 ) then
+                            !
+                            ! hyperbolic cosine distribution
+                            !
+                            do k = 1, kmax
+                               !
+                               z2 = zku(indxf,k-1) - zku(indxf,kmax)
+                               z1 = zku(indxf,k  ) - zku(indxf,kmax)
+                               !
+                               fvalu = 0.
+                               do j = 1, nfreq
+                                  !
+                                  omega = curbfs%omega(j)
+                                  kwav  = kwave(i,j)
+                                  !
+                                  ! compute hyperbolic cosine distribution
+                                  !
+                                  fac1 = sinh(min(30.,kwav*dcor*z2)) - sinh(min(30.,kwav*dcor*z1))
+                                  fac2 = kwav * (z2-z1) * sinh(min(30.,kwav*swd))
+                                  !
+                                  if ( fac2 /= 0. ) then
+                                     fac = omega * fac1 / fac2
+                                  else
+                                     fac = sqrt( grav / dep )
+                                  endif
+                                  !
+                                  ! synthesize time series
+                                  !
+                                  fvalu = fvalu + fac * comp1(i,j) * cos( omega*timco ) + fac * comp2(i,j) * sin( omega*timco )
+                                  !
+                               enddo
+                               !
+                               fvalu = fsmo * ( fvalu + fvalbu )
+                               !
+                               u1(indxf,k) = u1(indxf,k) + rsgn * wf * fvalu
+                               !
+                            enddo
+                            !
+                         else if ( istok == 1 ) then
+                            !
+                            ! first order Stokes wave solution
+                            !
+                            do k = 1, kmax
+                               !
+                               fvalu = 0.
+                               do j = 1, nfreq
+                                  !
+                                  omega = curbfs%omega(j)
+                                  !
+                                  ! synthesize time series
+                                  !
+                                  fvalu = fvalu + stku1c(i,j,k) * cos( omega*timco ) + stku1s(i,j,k) * sin( omega*timco )
+                                  !
+                               enddo
+                               !
+                               fvalu = fsmo * ( fvalu + fvalbu )
+                               !
+                               u1(indxf,k) = u1(indxf,k) + rsgn * wf * fvalu
+                               !
+                            enddo
+                            !
+                         else if ( istok > 1 ) then
+                            !
+                            ! second order Stokes wave solution
+                            !
+                            do k = 1, kmax
+                               !
+                               fvalu = 0.
+                               do j = 1, nfreq
+                                  !
+                                  omega = curbfs%omega(j)
+                                  !
+                                  ! synthesize time series
+                                  !
+                                  fvalu = fvalu + stku1c(i,j,k) * cos(    omega*timco ) + stku1s(i,j,k) * sin(    omega*timco ) &
+                                                + stku2c(i,j,k) * cos( 2.*omega*timco ) + stku2s(i,j,k) * sin( 2.*omega*timco )
+                                  !
+                               enddo
+                               !
+                               ! add cross-interacting sub- and super-harmonics
+                               ! (note: self-interacting super-harmonics are already included in the foregoing, e.g. stku2c, stkz2c)
+                               !
+                               if ( istok == 3 ) then
+                                  !
+                                  do j = 1, nfreq-1
+                                     !
+                                     omegsb = curbfs%omega(1) - curbfs%omega(j+1)
+                                     omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                     !
+                                     fvalu = fvalu + subuc(i,j,k) * cos( omegsb*timco ) + subus(i,j,k) * sin( omegsb*timco ) &
+                                                   + supuc(i,j,k) * cos( omegsp*timco ) + supus(i,j,k) * sin( omegsp*timco )
+                                     !
+                                  enddo
+                                  !
+                               endif
+                               !
+                               fvalu = fsmo * ( fvalu + fvalbu )
+                               !
+                               u1(indxf,k) = u1(indxf,k) + rsgn * wf * fvalu
+                               !
+                            enddo
+                            !
+                         endif
                          !
                       endif
                       !
@@ -665,7 +814,7 @@ subroutine SwashUpdateUData ( it )
                 !
              else if ( klay == -1 ) then
                 !
-                ! hyperbolic cosine distribution in vertical
+                ! hyperbolic cosine distribution / Stokes wave solution in vertical
                 !
                 u1(indxf,:) = 0.
                 !
@@ -698,70 +847,23 @@ subroutine SwashUpdateUData ( it )
                       !
                       if ( it == 0 ) call SwashBCshortwave ( curbfs, nfreq, xp, yp, i, swd, wdir, rsgn, vdir, shape )
                       !
-                      ! determine bound long wave, if appropriate
+                      ! determine bound long wave using Hasselmann (1962) transfer functions (obsolete)
                       !
                       if ( ibnd == 1 .and. it == 0 ) call SwashBCboundwave ( curbfs, nfreq, xp, yp, i, swd, wdir, rsgn, vdir, shape )
                       !
+                      ! determine first and second order Stokes waves
+                      !
+                      if ( istok /= 0 .and. it == 0 ) call SwashBCStokeswave ( curbfs, nfreq, i, swd, istok )
+                      !
+                      ! for irregular waves, compute sub- and super-harmonic transfer functions
+                      !
+                      if ( istok == 3 .and. it == 0 ) call SwashBCtransferfnc ( curbfs, nfreq, xp, yp, i, swd, wdir, rsgn, vdir, shape )
+                      !
                       if ( kmax == 1 .or. ihydro == 3 ) then
                          !
-                         fvalu = 0.
-                         do j = 1, nfreq
+                         if ( istok == 0 ) then
                             !
-                            omega = curbfs%omega(j)
-                            kwav  = kwave(i,j)
-                            !
-                            if ( kwav /= 0. ) then
-                               fac = omega / ( kwav * dep ) + sqrt( grav / dep )
-                            else
-                               fac = 2. * sqrt( grav / dep )
-                            endif
-                            !
-                            ! synthesize time series
-                            !
-                            fvalu = fvalu + fac * comp1(i,j) * cos( omega*timco ) + fac * comp2(i,j) * sin( omega*timco )
-                            !
-                         enddo
-                         !
-                         ! add bound long wave, if appropriate
-                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
-                         !
-                         if ( ibnd == 1 ) then
-                            !
-                            do j = 1, nfreq-1
-                               !
-                               omegab = curbfs%omega(j+1) - curbfs%omega(1)
-                               !
-                               fvalu = fvalu + real ( ( fluxbu(i,j) / swd + sqrt( grav / dep ) * zetab(i,j) ) * exp( (0.,1.)*omegab*timco ) )
-                               !
-                            enddo
-                            !
-                         endif
-                         !
-                         u1(indxf,:) = u1(indxf,:) + rsgn * wf * ( fsmo * fvalu - sqrt( grav / hu(indxf) ) * s0(indxs) )
-                         !
-                      else
-                         !
-                         ! compute bound long wave, if appropriate (uniform distribution in vertical)
-                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
-                         !
-                         fvalbu = 0.
-                         !
-                         if ( ibnd == 1 ) then
-                            !
-                            do j = 1, nfreq-1
-                               !
-                               omegab = curbfs%omega(j+1) - curbfs%omega(1)
-                               !
-                               fvalbu = fvalbu + real ( ( fluxbu(i,j) / swd + sqrt( grav / dep ) * zetab(i,j) ) * exp( (0.,1.)*omegab*timco ) )
-                               !
-                            enddo
-                            !
-                         endif
-                         !
-                         do k = 1, kmax
-                            !
-                            z2 = zku(indxf,k-1) - zku(indxf,kmax)
-                            z1 = zku(indxf,k  ) - zku(indxf,kmax)
+                            ! hyperbolic cosine distribution
                             !
                             fvalu = 0.
                             do j = 1, nfreq
@@ -769,13 +871,8 @@ subroutine SwashUpdateUData ( it )
                                omega = curbfs%omega(j)
                                kwav  = kwave(i,j)
                                !
-                               ! compute hyperbolic cosine distribution
-                               !
-                               fac1 = sinh(min(30.,kwav*dcor*z2)) - sinh(min(30.,kwav*dcor*z1))
-                               fac2 = kwav * (z2-z1) * sinh(min(30.,kwav*swd))
-                               !
-                               if ( fac2 /= 0. ) then
-                                  fac = omega * fac1 / fac2 + sqrt( grav / dep )
+                               if ( kwav /= 0. ) then
+                                  fac = omega / ( kwav * dep ) + sqrt( grav / dep )
                                else
                                   fac = 2. * sqrt( grav / dep )
                                endif
@@ -786,11 +883,203 @@ subroutine SwashUpdateUData ( it )
                                !
                             enddo
                             !
-                            fvalu = fsmo * ( fvalu + fvalbu )
+                         else if ( istok == 1 ) then
                             !
-                            u1(indxf,k) = u1(indxf,k) + rsgn * wf * ( fvalu - sqrt( grav / hu(indxf) ) * s0(indxs) )
+                            ! first order Stokes wave solution
                             !
-                         enddo
+                            fac = sqrt( grav / dep )
+                            !
+                            fvalu = 0.
+                            do j = 1, nfreq
+                               !
+                               omega = curbfs%omega(j)
+                               !
+                               ! synthesize time series
+                               !
+                               fvalu = fvalu + ( stku1c(i,j,1) + fac*stkz1c(i,j) ) * cos( omega*timco ) + ( stku1s(i,j,1) + fac*stkz1s(i,j) ) * sin( omega*timco )
+                               !
+                            enddo
+                            !
+                         else if ( istok > 1 ) then
+                            !
+                            ! second order Stokes wave solution
+                            !
+                            fac = sqrt( grav / dep )
+                            !
+                            fvalu = 0.
+                            do j = 1, nfreq
+                               !
+                               omega = curbfs%omega(j)
+                               !
+                               ! synthesize time series
+                               !
+                               fvalu = fvalu + ( stku1c(i,j,1) + fac*stkz1c(i,j) ) * cos(    omega*timco ) + ( stku1s(i,j,1) + fac*stkz1s(i,j) ) * sin(    omega*timco ) &
+                                             + ( stku2c(i,j,1) + fac*stkz2c(i,j) ) * cos( 2.*omega*timco ) + ( stku2s(i,j,1) + fac*stkz2s(i,j) ) * sin( 2.*omega*timco )
+                               !
+                            enddo
+                            !
+                            ! add cross-interacting sub- and super-harmonics
+                            ! (note: self-interacting super-harmonics are already included in the foregoing, e.g. stku2c, stkz2c)
+                            !
+                            if ( istok == 3 ) then
+                               !
+                               do j = 1, nfreq-1
+                                  !
+                                  omegsb = curbfs%omega(1) - curbfs%omega(j+1)
+                                  omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                  !
+                                  fvalu = fvalu + ( subuc(i,j,1) + fac*subzc(i,j) ) * cos( omegsb*timco ) + ( subus(i,j,1) + fac*subzs(i,j) ) * sin( omegsb*timco ) &
+                                                + ( supuc(i,j,1) + fac*supzc(i,j) ) * cos( omegsp*timco ) + ( supus(i,j,1) + fac*supzs(i,j) ) * sin( omegsp*timco )
+                                  !
+                               enddo
+                               !
+                            endif
+                            !
+                         endif
+                         !
+                         ! add bound long wave based on transfer functions of Hasselmann (obsolete)
+                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
+                         !
+                         if ( ibnd == 1 ) then
+                            !
+                            do j = 1, nfreq-1
+                               !
+                               omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                               !
+                               fvalu = fvalu + real ( ( fluxbu(i,j) / swd + sqrt( grav / dep ) * zetab(i,j) ) * exp( (0.,1.)*omegsb*timco ) )
+                               !
+                            enddo
+                            !
+                         endif
+                         !
+                         u1(indxf,:) = u1(indxf,:) + rsgn * wf * ( fsmo * fvalu - sqrt( grav / hu(indxf) ) * s0(indxs) )
+                         !
+                      else
+                         !
+                         ! compute bound long wave (uniform distribution in vertical) based on transfer functions of Hasselmann (obsolete)
+                         ! note: mass flux should be divided by the water depth, but for reasons of robustness the still water depth is chosen
+                         !
+                         fvalbu = 0.
+                         !
+                         if ( ibnd == 1 ) then
+                            !
+                            do j = 1, nfreq-1
+                               !
+                               omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                               !
+                               fvalbu = fvalbu + real ( ( fluxbu(i,j) / swd + sqrt( grav / dep ) * zetab(i,j) ) * exp( (0.,1.)*omegsb*timco ) )
+                               !
+                            enddo
+                            !
+                         endif
+                         !
+                         if ( istok == 0 ) then
+                            !
+                            ! hyperbolic cosine distribution
+                            !
+                            do k = 1, kmax
+                               !
+                               z2 = zku(indxf,k-1) - zku(indxf,kmax)
+                               z1 = zku(indxf,k  ) - zku(indxf,kmax)
+                               !
+                               fvalu = 0.
+                               do j = 1, nfreq
+                                  !
+                                  omega = curbfs%omega(j)
+                                  kwav  = kwave(i,j)
+                                  !
+                                  ! compute hyperbolic cosine distribution
+                                  !
+                                  fac1 = sinh(min(30.,kwav*dcor*z2)) - sinh(min(30.,kwav*dcor*z1))
+                                  fac2 = kwav * (z2-z1) * sinh(min(30.,kwav*swd))
+                                  !
+                                  if ( fac2 /= 0. ) then
+                                     fac = omega * fac1 / fac2 + sqrt( grav / dep )
+                                  else
+                                     fac = 2. * sqrt( grav / dep )
+                                  endif
+                                  !
+                                  ! synthesize time series
+                                  !
+                                  fvalu = fvalu + fac * comp1(i,j) * cos( omega*timco ) + fac * comp2(i,j) * sin( omega*timco )
+                                  !
+                               enddo
+                               !
+                               fvalu = fsmo * ( fvalu + fvalbu )
+                               !
+                               u1(indxf,k) = u1(indxf,k) + rsgn * wf * ( fvalu - sqrt( grav / hu(indxf) ) * s0(indxs) )
+                               !
+                            enddo
+                            !
+                         else if ( istok == 1 ) then
+                            !
+                            ! first order Stokes wave solution
+                            !
+                            fac = sqrt( grav / dep )
+                            !
+                            do k = 1, kmax
+                               !
+                               fvalu = 0.
+                               do j = 1, nfreq
+                                  !
+                                  omega = curbfs%omega(j)
+                                  !
+                                  ! synthesize time series
+                                  !
+                                  fvalu = fvalu + ( stku1c(i,j,k) + fac*stkz1c(i,j) ) * cos( omega*timco ) + ( stku1s(i,j,k) + fac*stkz1s(i,j) ) * sin( omega*timco )
+                                  !
+                               enddo
+                               !
+                               fvalu = fsmo * ( fvalu + fvalbu )
+                               !
+                               u1(indxf,k) = u1(indxf,k) + rsgn * wf * ( fvalu - sqrt( grav / hu(indxf) ) * s0(indxs) )
+                               !
+                            enddo
+                            !
+                         else if ( istok > 1 ) then
+                            !
+                            ! second order Stokes wave solution
+                            !
+                            fac = sqrt( grav / dep )
+                            !
+                            do k = 1, kmax
+                               !
+                               fvalu = 0.
+                               do j = 1, nfreq
+                                  !
+                                  omega = curbfs%omega(j)
+                                  !
+                                  ! synthesize time series
+                                  !
+                                  fvalu = fvalu + ( stku1c(i,j,k) + fac*stkz1c(i,j) ) * cos(    omega*timco ) + ( stku1s(i,j,k) + fac*stkz1s(i,j) ) * sin(    omega*timco ) &
+                                                + ( stku2c(i,j,k) + fac*stkz2c(i,j) ) * cos( 2.*omega*timco ) + ( stku2s(i,j,k) + fac*stkz2s(i,j) ) * sin( 2.*omega*timco )
+                                  !
+                               enddo
+                               !
+                               ! add cross-interacting sub- and super-harmonics
+                               ! (note: self-interacting super-harmonics are already included in the foregoing, e.g. stku2c, stkz2c)
+                               !
+                               if ( istok == 3 ) then
+                                  !
+                                  do j = 1, nfreq-1
+                                     !
+                                     omegsb = curbfs%omega(1) - curbfs%omega(j+1)
+                                     omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                     !
+                                     fvalu = fvalu + ( subuc(i,j,k) + fac*subzc(i,j) ) * cos( omegsb*timco ) + ( subus(i,j,k) + fac*subzs(i,j) ) * sin( omegsb*timco ) &
+                                                   + ( supuc(i,j,k) + fac*supzc(i,j) ) * cos( omegsp*timco ) + ( supus(i,j,k) + fac*supzs(i,j) ) * sin( omegsp*timco )
+                                     !
+                                  enddo
+                                  !
+                               endif
+                               !
+                               fvalu = fsmo * ( fvalu + fvalbu )
+                               !
+                               u1(indxf,k) = u1(indxf,k) + rsgn * wf * ( fvalu - sqrt( grav / hu(indxf) ) * s0(indxs) )
+                               !
+                            enddo
+                            !
+                         endif
                          !
                       endif
                       !

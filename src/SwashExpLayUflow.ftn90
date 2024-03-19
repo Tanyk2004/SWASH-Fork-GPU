@@ -11,7 +11,7 @@ subroutine SwashExpLayUflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -300,105 +300,47 @@ subroutine SwashExpLayUflow
     !
     ! compute horizontal advection term using first order upwind (momentum conservative)
     !
-    do k = 1, kmax
+    if ( .not.linswe ) then
        !
-       do iface = 1, nfaces
+       do k = 1, kmax
           !
-          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+          do iface = 1, nfaces
              !
-             finp = face(iface)%attr(FACELINPF)
-             !
-             nx = face(iface)%attr(FACENORMX)
-             ny = face(iface)%attr(FACENORMY)
-             !
-             ! consider left and right cells of current face
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             if ( u0(iface,k) > 0. ) then
+             if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
                 !
-                icella = icelll
-                FC     = FACECL
-                faca   = finp
+                finp = face(iface)%attr(FACELINPF)
                 !
-             else
+                nx = face(iface)%attr(FACENORMX)
+                ny = face(iface)%attr(FACENORMY)
                 !
-                icella = icellr
-                FC     = FACECR
-                faca   = 1. - finp
+                ! consider left and right cells of current face
                 !
-             endif
-             !
-             ctrhf = 0.
-             !
-             ! loop over faces of the cell under consideration
-             !
-             do jf = 1, cell(icella)%nof
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
                 !
-                ! consider upwind cell of the current face
-                !
-                ifaceu = cell(icella)%face(jf)%atti(FACEID)
-                !
-                if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
+                if ( u0(iface,k) > 0. ) then
                    !
-                   icellu = face(ifaceu)%atti(FC)
+                   icella = icelll
+                   FC     = FACECL
+                   faca   = finp
                    !
-                   !  update for ingoing flux
+                else
                    !
-                   if ( quf(icella,k,jf) < 0. ) ctrhf = ctrhf + quf(icella,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
+                   icella = icellr
+                   FC     = FACECR
+                   faca   = 1. - finp
                    !
                 endif
                 !
-             enddo
-             !
-             area = cell(icella)%attr(CELLAREA)
-             !
-             ctrhf = faca * ctrhf / area / hkum(iface,k)
-             !
-             rhsu(iface,k) = rhsu(iface,k) - ctrhf
-             !
-          else if ( wlimp(iface) ) then
-             !
-             finp = face(iface)%attr(FACELINPF)
-             !
-             nx = face(iface)%attr(FACENORMX)
-             ny = face(iface)%attr(FACENORMY)
-             !
-             ! consider left and right cells of boundary face and ...
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             ! ... boundary cell
-             !
-             icellb = face(iface)%atti(FACEC1)
-             !
-             ! get orientation at boundary face
-             !
-             if ( icellb == icelll ) then
-                rsgn = 1.
-                FC   = FACECL
-                faca = finp
-             else if ( icellb == icellr ) then
-                rsgn = -1.
-                FC   = FACECR
-                faca = 1. - finp
-             endif
-             !
-             if ( rsgn * u0(iface,k) > 0. ) then
-                !
-                ! outflow
-                !
                 ctrhf = 0.
                 !
-                ! loop over faces of the boundary cell
+                ! loop over faces of the cell under consideration
                 !
-                do jf = 1, cell(icellb)%nof
+                do jf = 1, cell(icella)%nof
                    !
                    ! consider upwind cell of the current face
                    !
-                   ifaceu = cell(icellb)%face(jf)%atti(FACEID)
+                   ifaceu = cell(icella)%face(jf)%atti(FACEID)
                    !
                    if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
                       !
@@ -406,25 +348,87 @@ subroutine SwashExpLayUflow
                       !
                       !  update for ingoing flux
                       !
-                      if ( quf(icellb,k,jf) < 0. ) ctrhf = ctrhf + quf(icellb,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
+                      if ( quf(icella,k,jf) < 0. ) ctrhf = ctrhf + quf(icella,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
                       !
                    endif
                    !
                 enddo
                 !
-                area = cell(icellb)%attr(CELLAREA)
+                area = cell(icella)%attr(CELLAREA)
                 !
                 ctrhf = faca * ctrhf / area / hkum(iface,k)
                 !
                 rhsu(iface,k) = rhsu(iface,k) - ctrhf
                 !
+             else if ( wlimp(iface) ) then
+                !
+                finp = face(iface)%attr(FACELINPF)
+                !
+                nx = face(iface)%attr(FACENORMX)
+                ny = face(iface)%attr(FACENORMY)
+                !
+                ! consider left and right cells of boundary face and ...
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                ! ... boundary cell
+                !
+                icellb = face(iface)%atti(FACEC1)
+                !
+                ! get orientation at boundary face
+                !
+                if ( icellb == icelll ) then
+                   rsgn = 1.
+                   FC   = FACECL
+                   faca = finp
+                else if ( icellb == icellr ) then
+                   rsgn = -1.
+                   FC   = FACECR
+                   faca = 1. - finp
+                endif
+                !
+                if ( rsgn * u0(iface,k) > 0. ) then
+                   !
+                   ! outflow
+                   !
+                   ctrhf = 0.
+                   !
+                   ! loop over faces of the boundary cell
+                   !
+                   do jf = 1, cell(icellb)%nof
+                      !
+                      ! consider upwind cell of the current face
+                      !
+                      ifaceu = cell(icellb)%face(jf)%atti(FACEID)
+                      !
+                      if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
+                         !
+                         icellu = face(ifaceu)%atti(FC)
+                         !
+                         !  update for ingoing flux
+                         !
+                         if ( quf(icellb,k,jf) < 0. ) ctrhf = ctrhf + quf(icellb,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
+                         !
+                      endif
+                      !
+                   enddo
+                   !
+                   area = cell(icellb)%attr(CELLAREA)
+                   !
+                   ctrhf = faca * ctrhf / area / hkum(iface,k)
+                   !
+                   rhsu(iface,k) = rhsu(iface,k) - ctrhf
+                   !
+                endif
+                !
              endif
              !
-          endif
+          enddo
           !
        enddo
        !
-    enddo
+    endif
     !
     ! add second order approximation based on Lax-Wendroff method (if appropriate)
     !
@@ -1942,7 +1946,11 @@ subroutine SwashExpLayUflow
        !
        ! compute gradient of non-hydrostatic pressure
        !
-       fac = (-1.)**kmax
+       if ( linswe ) then
+          fac = (-1.)**kmax
+       else
+          fac = 0.
+       endif
        !
        if ( iproj == 1 ) then
           fac1 = 1.
@@ -1972,7 +1980,7 @@ subroutine SwashExpLayUflow
                       !
                    enddo
                    !
-                   !rhsw(icell,k) = rhsw(icell,k) - fac * ( w1(icell,kmax) - w0(icell,kmax) ) / (dt*thetaw)
+                   rhsw(icell,k) = rhsw(icell,k) - fac * ( w1(icell,kmax) - w0(icell,kmax) ) / (dt*thetaw)
                    !
                 else
                    !
@@ -2457,7 +2465,7 @@ subroutine SwashExpLayUflow
     !
     ! solve global continuity equation by means of the second order Hancock scheme
     !
-    do j = 1, 2
+    do j = jhk, 2
        !
        if ( j == 1 ) then
           !
@@ -2495,50 +2503,101 @@ subroutine SwashExpLayUflow
        !
        ! compute the water level
        !
-       do icell = 1, ncells
+       if ( .not.linswe ) then
           !
-          qf = 0.
-          !
-          ! loop over faces of the cell
-          !
-          do jf = 1, cell(icell)%nof
+          do icell = 1, ncells
              !
-             ! face identifier
+             qf = 0.
              !
-             iface = cell(icell)%face(jf)%atti(FACEID)
+             ! loop over faces of the cell
              !
-             ! get length of current face
+             do jf = 1, cell(icell)%nof
+                !
+                ! face identifier
+                !
+                iface = cell(icell)%face(jf)%atti(FACEID)
+                !
+                ! get length of current face
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                ! consider left and right cells of current face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                ! take into account orientation of the current face
+                !
+                if ( icell == icelll ) then
+                   rsgn =  1.
+                else if ( icell == icellr ) then
+                   rsgn = -1.
+                endif
+                !
+                ! compute mass flux at current face and add to other faces of the cell
+                !
+                qf = qf + rsgn * lf * hu(iface) * udep(iface)
+                !
+             enddo
              !
-             lf = face(iface)%attr(FACELEN)
+             ! area of cell
              !
-             ! consider left and right cells of current face
+             area = cell(icell)%attr(CELLAREA)
              !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
+             ! update water level in cell
              !
-             ! take into account orientation of the current face
-             !
-             if ( icell == icelll ) then
-                rsgn =  1.
-             else if ( icell == icellr ) then
-                rsgn = -1.
-             endif
-             !
-             ! compute mass flux at current face and add to other faces of the cell
-             !
-             qf = qf + rsgn * lf * hu(iface) * udep(iface)
+             s1(icell) = s0(icell) - fh * dt * qf / area
              !
           enddo
           !
-          ! area of cell
+       else
           !
-          area = cell(icell)%attr(CELLAREA)
+          do icell = 1, ncells
+             !
+             qf = 0.
+             !
+             ! loop over faces of the cell
+             !
+             do jf = 1, cell(icell)%nof
+                !
+                ! face identifier
+                !
+                iface = cell(icell)%face(jf)%atti(FACEID)
+                !
+                ! get length of current face
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                ! consider left and right cells of current face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                ! take into account orientation of the current face
+                !
+                if ( icell == icelll ) then
+                   rsgn =  1.
+                else if ( icell == icellr ) then
+                   rsgn = -1.
+                endif
+                !
+                ! compute mass flux at current face and add to other faces of the cell
+                !
+                qf = qf + rsgn * lf * dpu(iface) * udep(iface)
+                !
+             enddo
+             !
+             ! area of cell
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             ! update water level in cell
+             !
+             s1(icell) = s0(icell) - fh * dt * qf / area
+             !
+          enddo
           !
-          ! update water level in cell
-          !
-          s1(icell) = s0(icell) - fh * dt * qf / area
-          !
-       enddo
+       endif
        !
        if ( j == 1 ) then
           !

@@ -11,7 +11,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2023  Delft University of Technology
+!     Copyright (C) 2010-2024  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -335,7 +335,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           nmd = kgrpnt(md,n)
           nmu = kgrpnt(mu,n)
           !
-          if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
+          if ( linswe ) then
+             !
+             fac1 = 0.
+             fac2 = 0.
+             !
+          else if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
              !
              fac1 = 0.5 * ( ua(nmu) + ua(nm) )
              fac2 = fac1
@@ -360,7 +365,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
        enddo
        !
-       if ( slimp(n) ) then    ! described water level at left boundary point
+       if ( slimp(n) .and. .not.linswe ) then    ! described water level at left boundary point
           !
           nmf  = kgrpnt(mf ,n)
           nmfu = kgrpnt(mfu,n)
@@ -377,7 +382,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
        endif
        !
-       if ( srimp(n) ) then    ! described water level at right boundary point
+       if ( srimp(n) .and. .not.linswe ) then    ! described water level at right boundary point
           !
           nml  = kgrpnt(ml  ,n)
           nmld = kgrpnt(ml-1,n)
@@ -479,7 +484,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           nmu = kgrpnt(mu,n )
           ndm = kgrpnt(m ,nd)
           !
-          if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
+          if ( linswe ) then
+             !
+             fac1 = 0.
+             fac2 = 0.
+             !
+          else if ( ( u0(nm) > u0(nmd) .or. stricthead ) .and. .not.strictmom ) then
              !
              fac1 = 0.5 * ( v0(nm) + v0(nmu) )
              fac2 = fac1
@@ -533,7 +543,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     !
     ! compute the curvature terms associated with advection terms (internal points only!)
     !
-    if ( optg == 3 ) then
+    if ( optg == 3 .and. .not.linswe ) then
        !
        do n = nfu, nl
           do m = msta, mend
@@ -1368,7 +1378,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           num = kgrpnt(m ,nu)
           nmd = kgrpnt(md,n )
           !
-          if ( ( v0(nm) > v0(ndm) .or. stricthead ) .and. .not.strictmom ) then
+          if ( linswe ) then
+             !
+             fac1 = 0.
+             fac2 = 0.
+             !
+          else if ( ( v0(nm) > v0(ndm) .or. stricthead ) .and. .not.strictmom ) then
              !
              fac1 = 0.5 * ( u0(nm) + u0(num) )
              fac2 = fac1
@@ -1489,7 +1504,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           ndm = kgrpnt(m,nd)
           num = kgrpnt(m,nu)
           !
-          if ( ( v0(nm) > v0(ndm) .or. stricthead ) .and. .not.strictmom ) then
+          if ( linswe ) then
+             !
+             fac1 = 0.
+             fac2 = 0.
+             !
+          else if ( ( v0(nm) > v0(ndm) .or. stricthead ) .and. .not.strictmom ) then
              !
              fac1 = 0.5 * ( ua(num) + ua(nm) )
              fac2 = fac1
@@ -1514,7 +1534,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
        enddo
        !
-       if ( sbimp(m) ) then    ! described water level at lower boundary point
+       if ( sbimp(m) .and. .not.linswe ) then    ! described water level at lower boundary point
           !
           nfm  = kgrpnt(m,nf )
           nfum = kgrpnt(m,nfu)
@@ -1531,7 +1551,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
        endif
        !
-       if ( stimp(m) ) then    ! described water level at upper boundary point
+       if ( stimp(m) .and. .not.linswe ) then    ! described water level at upper boundary point
           !
           nlm  = kgrpnt(m,nl  )
           nldm = kgrpnt(m,nl-1)
@@ -1552,7 +1572,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     !
     ! compute the curvature terms associated with advection terms (internal points only!)
     !
-    if ( optg == 3 ) then
+    if ( optg == 3 .and. .not.linswe ) then
        !
        do m = mfu, ml
           do n = nsta, nend
@@ -2857,7 +2877,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     !
     ! solve global continuity equation by means of the second order Hancock scheme
     !
-    do j = 1, 2
+    do j = jhk, 2
        !
        if ( j == 1 ) then
           !
@@ -2875,27 +2895,59 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
        ! compute the mass flux in x-direction
        !
-       do n = nfu, nl
-          do m = mf, ml
-             !
-             nm = kgrpnt(m,n)
-             !
-             qx(nm) = hu(nm)*guu(nm)*u1(nm)
-             !
+       if ( .not.linswe ) then
+          !
+          do n = nfu, nl
+             do m = mf, ml
+                !
+                nm = kgrpnt(m,n)
+                !
+                qx(nm) = hu(nm)*guu(nm)*u1(nm)
+                !
+             enddo
           enddo
-       enddo
+          !
+       else
+          !
+          do n = nfu, nl
+             do m = mf, ml
+                !
+                nm = kgrpnt(m,n)
+                !
+                qx(nm) = dpu(nm)*guu(nm)*u1(nm)
+                !
+             enddo
+          enddo
+          !
+       endif
        !
        ! compute the mass flux in y-direction
        !
-       do n = nf, nl
-          do m = mfu, ml
-             !
-             nm = kgrpnt(m,n)
-             !
-             qy(nm) = hv(nm)*gvv(nm)*v1(nm)
-             !
+       if ( .not.linswe ) then
+          !
+          do n = nf, nl
+             do m = mfu, ml
+                !
+                nm = kgrpnt(m,n)
+                !
+                qy(nm) = hv(nm)*gvv(nm)*v1(nm)
+                !
+             enddo
           enddo
-       enddo
+          !
+       else
+          !
+          do n = nf, nl
+             do m = mfu, ml
+                !
+                nm = kgrpnt(m,n)
+                !
+                qy(nm) = dpv(nm)*gvv(nm)*v1(nm)
+                !
+             enddo
+          enddo
+          !
+       endif
        !
        ! compute the water level
        !

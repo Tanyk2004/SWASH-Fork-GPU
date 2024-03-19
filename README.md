@@ -231,6 +231,7 @@ For more details, consult the [Implementation manual](https://swash.sourceforge.
 See
 1. the [Implementation Manual](https://swash.sourceforge.io/online_doc/swashimp/swashimp.html) that describes in detail the installation and the usage of the SWASH model
 1. the [User Manual](https://swash.sourceforge.io/online_doc/swashuse/swashuse.html) that provides the specifications for the input of the SWASH model
+1. the [Scientific/technical documentation](https://swash.sourceforge.io/online_doc/swashtech/swashtech.html) that discusses the physical and mathematical details and the discretizations that have been implemented in the SWASH software
 1. a bunch of scientific documents that can be found [here](https://swash.sourceforge.io/online_doc/online_doc.htm)
 
 ## bugs and questions
@@ -238,4 +239,4 @@ See
 For bug reports please send to the [SourceForge mailing list](http://sourceforge.net/mail/?group_id=385225).
 
 
-<small>&copy; Copyright 2023  Marcel Zijlema</small>
+<small>&copy; Copyright 2024  Marcel Zijlema</small>

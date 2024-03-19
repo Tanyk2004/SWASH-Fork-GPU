@@ -9,7 +9,7 @@
 !       CORIolis  CARTesian|NAUTical  [epshu]  CC                              &
 !       [printf]  [prtest]  [outlev]
 !
-!   MODE  DYNamic  / -> TWODimensional \  (SKIPMOMentum)
+!   MODE  DYNamic  / -> TWODimensional \  (SKIPMOMentum)  (LINear)
 !                  \    ONEDimensional /
 !
 !   COORDinates  /  -> CARTesian
@@ -72,18 +72,20 @@
 !
 !        SMOOthing [period] SEC|MIN|HR|DAY                                     &
 !
-!        ADDBoundwave                                                          &
+!        ADDBoundwave | ADDIG                                                  &
 !
-!                   | FOURier  [azero] < [ampl] [omega] [phase] >
-!                   | REGular  [h] [per] [dir]
-!       | UNIForm  <  SPECTrum [h] [per] [dir] [dd] [cycle] SEC|MIN|HR|DAY
-!       |           | SERIes   'fname' [itmopt]
-!       |           | SPECFile 'fname' [cycle] SEC|MIN|HR|DAY
+!                   | FOURier     [azero] < [ampl] [omega] [phase] >
+!                   | REGular     [h] [per] [dir]
+!                   | BICHromatic [h1] [h2] [per1] [per2] [dir1] [dir2]
+!       | UNIForm  <  SPECTrum    [h] [per] [dir] [dd] [cycle] SEC|MIN|HR|DAY
+!       |           | SERIes      'fname' [itmopt]
+!       |           | SPECFile    'fname' [cycle] SEC|MIN|HR|DAY
 !      <                                                                       &
 !       |           | FOURier  < [len] [azero] < [ampl] [omega] [phase] > >
 !       |           | REGular  < [len] [h] [per] [dir] >
-!       |           | SPECTrum < [len] [h] [per] [dir] [dd] [cycle] S|MI|HR|DA >
-!       | VARiable <  SERIes   < [len] 'fname' [itmopt] >
+!       |           | BICHrom  < [len] [h1] [h2] [per1] [per2] [dir1] [dir2] >
+!       | VARiable <  SPECTrum < [len] [h] [per] [dir] [dd] [cycle] S|MI|HR|DA >
+!                   | SERIes   < [len] 'fname' [itmopt] >
 !                   | SPECFile < [len] 'fname' [cycle] SEC|MIN|HR|DAY >
 !                   | SPECSwan 'fname' [cycle] SEC|MIN|HR|DAY
 !
@@ -96,7 +98,7 @@
 !            SMOOthing [period] SEC|MIN|HR|DAY
 !
 !
-!   SPONgelayer LEft|RIght|LOwer|UPper [width] | < [k]  [width] >
+!   SPONgelayer  N|NW|W|SW|S|SE|E|NE [width] | < [k]  [width] >
 !
 !
 !   FLOAT  [alpha] [theta]
@@ -256,7 +258,7 @@
 !   DPSopt  MIN|MEAN|MAX|SHIFt
 !
 !
-!               | EXPL [cfllow] [cflhig]                        |
+!               | EXPL [cfllow] [cflhig]  (EULer)               |
 !               |                                               |
 !   TIMEI METH <  IMPL [thetac] [thetas] &                       >             &
 !               |                                               |
