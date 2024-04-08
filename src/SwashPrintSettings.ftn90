@@ -108,7 +108,7 @@ subroutine SwashPrintSettings
              write (PRINTF,*) 'Advection approximation is strictly head energy conservative'
           endif
        else
-          write (PRINTF,*) 'Mimetic discretizations for momentum advection are employed'
+          write (PRINTF,*) 'Mimetic discretizations are employed'
        endif
        !
     else
@@ -270,7 +270,7 @@ subroutine SwashPrintSettings
        !
        if ( mtimei == 1 ) then
           write (PRINTF, 232) pnums(2), pnums(3)
-       else if ( mtimei == 2 ) then
+       else if ( mtimei == 2 .and. .not.mimetic ) then
           write (PRINTF, 233) pnums(1), pnums(4)
        endif
        !
@@ -280,7 +280,7 @@ subroutine SwashPrintSettings
           write (PRINTF, 234) pnums(5)
        endif
        !
-       if ( kmax > 1 ) then
+       if ( kmax > 1 .and. .not.mimetic ) then
           write (PRINTF, 235) pnums(31)
           if ( ihydro == 1 .or. ihydro == 2 ) write (PRINTF, 236) pnums(32)
           if ( itrans /= 0 ) write (PRINTF, 237) pnums(33)
@@ -294,7 +294,7 @@ subroutine SwashPrintSettings
           write (PRINTF, 239) nint(pnums(6)), pnums(7)
           write (PRINTF, 246) pnums(8), pnums(9)
        endif
-       if ( kmax > 1 ) then
+       if ( kmax > 1 .and. .not.mimetic ) then
           write (PRINTF, 240) nint(pnums(36)), pnums(37)
           write (PRINTF, 246) pnums(38), pnums(39)
        endif
@@ -302,7 +302,7 @@ subroutine SwashPrintSettings
           write (PRINTF, 241) nint(pnums(16)), pnums(17)
           write (PRINTF, 246) pnums(18), pnums(19)
        endif
-       if ( kmax > 1 .and. (ihydro == 1 .or. ihydro == 2) ) then
+       if ( kmax > 1 .and. (ihydro == 1 .or. ihydro == 2) .and. .not.mimetic ) then
           if ( verwinc ) then
              write (PRINTF, 242) nint(pnums(41)), pnums(42)
              write (PRINTF, 246) pnums(43), pnums(44)

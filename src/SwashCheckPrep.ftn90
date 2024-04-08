@@ -561,6 +561,7 @@ subroutine SwashCheckPrep
     if ( mtimei < 0 ) then
        if ( optg /= 5 ) then
           mtimei = 1
+          if ( mimetic ) mtimei = 2
        else
           mtimei = 2
        endif
@@ -662,10 +663,6 @@ subroutine SwashCheckPrep
     !
     ! check mimetic discretizations
     !
-    if ( mimetic .and. kmax > 1 ) then
-       call msgerr (1, 'mimetic discretizations not supported in case of layer-averaged mode')
-       mimetic = .false.
-    endif
     if ( mimetic .and. mtimei /= 2 ) call msgerr (3, 'semi-implicit time integration is required in case of mimetic discretizations')
     !
     ! check horizontal eddy viscosity coefficient
@@ -1244,12 +1241,6 @@ subroutine SwashCheckPrep
     if ( (irough == 0 .or. .not. pbot(1) /= 0.) .and. irough /= 4 .and. .not.mimetic .and. iwvgen == 0 ) then
        if ( .not. pnums(1) /= 0.5 ) pnums(1) = 0.51
        if ( .not. pnums(4) /= 0.5 ) pnums(4) = 0.51
-    else if ( mimetic ) then
-       if ( pnums(1) /= 0.5 .or. pnums(4) /= 0.5 ) then
-          call msgerr (1, 'only Crank-Nicolson scheme in case of mimetic discretizations')
-          pnums(1) = 0.5
-          pnums(4) = 0.5
-       endif
     endif
     !
     ! check termination criterion for linear solvers
@@ -1484,68 +1475,74 @@ subroutine SwashCheckPrep
        if ( .not.allocated(v0) ) allocate (v0(0,0))
     endif
     !
+    if ( alobnd .and. allocated(bndval) ) deallocate(bndval)
     if ( .not.allocated(bndval) ) allocate(bndval(nbval,2))
-    bndval = 0.
+    if ( alobnd ) bndval = 0.
     !
     ! compute incident spectrum and store wave components, if appropriate
     !
     nfreq = -999
-    curbfs => fbfs
-    do
-       if ( curbfs%nfreq == -1 ) then
-          call SwashBCspectrum ( curbfs, curbfs%spparm )
-          if (STPNOW()) return
-       endif
-       nfreq = max( nfreq, curbfs%nfreq )
-       if ( .not.associated(curbfs%nextbfs) ) exit
-       curbfs => curbfs%nextbfs
-    enddo
+    if ( alobnd ) then
+       curbfs => fbfs
+       do
+          if ( curbfs%nfreq == -1 ) then
+             call SwashBCspectrum ( curbfs, curbfs%spparm )
+             if (STPNOW()) return
+          endif
+          nfreq = max( nfreq, curbfs%nfreq )
+          if ( .not.associated(curbfs%nextbfs) ) exit
+          curbfs => curbfs%nextbfs
+       enddo
+    endif
     !
     ! store boundary grid points and their data in own subdomain
     !
+    if ( alobnd .and. allocated(bgridp) ) deallocate( bgridp )
     if ( .not.allocated(bgridp) ) allocate( bgridp(9*nbgrpt) )
-    bgridp = 0
-    if ( optg /= 5 ) then
-       if ( NBGGL == 0 ) NBGGL = nbgrpt
-       nbgrpt = 0
-       do ix = MXF, MXL
-          do iy = MYF, MYL
-             indx = KGRPGL(ix,iy)
-             curbgp => fbgp
-             do i = 1, NBGGL
-                j = curbgp%bgp(1)
-                if ( j == indx ) then
-                   nbgrpt = nbgrpt + 1
-                   bgridp(9*nbgrpt-8) = kgrpnt(ix-MXF+1,iy-MYF+1)
-                   bgridp(9*nbgrpt-7) = curbgp%bgp(2)
-                   bgridp(9*nbgrpt-6) = curbgp%bgp(3)
-                   bgridp(9*nbgrpt-5) = curbgp%bgp(4)
-                   bgridp(9*nbgrpt-4) = curbgp%bgp(5)
-                   bgridp(9*nbgrpt-3) = curbgp%bgp(6)
-                   bgridp(9*nbgrpt-2) = curbgp%bgp(7)
-                   bgridp(9*nbgrpt-1) = curbgp%bgp(8)
-                   bgridp(9*nbgrpt  ) = curbgp%bgp(9)
-                endif
-                if (.not.associated(curbgp%nextbgp)) exit
-                curbgp => curbgp%nextbgp
+    if ( alobnd ) then
+       bgridp = 0
+       if ( optg /= 5 ) then
+          if ( NBGGL == 0 ) NBGGL = nbgrpt
+          nbgrpt = 0
+          do ix = MXF, MXL
+             do iy = MYF, MYL
+                indx = KGRPGL(ix,iy)
+                curbgp => fbgp
+                do i = 1, NBGGL
+                   j = curbgp%bgp(1)
+                   if ( j == indx ) then
+                      nbgrpt = nbgrpt + 1
+                      bgridp(9*nbgrpt-8) = kgrpnt(ix-MXF+1,iy-MYF+1)
+                      bgridp(9*nbgrpt-7) = curbgp%bgp(2)
+                      bgridp(9*nbgrpt-6) = curbgp%bgp(3)
+                      bgridp(9*nbgrpt-5) = curbgp%bgp(4)
+                      bgridp(9*nbgrpt-4) = curbgp%bgp(5)
+                      bgridp(9*nbgrpt-3) = curbgp%bgp(6)
+                      bgridp(9*nbgrpt-2) = curbgp%bgp(7)
+                      bgridp(9*nbgrpt-1) = curbgp%bgp(8)
+                      bgridp(9*nbgrpt  ) = curbgp%bgp(9)
+                   endif
+                   if (.not.associated(curbgp%nextbgp)) exit
+                   curbgp => curbgp%nextbgp
+                enddo
              enddo
           enddo
-       enddo
-    else
-       curbgp => fbgp
-       do i = 1, nbgrpt
-          bgridp(9*i-8) = curbgp%bgp(1)
-          bgridp(9*i-7) = curbgp%bgp(2)
-          bgridp(9*i-6) = curbgp%bgp(3)
-          bgridp(9*i-5) = curbgp%bgp(4)
-          bgridp(9*i-4) = curbgp%bgp(5)
-          bgridp(9*i-3) = curbgp%bgp(6)
-          bgridp(9*i-2) = curbgp%bgp(7)
-          bgridp(9*i-1) = curbgp%bgp(8)
-          bgridp(9*i  ) = curbgp%bgp(9)
-          if (.not.associated(curbgp%nextbgp)) exit
-          curbgp => curbgp%nextbgp
-       enddo
+       else
+          curbgp => fbgp
+          do i = 1, nbgrpt
+             bgridp(9*i-8) = curbgp%bgp(1)
+             bgridp(9*i-7) = curbgp%bgp(2)
+             bgridp(9*i-6) = curbgp%bgp(3)
+             bgridp(9*i-5) = curbgp%bgp(4)
+             bgridp(9*i-4) = curbgp%bgp(5)
+             bgridp(9*i-3) = curbgp%bgp(6)
+             bgridp(9*i-2) = curbgp%bgp(7)
+             bgridp(9*i-1) = curbgp%bgp(8)
+             bgridp(9*i  ) = curbgp%bgp(9)
+             if (.not.associated(curbgp%nextbgp)) exit
+             curbgp => curbgp%nextbgp
+          enddo
+       endif
     endif
     !
     ! check whether Stokes waves are imposed at open boundaries
@@ -1572,6 +1569,8 @@ subroutine SwashCheckPrep
        !
        if ( nbgrpt > 0 ) then
           !
+          if ( alobnd .and. allocated(kwave) ) deallocate(kwave,comp1,comp2)
+          !
           if ( .not.allocated(kwave) ) allocate(kwave(nbgrpt,nfreq))
           if ( .not.allocated(comp1) ) allocate(comp1(nbgrpt,nfreq))
           if ( .not.allocated(comp2) ) allocate(comp2(nbgrpt,nfreq))
@@ -1579,6 +1578,8 @@ subroutine SwashCheckPrep
           kwave = 0.
           comp1 = 0.
           comp2 = 0.
+          !
+          if ( alobnd .and. allocated(zetab) ) deallocate(zetab,fluxbu,fluxbv)
           !
           if ( .not.allocated(zetab ) ) allocate(zetab (nbgrpt,nfreq))
           if ( .not.allocated(fluxbu) ) allocate(fluxbu(nbgrpt,nfreq))
@@ -1589,6 +1590,8 @@ subroutine SwashCheckPrep
           fluxbv = (0.,0.)
           !
           if ( istok /= 0 ) then
+             !
+             if ( alobnd .and. allocated(stku1c) ) deallocate(stku1c,stku1s,stkz1c,stkz1s)
              !
              if ( .not.allocated(stku1c) ) allocate(stku1c(nbgrpt,nfreq,kmax))
              if ( .not.allocated(stku1s) ) allocate(stku1s(nbgrpt,nfreq,kmax))
@@ -1604,6 +1607,8 @@ subroutine SwashCheckPrep
              !
              if ( istok > 1 ) then
                 !
+                if ( alobnd .and. allocated(stku2c) ) deallocate(stku2c,stku2s,stkz2c,stkz2s)
+                !
                 if ( .not.allocated(stku2c) ) allocate(stku2c(nbgrpt,nfreq,kmax))
                 if ( .not.allocated(stku2s) ) allocate(stku2s(nbgrpt,nfreq,kmax))
                 !
@@ -1617,6 +1622,8 @@ subroutine SwashCheckPrep
                 stkz2s = 0.
                 !
                 if ( istok == 3 ) then
+                   !
+                   if ( alobnd .and. allocated(subuc) ) deallocate(subuc,supuc,subus,supus,subvc,supvc,subvs,supvs,subzc,supzc,subzs,supzs)
                    !
                    if ( .not.allocated(subuc) ) allocate(subuc(nbgrpt,nfreq,kmax))
                    if ( .not.allocated(supuc) ) allocate(supuc(nbgrpt,nfreq,kmax))
@@ -1656,6 +1663,7 @@ subroutine SwashCheckPrep
           !
        else if ( iwvgen /= 0 ) then
           !
+          if ( alobnd .and. allocated(kwave) ) deallocate(kwave)
           if ( .not.allocated(kwave) ) allocate( kwave(nfreq,1) )
           !
           kwave = 0.
@@ -1663,6 +1671,8 @@ subroutine SwashCheckPrep
        endif
        !
     endif
+    !
+    alobnd = .false.
     !
     ! check whether boundary conditions have been given for each layer, if appropriate
     !
@@ -3018,16 +3028,19 @@ subroutine SwashCheckPrep
              if ( istat == 0 .and. .not.allocated(advecx) ) allocate (advecx(mcgrd), stat = istat)
              if ( istat == 0 .and. .not.allocated(advecy) ) allocate (advecy(mcgrd), stat = istat)
           endif
+          if ( optg /= 5 ) then
+             if ( istat == 0 .and. .not.allocated(visc) ) allocate (visc(mcgrd), stat = istat)
+          else
+             if ( istat == 0 .and. .not.allocated(visc) ) allocate (visc(nfaces), stat = istat)
+          endif
        endif
        if ( optg /= 5 ) then
           if ( istat == 0 .and. .not.allocated(cbot ) ) allocate (cbot (mcgrd), stat = istat)
           if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(mcgrd), stat = istat)
-          if ( istat == 0 .and. .not.allocated(visc ) ) allocate (visc (mcgrd), stat = istat)
           if ( istat == 0 .and. .not.allocated(qgrad) ) allocate (qgrad(mcgrd), stat = istat)
        else
           if ( istat == 0 .and. .not.allocated(cbot ) ) allocate (cbot (nfaces), stat = istat)
           if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(nfaces), stat = istat)
-          if ( istat == 0 .and. .not.allocated(visc ) ) allocate (visc (nfaces), stat = istat)
           if ( istat == 0 .and. .not.allocated(qgrad) ) allocate (qgrad(nfaces), stat = istat)
        endif
        !
@@ -3350,11 +3363,11 @@ subroutine SwashCheckPrep
              advecx = 0.
              advecy = 0.
           endif
+          visc  = 0.
        endif
        cbot  = 0.
        pgrad = 0.
        qgrad = 0.
-       visc  = 0.
        !
     else
        !
@@ -5177,6 +5190,39 @@ subroutine SwashCheckPrep
           !
           if ( .not.allocated(amatt) ) allocate (amatt(0,0,0))
           if ( .not.allocated(rhst ) ) allocate (rhst (0,0  ))
+          !
+       endif
+       !
+       if ( mimetic ) then
+          !
+          if ( .not.allocated(bdx) ) allocate (bdx(mcgrd,kmax), stat = istat)
+          if ( istat == 0 .and. .not.allocated(bux) ) allocate (bux(mcgrd,kmax), stat = istat)
+          if ( .not.oned ) then
+             if ( istat == 0 .and. .not.allocated(bdy) ) allocate (bdy(mcgrd,kmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(buy) ) allocate (buy(mcgrd,kmax), stat = istat)
+          endif
+          if ( istat == 0 .and. .not.allocated(wrk) ) allocate (wrk(mcgrd,kmax), stat = istat)
+          !
+          if ( istat /= 0 ) then
+             write (msgstr, '(a,i6)') 'allocation problem: variables for system of equations and return code is ',istat
+             call msgerr ( 4, trim(msgstr) )
+             return
+          endif
+          !
+          bdx = 0.
+          bux = 0.
+          if ( .not.oned ) then
+             bdy = 0.
+             buy = 0.
+          endif
+          wrk = 0.
+          !
+       else
+          !
+          if ( .not.allocated(bdx) ) allocate (bdx(0,0))
+          if ( .not.allocated(bux) ) allocate (bux(0,0))
+          if ( .not.allocated(bdy) ) allocate (bdy(0,0))
+          if ( .not.allocated(buy) ) allocate (buy(0,0))
           !
        endif
        !

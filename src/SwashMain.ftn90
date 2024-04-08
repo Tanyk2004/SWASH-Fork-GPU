@@ -52,6 +52,7 @@ subroutine SwashMain
     use SwashCommdata3
     use SwashTimeComm
     use outp_data
+    use m_bndspec
     use m_parall
 !
     implicit none
@@ -328,6 +329,12 @@ subroutine SwashMain
           if ( LEVERR > MAXERR ) exit repeatloop
           !
        endif
+       !
+       ! delete linked list of Fourier series required for multiple COMPUTE
+       !
+       call delete ( fbfs )
+       nullify( cubfs )
+       lbfs = .false.
        !
     enddo repeatloop
     !

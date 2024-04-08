@@ -46,6 +46,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     use SwashCommdata3
     use SwashCommdata4
     use m_bndspec
+    use m_parall, only: nbggl
     use SwanGriddata
     use SwanGridobjects
     use SwanCompdata
@@ -355,6 +356,13 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
        if ( mcgrd <= 1 .and. nverts <= 0 ) then
           call msgerr (3, 'command READ BOT or READ UNSTRUC must precede this command')
           return
+       endif
+       if ( .not.alobnd ) then
+          nbfils = 0
+          nbval  = 0
+          nbgrpt = 0
+          nbggl  = 0
+          alobnd = .true.
        endif
        !
        ! first define side or segment
@@ -980,6 +988,8 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              else
                 call INREAL ('AZE', azero, 'REQ', 0.)
              endif
+             ! Fourier series interpreted as short waves
+             if ( ( istok == 2 .or. ibound == 1 ) .and. blayk == 0 ) blayk = -1
              if ( blayk == -1 ) azero = -1.e10
              !
              nfreq       = 0
@@ -1012,6 +1022,9 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              bfstmp%nfreq = nfreq
              bfstmp%azero = azero
              bfstmp%spparm(3) = -999.    ! indicent angle is assumed to be normal on the boundary
+             !
+             ! also include sub- and super-harmonic transfer functions
+             if ( istok == 2 .and. nfreq > 1 ) istok = 3
              !
              if ( nfreq > 0 ) then
                 !

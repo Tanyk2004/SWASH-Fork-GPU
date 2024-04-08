@@ -107,6 +107,7 @@ ${SRC}/SwashImpDep1DHflow.f90
 ${SRC}/SwashExpDep1DHflow.f90
 ${SRC}/SwashImpDepM1DHflow.f90
 ${SRC}/SwashImpLay1DHflow.f90
+${SRC}/SwashImpLayM1DHflow.f90
 ${SRC}/SwashImpLayP1DHflow.f90
 ${SRC}/SwashExpLay1DHflow.f90
 ${SRC}/SwashExpLayP1DHflow.f90

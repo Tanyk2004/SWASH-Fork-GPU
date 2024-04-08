@@ -2535,6 +2535,7 @@ subroutine SwashReadInput ( comput )
     if ( KEYWIS ('SOUR') .or. KEYWIS ('LINE') ) then
        !
        iwvgen = 1
+       alobnd = .true.
        !
        if ( optg /= 5 ) then
           call INKEYW ('STA', 'Y')

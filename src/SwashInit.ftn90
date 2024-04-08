@@ -226,6 +226,7 @@ subroutine SwashInit ( inerr )
     nbggl     = 0
     fbfs%nbfs = -999
     lrampf    = .false.
+    alobnd    = .false.
     !
     spwidb = 0.
     spwidl = 0.

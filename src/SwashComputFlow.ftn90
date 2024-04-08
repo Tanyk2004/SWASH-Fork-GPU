@@ -118,10 +118,12 @@ subroutine SwashComputFlow
              !
              ! semi-implicit approach
              !
-             if ( .not.lsubg ) then
-                call SwashImpLay1DHflow ( ibl(1), ibr(1), kgrpnt(1,1) )
-             else
+             if ( mimetic ) then
+                call SwashImpLayM1DHflow ( ibl(1), ibr(1), kgrpnt(1,1) )
+             else if ( lsubg ) then
                 call SwashImpLayP1DHflow ( ibl(1), ibr(1), kgrpnt(1,1) )
+             else
+                call SwashImpLay1DHflow ( ibl(1), ibr(1), kgrpnt(1,1) )
              endif
              if (STPNOW()) return
              !

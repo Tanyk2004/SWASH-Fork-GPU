@@ -39,30 +39,31 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
 !
 !   Performs the time integration for the non-hydrostatic, depth-averaged 2D shallow water equations
 !
+!   Note: this subroutine solves the depth-averaged 2D shallow water equations, which are strictly mass and
+!         momentum conservative at the discrete level, and strictly energy conservative in discrete space,
+!         but nearly energy conservative for discrete time. The discrete advective operator is skew-symmetric
+!         (both time and space), and the negative transpose of the discrete surface gradient operator is equal
+!         to the divergence operator. However, due to the time splitting between the surface gradient and other
+!         terms of the momentum equation, the energy is not strictly conservative in time. Nevertheless, the
+!         current approach has good conservation properties and is stable, even for high waves.
+!
 !   Method
 !
 !   The time integration with respect to the continuity equation and the water level gradient of the
-!   momentum equations is based on a theta-scheme. Only a value of 0.5 <= theta <= 1 will be taken.
+!   momentum equations is based on a theta-scheme. Only a value of theta = 0.5 is taken.
 !
-!   The time integration with respect to the advective term is based on the Crank-Nicolson scheme,
-!   while that for the bottom friction is based on Euler implicit and for the
-!   non-hydrostatic pressure gradient a semi-implicit approach is employed (theta-scheme).
+!   The time integration with respect to the advective and viscosity terms is based on the
+!   Crank-Nicolson scheme, while that for the bottom friction is based on Euler implicit and for
+!   the non-hydrostatic pressure gradient a semi-implicit approach is employed (theta-scheme).
 !
-!   The space discretization of the advective term is strictly momentum conservative and is
-!   approximated with central differences, so that the term is skew-symmetric.
+!   The space discretization of the horizontal advective and viscosity terms is strictly momentum
+!   conservative and are approximated with central differences, so that the advection term is
+!   skew-symmetric and the viscosity term is symmetric.
 !
 !   The w-momentum equation only contains the z-gradient of the non-hydrostatic pressure and is
 !   discretized by means of the Keller-box scheme.
 !
 !   The non-hydrostatic pressure is obtained by means of the second order accurate pressure correction technique.
-!
-!   Note: this subroutine solves the depth-averaged 2D shallow water equations, which are strictly mass and
-!         momentum conservative at the discrete level, and strictly (kinetic) energy conservative in discrete space,
-!         but nearly energy conservative for discrete time. The discrete advective operator is skew-symmetric
-!         (both time and space), and the negative transpose of the discrete surface gradient operator is equal to
-!         the divergence operator. However, due to the time splitting between the surface gradient and other
-!         terms of the momentum equation, the energy is not strictly conservative in time. Nevertheless, the
-!         current approach has good conservation properties and is stable, even for high waves.
 !
 !   Note: in order to preserve skew-symmetry of the advective operator, only velocity is prescribed at the boundary.
 !
@@ -176,30 +177,12 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
     real                                       :: fac2     ! some other factor
     real                                       :: fac3     ! auxiliary factor
     real                                       :: fac4     ! auxiliary factor
-    real                                       :: fluxlim  ! flux limiter
-    real                                       :: grad1    ! solution gradient
-    real                                       :: grad2    ! another solution gradient
-    real                                       :: gsqsd    ! Jacobian in depth point (m+1/2, n+1/2)
-    real                                       :: gsqsdb   ! Jacobian in depth point (m+1/2, n-1/2)
-    real                                       :: gsqsdl   ! Jacobian in depth point (m-1/2, n+1/2)
-    real                                       :: hd       ! water depth in depth point (m+1/2, n+1/2)
-    real                                       :: hdb      ! water depth in depth point (m+1/2, n-1/2)
-    real                                       :: hdl      ! water depth in depth point (m-1/2, n+1/2)
     real                                       :: moutf    ! net mass outflow
     real                                       :: qf       ! updated mass flux at present face
     real                                       :: reps     ! accuracy of the final approximation
     real                                       :: res      ! residual
     real                                       :: resm     ! maximum error
     real                                       :: rval     ! auxiliary real
-    real                                       :: rxxs     ! component of Reynolds stress tensor Rxx in current wl-point
-    real                                       :: rxxsu    ! component of Reynolds stress tensor Rxx in wl-point right from point of consideration
-    real                                       :: rxxu     ! component of Reynolds stress tensor Rxx in current u/v-point
-    real                                       :: rxyd     ! component of Reynolds stress tensor Rxy in current depth point
-    real                                       :: rxydd    ! component of Reynolds stress tensor Rxy in depth point left/down from point of consideration
-    real                                       :: rxyu     ! component of Reynolds stress tensor Rxy in current u/v-point
-    real                                       :: ryys     ! component of Reynolds stress tensor Ryy in current wl-point
-    real                                       :: ryysu    ! component of Reynolds stress tensor Ryy in wl-point up from point of consideration
-    real                                       :: ryyu     ! component of Reynolds stress tensor Ryy in current u/v-point
     real                                       :: s0mx     ! maximum value of water level
     real                                       :: sumqf    ! sum of outgoing mass fluxes over present cell
     real                                       :: theta3   ! implicitness factor for non-hydrostatic pressure gradient
@@ -221,9 +204,9 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
 !
     if (ltrace) call strace (ient,'SwashImpDepM2DHflow')
     !
-    tetau  = pnums(1)
-    tetav  = pnums(1)
-    teta2  = pnums(4)
+    tetau  = 0.5
+    tetav  = 0.5
+    teta2  = 0.5
     theta3 = pnums(5)
     !
     ! adapt theta values underneath the floating object, if appropriate
@@ -459,162 +442,6 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
        !
     endif
     !
-    ! compute viscosity term
-    !
-    if ( ihvisc == 1 .and. hvisc > 0. ) then
-       !
-       do n = nfu, nl
-          !
-          nmf = kgrpnt(mf,n)
-          nml = kgrpnt(ml,n)
-          !
-          do m = msta, mend
-             !
-             md = m - 1
-             mu = m + 1
-             nd = n - 1
-             nu = n + 1
-             !
-             nm   = kgrpnt(m ,n )
-             nmd  = kgrpnt(md,n )
-             nmu  = kgrpnt(mu,n )
-             ndm  = kgrpnt(m ,nd)
-             num  = kgrpnt(m ,nu)
-             ndmu = kgrpnt(mu,nd)
-             !
-             if ( wetu(nm) == 1 ) then
-                !
-                if ( wetu(nmd) * wetu(nmu) == 1 ) then
-                   !
-                   fac1 = hs(nmu) * ( guu(nmu)*u0(nmu) - guu(nm)*u0(nm) )/gsqs(nmu) - hs(nm) * ( guu(nm)*u0(nm) - guu(nmd)*u0(nmd) )/gsqs(nm)
-                   !
-                else
-                   !
-                   fac1 = 0.
-                   !
-                endif
-                !
-                if ( wetu(ndm) * wetu(num) == 1 ) then
-                   !
-                   gsqsd  = .25 * (guu(nm ) + guu(num)) * (gvv(nm ) + gvv(nmu ))
-                   gsqsdb = .25 * (guu(ndm) + guu(nm )) * (gvv(ndm) + gvv(ndmu))
-                   !
-                   hd  = .5 * (hum(num) + hum(nm ))
-                   hdb = .5 * (hum(nm ) + hum(ndm))
-                   !
-                   fac2 = hd * ( gvu(num)*u0(num) - gvu(nm)*u0(nm) )/gsqsd - hdb * ( gvu(nm)*u0(nm) - gvu(ndm)*u0(ndm) )/gsqsdb
-                   !
-                else
-                   !
-                   fac2 = 0.
-                   !
-                endif
-                !
-                visc(nm) = hvisc * ( fac1/gvu(nm) + fac2/guu(nm) ) / hum(nm)
-                !
-             endif
-             !
-          enddo
-          !
-       enddo
-       !
-    else if ( ihvisc > 1 ) then
-       !
-       do n = nfu, nl
-          !
-          nmf = kgrpnt(mf,n)
-          nml = kgrpnt(ml,n)
-          !
-          do m = msta, mend
-             !
-             md = m - 1
-             mu = m + 1
-             nd = n - 1
-             nu = n + 1
-             !
-             nm   = kgrpnt(m ,n )
-             nmd  = kgrpnt(md,n )
-             nmu  = kgrpnt(mu,n )
-             ndm  = kgrpnt(m ,nd)
-             num  = kgrpnt(m ,nu)
-             ndmd = kgrpnt(md,nd)
-             ndmu = kgrpnt(mu,nd)
-             !
-             if ( wetu(nm) == 1 ) then
-                !
-                lmask = .true.
-                !
-                hd  = .5 * (hum(num) + hum(nm ))
-                hdb = .5 * (hum(nm ) + hum(ndm))
-                !
-                ! first, compute the components of the Reynolds stress tensor in different points of consideration
-                !
-                if ( wetu(nmd) * wetu(nmu) == 1 ) then
-                   !
-                   rxxs  = ( vnu2d(nm ) + vnu2d(ndm ) + vnu2d(nmd) + vnu2d(ndmd) ) * ( u0(nm ) - u0(nmd) ) / ( gvv(nm ) + gvv(ndm ) )
-                   !
-                   rxxsu = ( vnu2d(nmu) + vnu2d(ndmu) + vnu2d(nm ) + vnu2d(ndm ) ) * ( u0(nmu) - u0(nm ) ) / ( gvv(nmu) + gvv(ndmu) )
-                   !
-                else
-                   !
-                   rxxs  = 0.
-                   rxxsu = 0.
-                   !
-                   lmask = .false.
-                   !
-                endif
-                !
-                if ( wetu(ndm) * wetu(num) * wetv(nm) * wetv(ndm) * wetv(nmu) * wetv(ndmu) == 1 ) then
-                   !
-                   rxyd  = 2. * vnu2d(nm ) * ( ( v0(nmu ) - v0(nm ) )/( gvv(nmu ) + gvv(nm ) ) + ( u0(num) - u0(nm ) )/( guu(num) + guu(nm ) ) )
-                   !
-                   rxydd = 2. * vnu2d(ndm) * ( ( v0(ndmu) - v0(ndm) )/( gvv(ndmu) + gvv(ndm) ) + ( u0(nm ) - u0(ndm) )/( guu(nm ) + guu(ndm) ) )
-                   !
-                else
-                   !
-                   rxyd  = 0.
-                   rxydd = 0.
-                   !
-                   lmask = .false.
-                   !
-                endif
-                !
-                if ( lmask ) then
-                   !
-                   rxxu  = 0.50 * ( vnu2d(nm) + vnu2d(ndm) ) * ( u0(nmu) - u0(nmd) ) / gvu(nm)
-                   !
-                   rxyu  = 0.25 * ( vnu2d(nm) + vnu2d(ndm) ) * ( ( v0(nmu) + v0(ndmu) - v0(nm) - v0(ndm) )/gvu(nm) + ( u0(num) - u0(ndm) )/guu(nm) )
-                   !
-                   ryyu  = 0.50 * ( vnu2d(nm) + vnu2d(ndm) ) * ( v0(nmu) + v0(nm) - v0(ndm) -v0(ndmu) ) / guu(nm)
-                   !
-                else
-                   !
-                   rxxu = 0.
-                   rxyu = 0.
-                   ryyu = 0.
-                   !
-                endif
-                !
-                ! next, compute the divergence of the Reynolds stresses
-                !
-                visc(nm) = ( hs(nmu)*rxxsu - hs(nm)*rxxs ) / (hum(nm)*gvu(nm)) + ( hd*rxyd - hdb*rxydd ) / (hum(nm)*guu(nm))
-                !
-                ! finally, add the curvature terms associated with those stresses
-                !
-                visc(nm) = visc(nm) + ( rxyu * ( gvv(nm) + gvv(nmu) - gvv(ndm) - gvv(ndmu) ) + 0.5 * (rxxu - ryyu) * ( guu(nmu) - guu(nmd) ) ) / gsqsu(nm)
-                !
-             endif
-             !
-          enddo
-          !
-       enddo
-       !
-    else
-       !
-       visc = 0.
-       !
-    endif
-    !
     ! compute implicit part of wind stress term, if appropriate
     !
     if ( relwnd ) then
@@ -819,7 +646,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
              !
              ! compute total contributions of the momentum equation (except advection)
              !
-             contrib = zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm)) - visc(nm) - fcor(nm,1)*v
+             contrib = zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm)) - fcor(nm,1)*v
              !
              denom = 1. + cvegu(nm,1,2) + cpomu(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
              !
@@ -1073,158 +900,6 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
        !
     endif
     !
-    ! compute viscosity term
-    !
-    if ( ihvisc == 1 .and. hvisc > 0. ) then
-       !
-       do m = mfu, ml
-          !
-          nfm = kgrpnt(m,nf)
-          nlm = kgrpnt(m,nl)
-          !
-          do n = nsta, nend
-             !
-             nd = n - 1
-             nu = n + 1
-             md = m - 1
-             mu = m + 1
-             !
-             nm   = kgrpnt(m ,n )
-             ndm  = kgrpnt(m ,nd)
-             num  = kgrpnt(m ,nu)
-             nmd  = kgrpnt(md,n )
-             nmu  = kgrpnt(mu,n )
-             numd = kgrpnt(md,nu)
-             !
-             if ( wetv(nm) == 1 ) then
-                !
-                if ( wetv(ndm) * wetv(num) == 1 ) then
-                   !
-                   fac1 = hs(num) * ( gvv(num)*v0(num) - gvv(nm)*v0(nm) )/gsqs(num) - hs(nm) * ( gvv(nm)*v0(nm) - gvv(ndm)*v0(ndm) )/gsqs(nm)
-                   !
-                else
-                   !
-                   fac1 = 0.
-                   !
-                endif
-                !
-                if ( wetv(nmd) * wetv(nmu) == 1 ) then
-                   !
-                   gsqsd  = .25 * (gvv(nm ) + gvv(nmu)) * (guu(nm ) + guu(num ))
-                   gsqsdl = .25 * (gvv(nmd) + gvv(nm )) * (guu(nmd) + guu(numd))
-                   !
-                   hd  = .5 * (hvm(nmu) + hvm(nm ))
-                   hdl = .5 * (hvm(nm ) + hvm(nmd))
-                   !
-                   fac2 = hd * ( guv(nmu)*v0(nmu) - guv(nm)*v0(nm) )/gsqsd - hdl * ( guv(nm)*v0(nm) - guv(nmd)*v0(nmd) )/gsqsdl
-                   !
-                else
-                   !
-                   fac2 = 0.
-                   !
-                endif
-                !
-                visc(nm) = hvisc * ( fac1/guv(nm) + fac2/gvv(nm) ) / hvm(nm)
-                !
-             endif
-             !
-          enddo
-          !
-       enddo
-       !
-    else if ( ihvisc > 1 ) then
-       !
-       do m = mfu, ml
-          !
-          nfm = kgrpnt(m,nf)
-          nlm = kgrpnt(m,nl)
-          !
-          do n = nsta, nend
-             !
-             nd = n - 1
-             nu = n + 1
-             md = m - 1
-             mu = m + 1
-             !
-             nm   = kgrpnt(m ,n )
-             ndm  = kgrpnt(m ,nd)
-             num  = kgrpnt(m ,nu)
-             nmd  = kgrpnt(md,n )
-             nmu  = kgrpnt(mu,n )
-             ndmd = kgrpnt(md,nd)
-             numd = kgrpnt(md,nu)
-             !
-             if ( wetv(nm) == 1 ) then
-                !
-                lmask = .true.
-                !
-                hd  = .5 * (hvm(nmu) + hvm(nm ))
-                hdl = .5 * (hvm(nm ) + hvm(nmd))
-                !
-                ! first, compute the components of the Reynolds stress tensor in different points of consideration
-                !
-                if ( wetv(ndm) * wetv(num) == 1 ) then
-                   !
-                   ryys  = ( vnu2d(nm ) + vnu2d(nmd ) + vnu2d(ndm) + vnu2d(ndmd) ) * ( v0(nm ) - v0(ndm) ) / ( guu(nm ) + guu(nmd ) )
-                   !
-                   ryysu = ( vnu2d(num) + vnu2d(numd) + vnu2d(nm ) + vnu2d(nmd ) ) * ( v0(num) - v0(nm ) ) / ( guu(num) + guu(numd) )
-                   !
-                else
-                   !
-                   ryys  = 0.
-                   ryysu = 0.
-                   !
-                   lmask = .false.
-                   !
-                endif
-                !
-                if ( wetv(nmd) * wetv(nmu) * wetu(nm) * wetu(nmd) * wetu(num) * wetu(numd) == 1 ) then
-                   !
-                   rxyd  = 2. * vnu2d(nm ) * ( ( u0(num ) - u0(nm ) )/( guu(num ) + guu(nm ) ) + ( v0(nmu) - v0(nm ) )/( gvv(nmu) + gvv(nm ) ) )
-                   !
-                   rxydd = 2. * vnu2d(nmd) * ( ( u0(numd) - u0(nmd) )/( guu(numd) + guu(nmd) ) + ( v0(nm ) - v0(nmd) )/( gvv(nm ) + gvv(nmd) ) )
-                   !
-                else
-                   !
-                   rxyd  = 0.
-                   rxydd = 0.
-                   !
-                   lmask = .false.
-                   !
-                endif
-                !
-                if ( lmask ) then
-                   !
-                   rxxu  = 0.50 * ( vnu2d(nm) + vnu2d(nmd) ) * ( u0(num) + u0(nm) - u0(nmd) -u0(numd) ) / gvv(nm)
-                   !
-                   rxyu  = 0.25 * ( vnu2d(nm) + vnu2d(nmd) ) * ( ( v0(nmu) - v0(nmd) )/gvv(nm) + ( u0(num) + u0(numd) - u0(nm) - u0(nmd) )/guv(nm) )
-                   !
-                   ryyu  = 0.50 * ( vnu2d(nm) + vnu2d(nmd) ) * ( v0(num) - v0(ndm) ) / guv(nm)
-                   !
-                else
-                   !
-                   rxxu = 0.
-                   rxyu = 0.
-                   ryyu = 0.
-                   !
-                endif
-                !
-                ! next, compute the divergence of the Reynolds stresses
-                !
-                visc(nm) = ( hd*rxyd - hdl*rxydd ) / (hvm(nm)*gvv(nm)) + ( hs(num)*ryysu - hs(nm)*ryys ) / (hvm(nm)*guv(nm))
-                !
-                ! finally, add the curvature terms associated with those stresses
-                !
-                visc(nm) = visc(nm) + ( rxyu * ( guu(nm) + guu(num) - guu(nmd) - guu(numd) ) + 0.5 * (ryyu - rxxu) * ( gvv(num) - gvv(ndm) ) ) / gsqsv(nm)
-                !
-             endif
-             !
-          enddo
-          !
-       enddo
-       !
-    endif
-    !
     ! compute implicit part of wind stress term, if appropriate
     !
     if ( relwnd ) then
@@ -1421,7 +1096,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
              !
              ! compute total contributions of the momentum equation
              !
-             contrib = zgrad + pgrad(nm) + qgrad(nm) - windv(nm)/max(1.e-3,hvm(nm)) - visc(nm) + fcor(nm,2)*u
+             contrib = zgrad + pgrad(nm) + qgrad(nm) - windv(nm)/max(1.e-3,hvm(nm)) + fcor(nm,2)*u
              !
              denom = 1. + cvegv(nm,1,2) + cpomv(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
              !
@@ -2112,11 +1787,6 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
              !
              ! compute horizontal advection terms (momentum conservative and explicit)
              !
-             propsc = nint(pnums(16))
-             kappa  = pnums(17)
-             mbound = pnums(18)
-             phieby = pnums(19)
-             !
              do n = nfu, nl
                 do m = mfu, ml
                    !
@@ -2168,114 +1838,14 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
                       fac1 = fac * guu(nmd) * qx(nmd) / hs(nm)
                       fac2 = fac * guu(nm ) * qx(nm ) / hs(nm)
                       !
-                      if ( propsc == 3 .and. kappa == 1. ) then
-                         !
-                         ! central differences
-                         !
-                         w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(nmd)) + fac2 * (w0top(nmu) - w0top(nm)) )
-                         !
-                      else
-                         !
-                         ! first order upwind scheme
-                         !
-                         w1top(nm) = w1top(nm) - ( max(fac1,0.) * (w0top(nm) - w0top(nmd)) + min(fac2,0.) * (w0top(nmu) - w0top(nm)) )
-                         !
-                         ! add higher order (flux-limited) correction, if appropriate
-                         !
-                         if ( propsc /= 1 ) then
-                            !
-                            if ( fac2 > 0. ) then
-                               !
-                               grad1 = w0top(nmu) - w0top(nm )
-                               grad2 = w0top(nm ) - w0top(nmd)
-                               !
-                               w1top(nm) = w1top(nm) - 0.5 * fac2 * fluxlim(grad1,grad2)
-                               !
-                            else if ( fac2 < 0. ) then
-                               !
-                               grad1 = w0top(nmu ) - w0top(nm )
-                               grad2 = w0top(nmuu) - w0top(nmu)
-                               !
-                               w1top(nm) = w1top(nm) + 0.5 * fac2 * fluxlim(grad1,grad2)
-                               !
-                            endif
-                            !
-                            if ( fac1 > 0. ) then
-                               !
-                               grad1 = w0top(nm ) - w0top(nmd )
-                               grad2 = w0top(nmd) - w0top(nmdd)
-                               !
-                               w1top(nm) = w1top(nm) + 0.5 * fac1 * fluxlim(grad1,grad2)
-                               !
-                            else if ( fac1 < 0. ) then
-                               !
-                               grad1 = w0top(nm ) - w0top(nmd)
-                               grad2 = w0top(nmu) - w0top(nm )
-                               !
-                               w1top(nm) = w1top(nm) - 0.5 * fac1 * fluxlim(grad1,grad2)
-                               !
-                            endif
-                            !
-                         endif
-                         !
-                      endif
+                      w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(nmd)) + fac2 * (w0top(nmu) - w0top(nm)) )
                       !
                       ! advection term in y-direction
                       !
                       fac1 = fac * gvv(ndm) * qy(ndm) / hs(nm)
                       fac2 = fac * gvv(nm ) * qy(nm ) / hs(nm)
                       !
-                      if ( propsc == 3 .and. kappa == 1. ) then
-                         !
-                         ! central differences
-                         !
-                         w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(ndm)) + fac2 * (w0top(num) - w0top(nm)) )
-                         !
-                      else
-                         !
-                         ! first order upwind scheme
-                         !
-                         w1top(nm) = w1top(nm) - ( max(fac1,0.) * (w0top(nm) - w0top(ndm)) + min(fac2,0.) * (w0top(num) - w0top(nm)) )
-                         !
-                         ! add higher order (flux-limited) correction, if appropriate
-                         !
-                         if ( propsc /= 1 ) then
-                            !
-                            if ( fac2 > 0. ) then
-                               !
-                               grad1 = w0top(num) - w0top(nm )
-                               grad2 = w0top(nm ) - w0top(ndm)
-                               !
-                               w1top(nm) = w1top(nm) - 0.5 * fac2 * fluxlim(grad1,grad2)
-                               !
-                            else if ( fac2 < 0. ) then
-                               !
-                               grad1 = w0top(num ) - w0top(nm )
-                               grad2 = w0top(nuum) - w0top(num)
-                               !
-                               w1top(nm) = w1top(nm) + 0.5 * fac2 * fluxlim(grad1,grad2)
-                               !
-                            endif
-                            !
-                            if ( fac1 > 0. ) then
-                               !
-                               grad1 = w0top(nm ) - w0top(ndm )
-                               grad2 = w0top(ndm) - w0top(nddm)
-                               !
-                               w1top(nm) = w1top(nm) + 0.5 * fac1 * fluxlim(grad1,grad2)
-                               !
-                            else if ( fac1 < 0. ) then
-                               !
-                               grad1 = w0top(nm ) - w0top(ndm)
-                               grad2 = w0top(num) - w0top(nm )
-                               !
-                               w1top(nm) = w1top(nm) - 0.5 * fac1 * fluxlim(grad1,grad2)
-                               !
-                            endif
-                            !
-                         endif
-                         !
-                      endif
+                      w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(ndm)) + fac2 * (w0top(num) - w0top(nm)) )
                       !
                    endif
                    !

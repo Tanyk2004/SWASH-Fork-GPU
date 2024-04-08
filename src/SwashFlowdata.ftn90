@@ -149,12 +149,16 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: bcs          ! prescribed water level at boundary face (current time level)
     real  , dimension(:)      , save, allocatable :: bcso         ! prescribed water level at boundary face (previous time level)
     real*8, dimension(:)      , save, allocatable :: bn           ! main diagonal of tri-diagonal matrix of mildly nonlinear system
+    real  , dimension(:,:)    , save, allocatable :: bdx          ! coefficient matrix of horizontal u-momentum equation corresponding to point (m-1,n,k)
+    real  , dimension(:,:)    , save, allocatable :: bdy          ! coefficient matrix of horizontal u-momentum equation corresponding to point (m,n-1,k)
     real  , dimension(:,:)    , save, allocatable :: bpoks        ! turbulent friction factor at center of layer interfaces
     real  , dimension(:,:)    , save, allocatable :: bpomu        ! turbulent friction factor in u-point based on mean porosity
     real  , dimension(:,:)    , save, allocatable :: bpomv        ! turbulent friction factor in v-point based on mean porosity
     real  , dimension(:)      , save, allocatable :: bpors        ! turbulent friction factor in wl-point
     real  , dimension(:)      , save, allocatable :: bporu        ! turbulent friction factor in u-point
     real  , dimension(:)      , save, allocatable :: bporv        ! turbulent friction factor in v-point
+    real  , dimension(:,:)    , save, allocatable :: bux          ! coefficient matrix of horizontal u-momentum equation corresponding to point (m+1,n,k)
+    real  , dimension(:,:)    , save, allocatable :: buy          ! coefficient matrix of horizontal u-momentum equation corresponding to point (m,n+1,k)
     real  , dimension(:)      , save, allocatable :: c            ! upper diagonal of tri-diagonal matrix
     real  , dimension(:)      , save, allocatable :: cbot         ! bottom friction term
     real  , dimension(:,:,:)  , save, allocatable :: cbndb        ! boundary condition of Dirichlet type for transport constituent at lower boundary
