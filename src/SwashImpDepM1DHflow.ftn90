@@ -39,30 +39,31 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
 !
 !   Performs the time integration for the non-hydrostatic, depth-averaged 1D shallow water equations
 !
+!   Note: this subroutine solves the depth-averaged 1D shallow water equations, which are strictly mass and
+!         momentum conservative at the discrete level, and strictly energy conservative in discrete space,
+!         but nearly energy conservative for discrete time. The discrete advective operator is skew-symmetric
+!         (both time and space), and the negative transpose of the discrete surface gradient operator is equal
+!         to the divergence operator. However, due to the time splitting between the surface gradient and other
+!         terms of the momentum equation, the energy is not strictly conservative in time. Nevertheless, the
+!         current approach has good conservation properties and is stable, even for high waves.
+!
 !   Method
 !
 !   The time integration with respect to the continuity equation and the water level gradient of the
-!   u-momentum equation is based on a theta-scheme. Only a value of 0.5 <= theta <= 1 will be taken.
+!   u-momentum equation is based on a theta-scheme. Only a value of theta = 0.5 is taken.
 !
-!   The time integration with respect to the advective term is based on the Crank-Nicolson scheme,
-!   while that for the bottom friction is based on Euler implicit and for the
-!   non-hydrostatic pressure gradient a semi-implicit approach is employed (theta-scheme).
+!   The time integration with respect to the advective and viscosity terms is based on the
+!   Crank-Nicolson scheme, while that for the bottom friction is based on Euler implicit and for
+!   the non-hydrostatic pressure gradient a semi-implicit approach is employed (theta-scheme).
 !
-!   The space discretization of the advective term is strictly momentum conservative and is
-!   approximated with central differences, so that the term is skew-symmetric.
+!   The space discretization of the horizontal advective and viscosity terms is strictly momentum
+!   conservative and are approximated with central differences, so that the advection term is
+!   skew-symmetric and the viscosity term is symmetric.
 !
 !   The w-momentum equation only contains the z-gradient of the non-hydrostatic pressure and is
 !   discretized by means of the Keller-box scheme.
 !
 !   The non-hydrostatic pressure is obtained by means of the second order accurate pressure correction technique.
-!
-!   Note: this subroutine solves the depth-averaged 1D shallow water equations, which are strictly mass and
-!         momentum conservative at the discrete level, and strictly (kinetic) energy conservative in discrete space,
-!         but nearly energy conservative for discrete time. The discrete advective operator is skew-symmetric
-!         (both time and space), and the negative transpose of the discrete surface gradient operator is equal to
-!         the divergence operator. However, due to the time splitting between the surface gradient and other
-!         terms of the momentum equation, the energy is not strictly conservative in time. Nevertheless, the
-!         current approach has good conservation properties and is stable, even for high waves.
 !
 !   Note: in order to preserve skew-symmetry of the advective operator, only velocity is prescribed at the boundary.
 !
@@ -142,9 +143,6 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
     real          :: fac      ! a factor
     real          :: fac1     ! another factor
     real          :: fac2     ! some other factor
-    real          :: fluxlim  ! flux limiter
-    real          :: grad1    ! solution gradient
-    real          :: grad2    ! another solution gradient
     real          :: moutf    ! net mass outflow
     real          :: qf       ! updated mass flux at present face
     real          :: rdx      ! reciprocal of mesh size
@@ -178,8 +176,8 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
     !
     rdx = 1./dx
     !
-    teta   = pnums(1)
-    teta2  = pnums(4)
+    teta   = 0.5
+    teta2  = 0.5
     theta3 = pnums(5)
     !
     ! adapt theta values underneath the floating object, if appropriate
@@ -333,63 +331,6 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
        !
     endif
     !
-    ! compute viscosity term
-    !
-    msta = mf + 1   ! first internal u-point
-    mend = ml - 1   ! last  internal u-point
-    !
-    if ( ihvisc == 1 .and. hvisc > 0. ) then
-       !
-       do m = msta, mend
-          !
-          md = m - 1
-          mu = m + 1
-          !
-          nm  = kgrpnt(m )
-          nmd = kgrpnt(md)
-          nmu = kgrpnt(mu)
-          !
-          if ( wetu(nm) * wetu(nmd) * wetu(nmu) == 1 ) then
-             !
-             visc(nm) = hvisc * rdx * rdx * ( hs(nmu)*(u0(nmu) - u0(nm)) - hs(nm)*(u0(nm) - u0(nmd)) ) / hum(nm)
-             !
-          else
-             !
-             visc(nm) = 0.
-             !
-          endif
-          !
-       enddo
-       !
-    else if ( ihvisc > 1 ) then
-       !
-       do m = msta, mend
-          !
-          md = m - 1
-          mu = m + 1
-          !
-          nm  = kgrpnt(m )
-          nmd = kgrpnt(md)
-          nmu = kgrpnt(mu)
-          !
-          if ( wetu(nm) * wetu(nmd) * wetu(nmu) == 1 ) then
-             !
-             visc(nm) = rdx * rdx * ( vnu2d(nmu) * hs(nmu)*(u0(nmu) - u0(nm)) - vnu2d(nm) * hs(nm)*(u0(nm) - u0(nmd)) ) / hum(nm)
-             !
-          else
-             !
-             visc(nm) = 0.
-             !
-          endif
-          !
-       enddo
-       !
-    else
-       !
-       visc = 0.
-       !
-    endif
-    !
     ! compute implicit part of wind stress term, if appropriate
     !
     if ( relwnd ) then
@@ -500,6 +441,9 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
     !
     ! compute intermediate u-velocity
     !
+    msta = mf + 1   ! first internal u-point
+    mend = ml - 1   ! last  internal u-point
+    !
     do m = msta, mend
        !
        md = m - 1
@@ -535,9 +479,9 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
           !
           cveg = cvegu(nm,1,1) * abs(u0(nm))
           !
-          ! compute total contributions of the momentum equation (except advection)
+          ! compute total contributions of the momentum equation (except advection and viscosity)
           !
-          contrib = zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm)) - visc(nm)
+          contrib = zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm))
           !
           denom = 1. + cvegu(nm,1,2) + cpomu(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
           !
@@ -558,6 +502,82 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
        endif
        !
     enddo
+    !
+    ! add viscosity term, if appropriate
+    !
+    if ( ihvisc == 1 .and. hvisc > 0. ) then
+       !
+       do m = msta, mend
+          !
+          md = m - 1
+          mu = m + 1
+          !
+          nm  = kgrpnt(m )
+          nmd = kgrpnt(md)
+          nmu = kgrpnt(mu)
+          !
+          if ( hum(nm) > 0. ) then
+             !
+             fac1 = 0.5 * dt * rdx * rdx * hvisc * hs(nmu) / hum(nm)
+             fac2 = 0.5 * dt * rdx * rdx * hvisc * hs(nm ) / hum(nm)
+             !
+          else
+             !
+             fac1 = 0.
+             fac2 = 0.
+             !
+          endif
+          !
+          if ( wetu(nm) == 1 ) then
+             !
+             ! build system of equations
+             !
+             a(nm) = a(nm) - fac2
+             c(nm) = c(nm) - fac1
+             b(nm) = b(nm) + fac1 + fac2
+             d(nm) = d(nm) - (fac1+fac2) * u0(nm) + fac2 * u0(nmd) + fac1 * u0(nmu)
+             !
+          endif
+          !
+       enddo
+       !
+    else if ( ihvisc > 1 ) then
+       !
+       do m = msta, mend
+          !
+          md = m - 1
+          mu = m + 1
+          !
+          nm  = kgrpnt(m )
+          nmd = kgrpnt(md)
+          nmu = kgrpnt(mu)
+          !
+          if ( hum(nm) > 0. ) then
+             !
+             fac1 = 0.5 * dt * rdx * rdx * vnu2d(nmu) * hs(nmu) / hum(nm)
+             fac2 = 0.5 * dt * rdx * rdx * vnu2d(nm ) * hs(nm ) / hum(nm)
+             !
+          else
+             !
+             fac1 = 0.
+             fac2 = 0.
+             !
+          endif
+          !
+          if ( wetu(nm) == 1 ) then
+             !
+             ! build system of equations
+             !
+             a(nm) = a(nm) - fac2
+             c(nm) = c(nm) - fac1
+             b(nm) = b(nm) + fac1 + fac2
+             d(nm) = d(nm) - (fac1+fac2) * u0(nm) + fac2 * u0(nmd) + fac1 * u0(nmu)
+             !
+          endif
+          !
+       enddo
+       !
+    endif
     !
     ! incorporate boundary conditions
     !
@@ -971,84 +991,23 @@ subroutine SwashImpDepM1DHflow ( u1, u0, qx, qm, q, dq, gmat, rho, ui, dqgrd, ib
              !
              ! compute horizontal advection term (momentum conservative and explicit)
              !
-             propsc = nint(pnums(16))
-             kappa  = pnums(17)
-             mbound = pnums(18)
-             phieby = pnums(19)
-             !
              fac = 2. * dt * rdx
              !
              do m = mfu, ml
                 !
-                md  = m  - 1
-                mdd = md - 1
-                mu  = m  + 1
-                muu = mu + 1
-                if ( LMXF .and. mdd < mf ) mdd = mf
-                if ( LMXL .and. muu > ml ) muu = ml
+                md = m - 1
+                mu = m + 1
                 !
-                nm   = kgrpnt(m  )
-                nmd  = kgrpnt(md )
-                nmdd = kgrpnt(mdd)
-                nmu  = kgrpnt(mu )
-                nmuu = kgrpnt(muu)
+                nm  = kgrpnt(m )
+                nmd = kgrpnt(md)
+                nmu = kgrpnt(mu)
                 !
                 if ( wets(nm) == 1 .and. presp(nm) == 0 ) then
                    !
                    fac1 = fac * qx(nmd) / hs(nm)
                    fac2 = fac * qx(nm ) / hs(nm)
                    !
-                   if ( propsc == 3 .and. kappa == 1. ) then
-                      !
-                      ! central differences
-                      !
-                      w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(nmd)) + fac2 * (w0top(nmu) - w0top(nm)) )
-                      !
-                   else
-                      !
-                      ! first order upwind scheme
-                      !
-                      w1top(nm) = w1top(nm) - ( max(fac1,0.) * (w0top(nm) - w0top(nmd)) + min(fac2,0.) * (w0top(nmu) - w0top(nm)) )
-                      !
-                      ! add higher order (flux-limited) correction, if appropriate
-                      !
-                      if ( propsc /= 1 ) then
-                         !
-                         if ( fac2 > 0. ) then
-                            !
-                            grad1 = w0top(nmu) - w0top(nm )
-                            grad2 = w0top(nm ) - w0top(nmd)
-                            !
-                            w1top(nm) = w1top(nm) - 0.5 * fac2 * fluxlim(grad1,grad2)
-                            !
-                         else if ( fac2 < 0. ) then
-                            !
-                            grad1 = w0top(nmu ) - w0top(nm )
-                            grad2 = w0top(nmuu) - w0top(nmu)
-                            !
-                            w1top(nm) = w1top(nm) + 0.5 * fac2 * fluxlim(grad1,grad2)
-                            !
-                         endif
-                         !
-                         if ( fac1 > 0. ) then
-                            !
-                            grad1 = w0top(nm ) - w0top(nmd )
-                            grad2 = w0top(nmd) - w0top(nmdd)
-                            !
-                            w1top(nm) = w1top(nm) + 0.5 * fac1 * fluxlim(grad1,grad2)
-                            !
-                         else if ( fac1 < 0. ) then
-                            !
-                            grad1 = w0top(nm ) - w0top(nmd)
-                            grad2 = w0top(nmu) - w0top(nm )
-                            !
-                            w1top(nm) = w1top(nm) - 0.5 * fac1 * fluxlim(grad1,grad2)
-                            !
-                         endif
-                         !
-                      endif
-                      !
-                   endif
+                   w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(nmd)) + fac2 * (w0top(nmu) - w0top(nm)) )
                    !
                 endif
                 !

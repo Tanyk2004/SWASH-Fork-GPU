@@ -428,6 +428,10 @@ subroutine SwashCleanMem
     if ( allocated(amatt ) )  deallocate(amatt )
     if ( allocated(rhst  ) )  deallocate(rhst  )
     if ( allocated(ishif ) )  deallocate(ishif )
+    if ( allocated(bdx   ) )  deallocate(bdx   )
+    if ( allocated(bdy   ) )  deallocate(bdy   )
+    if ( allocated(bux   ) )  deallocate(bux   )
+    if ( allocated(buy   ) )  deallocate(buy   )
     !
     if ( allocated(ax2   ) )  deallocate(ax2   )
     if ( allocated(ia    ) )  deallocate(ia    )

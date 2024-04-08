@@ -359,6 +359,7 @@ module m_bndspec
     !
     real                     :: gamma = 3.3                   ! peak-enhancement factor
     !
+    logical                  :: alobnd                        ! if true, user has specified boundary conditions
     logical                  :: bcperx = .false.              ! indicates whether incident wave at boundary along x-direction must make periodic or not
     logical                  :: bcpery = .false.              ! indicates whether incident wave at boundary along y-direction must make periodic or not
     !
