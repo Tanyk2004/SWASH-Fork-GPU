@@ -32,6 +32,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
 !    1.00: Marcel Zijlema
 !    6.01: Panagiotis Vasarmidis
 !    8.01: Marcel Zijlema
+!   10.05: Dirk Rijnsdorp
 !
 !   Updates
 !
@@ -40,6 +41,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
 !    1.15, October 2012: extension repeating grid
 !    6.01,    June 2019: extension internal wave generation
 !    8.01, October 2021: Hancock scheme for global continuity equation
+!   10.05,    July 2023: extension ambient current
 !
 !   Purpose
 !
@@ -69,7 +71,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     use ocpcomm4
     use SwashCommdata3
     use SwashTimecomm
-    use m_genarr, only: kgrpnt, guu, guv, gvu, gvv, gsqs, gsqsu, gsqsv, sbimp, slimp, srimp, stimp
+    use m_genarr, only: kgrpnt, guu, guv, gvu, gvv, gsqs, gsqsu, gsqsv, sbimp, slimp, srimp, stimp, work
     use m_parall
     use SwashFlowdata, rhotmp   => rho  , &
                        u1tmp    => u1   , &
@@ -149,6 +151,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     integer                                    :: nu       ! index of point n+1
     integer                                    :: num      ! pointer to m,n+1
     integer                                    :: numd     ! pointer to m-1,n+1
+    integer                                    :: numu     ! pointer to m+1,n+1
     integer                                    :: nuu      ! index of point n+2
     integer                                    :: nuum     ! pointer to m,n+2
     !
@@ -185,6 +188,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     real                                       :: ryysu    ! component of Reynolds stress tensor Ryy in wl-point up from point of consideration
     real                                       :: ryyu     ! component of Reynolds stress tensor Ryy in current u/v-point
     real                                       :: theta    ! implicitness factor for non-hydrostatic pressure gradient
+    real                                       :: thetamb  ! implicitness factor for ambient current in global continuity eq
     real                                       :: u        ! u-velocity at point different from its point of definition
     real                                       :: utot     ! velocity magnitude
     real                                       :: v        ! v-velocity at point different from its point of definition
@@ -202,7 +206,8 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
 !
     if (ltrace) call strace (ient,'SwashExpDep2DHflow')
     !
-    theta = pnums(5)
+    theta   = pnums( 5)
+    thetamb = pnums(71)
     !
     sbimp = .false.
     slimp = .false.
@@ -959,6 +964,262 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     endif
     !
+    ! include effect of ambient current - first order approximation
+    !
+    if ( iamb == 1 ) then
+       !
+       ! compute the advective u-velocity in wl-point based on first order upwind
+       !
+       do n = nfu, nl
+          do m = mfu, ml
+             !
+             md = m - 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmd = kgrpnt(md,n)
+             !
+             if ( .not. Ubck(nm,1) < 0. ) then
+                !
+                ua(nm) = u0(nmd)
+                !
+             else
+                !
+                ua(nm) = u0(nm )
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! synchronize advective u-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! compute advection term in x-direction (momentum conservative) at internal u-point (prediction)
+       !
+       do n = nfu, nl
+          !
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmu = kgrpnt(mu,n)
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                advecx(nm) = advecx(nm) + ( Ubck(nmu,1) * ua(nmu) - Ubck(nm,1) * ua(nm) ) / gvu(nm)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! compute the advective u-velocity in depth point based on first order upwind
+       !
+       do n = nf, nl
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             num  = kgrpnt(m ,nu)
+             numu = kgrpnt(mu,nu)
+             !
+             fac = 0.25 * ( Vbck(nm,1) + Vbck(nmu,1) + Vbck(num,1) + Vbck(numu,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                ua(nm) = u0(nm )
+                !
+             else
+                !
+                ua(nm) = u0(num)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! compute advection term in y-direction (momentum conservative) at internal u-point (prediction)
+       !
+       do n = nfu, nl
+          !
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             nd = n - 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             ndm  = kgrpnt(m ,nd)
+             num  = kgrpnt(m ,nu)
+             ndmu = kgrpnt(mu,nd)
+             numu = kgrpnt(mu,nu)
+             !
+             fac1 = 0.25 * ( Vbck(nm ,1) + Vbck(nmu ,1) + Vbck(num,1) + Vbck(numu,1) )
+             fac2 = 0.25 * ( Vbck(ndm,1) + Vbck(ndmu,1) + Vbck(nm ,1) + Vbck(nmu ,1) )
+             !
+             ! to avoid boundary layer effect, set advection near lateral open boundary to zero
+             !
+             if ( ( .not.lrepty .and. LMYF .and. n == nfu ) .or. ( .not.lrepty .and. LMYL .and. n == nl ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                advecy(nm) = advecy(nm) + ( fac1 * ( ua(nm) - u0(nm) ) - fac2 * ( ua(ndm) - u0(nm) ) ) / guu(nm)
+                !
+             endif
+             !
+             ! also add v dU/dy
+             !
+             v = 0.25 * ( v0(nm) + v0(nmu) + v0(ndm) + v0(ndmu) )
+             if ( ( .not.lrepty .and. LMYF .and. n == nfu ) .or. ( .not.lrepty .and. LMYL .and. n == nl ) ) v = 0.
+             if ( wetu(nm) == 1 ) advecy(nm) = advecy(nm) + 0.25 * v * ( Ubck(numu,1) + Ubck(num,1) - Ubck(ndmu,1) - Ubck(ndm,1) ) / guu(nm)
+             !
+          enddo
+          !
+       enddo
+       !
+    else if ( iamb == 2 ) then
+       !
+       ! compute the advective u-velocity in wl-point based on first order upwind
+       !
+       do n = nfu, nl
+          do m = mfu, ml
+             !
+             md = m - 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmd = kgrpnt(md,n)
+             !
+             fac = 0.5 * ( Ubck(nm,1) + Ubck(nmd,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                ua(nm) = u0(nmd)
+                !
+             else
+                !
+                ua(nm) = u0(nm )
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! synchronize advective u-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! compute advection term in x-direction (momentum conservative) at internal u-point (prediction)
+       !
+       do n = nfu, nl
+          !
+          do m = mf+1, mend
+             !
+             md = m - 1
+             mu = m + 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmd = kgrpnt(md,n)
+             nmu = kgrpnt(mu,n)
+             !
+             fac1 = 0.5 * ( Ubck(nmu,1) + Ubck(nm ,1) )
+             fac2 = 0.5 * ( Ubck(nm ,1) + Ubck(nmd,1) )
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                advecx(nm) = advecx(nm) + ( fac1 * ua(nmu) - fac2 * ua(nm) ) / gvu(nm)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! compute the advective u-velocity in depth point based on first order upwind
+       !
+       do n = nf, nl
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             nu = n + 1
+             !
+             nm  = kgrpnt(m ,n )
+             nmu = kgrpnt(mu,n )
+             num = kgrpnt(m ,nu)
+             !
+             fac = 0.5 * ( Vbck(nm,1) + Vbck(nmu,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                ua(nm) = u0(nm )
+                !
+             else
+                !
+                ua(nm) = u0(num)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       !
+       ! compute advection term in y-direction (momentum conservative) at internal u-point (prediction)
+       !
+       do n = nfu, nl
+          !
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             nd = n - 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             ndm  = kgrpnt(m ,nd)
+             ndmu = kgrpnt(mu,nd)
+             num  = kgrpnt(m ,nu)
+             !
+             fac1 = 0.5 * ( Vbck(nm ,1) + Vbck(nmu ,1) )
+             fac2 = 0.5 * ( Vbck(ndm,1) + Vbck(ndmu,1) )
+             !
+             ! to avoid boundary layer effect, set advection near lateral open boundary to zero
+             !
+             if ( ( .not.lrepty .and. LMYF .and. n == nfu ) .or. ( .not.lrepty .and. LMYL .and. n == nl ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                advecy(nm) = advecy(nm) + ( fac1 * ( ua(nm) - u0(nm) ) - fac2 * ( ua(ndm) - u0(nm) ) ) / guu(nm)
+                !
+             endif
+             !
+             ! also add v dU/dy
+             !
+             v = 0.25 * ( v0(nm) + v0(nmu) + v0(ndm) + v0(ndmu) )
+             if ( ( .not.lrepty .and. LMYF .and. n == nfu ) .or. ( .not.lrepty .and. LMYL .and. n == nl ) ) v = 0.
+             if ( wetu(nm) == 1 ) advecy(nm) = advecy(nm) + 0.5 * v * ( Ubck(num,1) - Ubck(ndm,1) ) / guu(nm)
+             !
+          enddo
+          !
+       enddo
+       !
+    endif
+    !
     ! compute intermediate u-velocity
     !
     do n = nfu, nl
@@ -1303,6 +1564,329 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     ! synchronize u-velocities at appropriate boundaries in case of repeating grid (if appropriate)
     !
     if ( propsc /= 1 ) call periodic ( u1, kgrpnt, 1, 1 )
+    !
+    ! include effect of ambient current - high order correction
+    !
+    propsc = nint(pnums(61))
+    !
+    if ( iamb == 1 .and. propsc /= 1 ) then
+       !
+       ! compute higher order correction to the advective velocity in wl-point (if appropriate)
+       !
+       kappa  = pnums(62)
+       mbound = pnums(63)
+       phieby = pnums(64)
+       !
+       do n = nfu, nl
+          do m = mfu, ml
+             !
+             md  = m  - 1
+             mdd = md - 1
+             mu  = m  + 1
+             !
+             if ( LMXF .and. mdd < mf ) mdd = mf
+             if ( LMXL .and. mu  > ml ) mu  = ml
+             !
+             nm   = kgrpnt(m  ,n)
+             nmd  = kgrpnt(md ,n)
+             nmdd = kgrpnt(mdd,n)
+             nmu  = kgrpnt(mu ,n)
+             !
+             if ( .not. Ubck(nm,1) < 0. ) then
+                !
+                grad1 = u1(nm ) - u0(nmd )
+                grad2 = u1(nmd) - u0(nmdd)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = u1(nmd) - u0(nm )
+                grad2 = u1(nm ) - u0(nmu)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! compute higher order correction to the advective velocity in depth point (if appropriate)
+       !
+       if ( lreptx ) then
+          mend = ml             ! last internal u-point in case of repeating grid
+       else
+          mend = ml - 1         ! last internal u-point
+       endif
+       !
+       do n = nf, nl
+          do m = mf+1, mend
+             !
+             mu  = m  + 1
+             nd  = n  - 1
+             nu  = n  + 1
+             nuu = nu + 1
+             !
+             if ( LMYF .and. nd  < nfu ) nd  = nfu
+             if ( LMYL .and. nu  > nl  ) nu  = nl
+             if ( LMYL .and. nuu > nl  ) nuu = nl
+             !
+             nm   = kgrpnt(m ,n  )
+             nmu  = kgrpnt(mu,n  )
+             ndm  = kgrpnt(m ,nd )
+             num  = kgrpnt(m ,nu )
+             numu = kgrpnt(mu,nu )
+             nuum = kgrpnt(m ,nuu)
+             !
+             fac = 0.25 * ( Vbck(nm,1) + Vbck(nmu,1) + Vbck(num,1) + Vbck(numu,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                grad1 = u1(num) - u0(nm )
+                grad2 = u1(nm ) - u0(ndm)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = u1(nm ) - u0(num )
+                grad2 = u1(num) - u0(nuum)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! correct u-velocity associated with higher order approximation of advection term in x-direction at internal u-point (if appropriate)
+       !
+       do n = nfu, nl
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmu = kgrpnt(mu,n)
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                u1(nm) = u1(nm) - dt * ( Ubck(nmu,1) * ua(nmu)  - Ubck(nm,1) * ua(nm) ) / gvu(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! correct u-velocity associated with higher order approximation of advection term in y-direction at internal u-point (if appropriate)
+       !
+       do n = nfu, nl
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             nd = n - 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             ndm  = kgrpnt(m ,nd)
+             num  = kgrpnt(m ,nu)
+             ndmu = kgrpnt(mu,nd)
+             numu = kgrpnt(mu,nu)
+             !
+             fac1 = 0.25 * ( Vbck(nm ,1) + Vbck(nmu ,1) + Vbck(num,1) + Vbck(numu,1) )
+             fac2 = 0.25 * ( Vbck(ndm,1) + Vbck(ndmu,1) + Vbck(nm ,1) + Vbck(nmu ,1) )
+             !
+             ! set higher order approximation near lateral boundary to zero
+             !
+             if ( ( LMYF .and. n == nfu ) .or. ( LMYL .and. n == nl ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                u1(nm) = u1(nm) - dt * ( fac1 * ua2(nm) - fac2 * ua2(ndm) ) / guu(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! exchange u-velocities with neighbouring subdomains (if appropriate)
+       !
+       call SWEXCHG ( u1, kgrpnt, 1, 1 )
+       if (STPNOW()) return
+       !
+       ! synchronize u-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( u1, kgrpnt, 1, 1 )
+       !
+    else if ( iamb == 2 .and. propsc /= 1 ) then
+       !
+       ! compute higher order correction to the advective velocity in wl-point (if appropriate)
+       !
+       kappa  = pnums(62)
+       mbound = pnums(63)
+       phieby = pnums(64)
+       !
+       do n = nfu, nl
+          do m = mfu, ml
+             !
+             md  = m  - 1
+             mdd = md - 1
+             mu  = m  + 1
+             !
+             if ( LMXF .and. mdd < mf ) mdd = mf
+             if ( LMXL .and. mu  > ml ) mu  = ml
+             !
+             nm   = kgrpnt(m  ,n)
+             nmd  = kgrpnt(md ,n)
+             nmdd = kgrpnt(mdd,n)
+             nmu  = kgrpnt(mu ,n)
+             !
+             fac = 0.5 * ( Ubck(nm,1) + Ubck(nmd,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                grad1 = u1(nm ) - u0(nmd )
+                grad2 = u1(nmd) - u0(nmdd)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = u1(nmd) - u0(nm )
+                grad2 = u1(nm ) - u0(nmu)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! compute higher order correction to the advective velocity in depth point (if appropriate)
+       !
+       if ( lreptx ) then
+          mend = ml             ! last internal u-point in case of repeating grid
+       else
+          mend = ml - 1         ! last internal u-point
+       endif
+       !
+       do n = nf, nl
+          do m = mf+1, mend
+             !
+             mu  = m  + 1
+             nd  = n  - 1
+             nu  = n  + 1
+             nuu = nu + 1
+             !
+             if ( LMYF .and. nd  < nfu ) nd  = nfu
+             if ( LMYL .and. nu  > nl  ) nu  = nl
+             if ( LMYL .and. nuu > nl  ) nuu = nl
+             !
+             nm   = kgrpnt(m ,n  )
+             nmu  = kgrpnt(mu,n  )
+             ndm  = kgrpnt(m ,nd )
+             num  = kgrpnt(m ,nu )
+             nuum = kgrpnt(m ,nuu)
+             !
+             fac = 0.5 * ( Vbck(nm,1) + Vbck(nmu,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                grad1 = u1(num) - u0(nm )
+                grad2 = u1(nm ) - u0(ndm)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = u1(nm ) - u0(num )
+                grad2 = u1(num) - u0(nuum)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! correct u-velocity associated with higher order approximation of advection term in x-direction at internal u-point (if appropriate)
+       !
+       do n = nfu, nl
+          do m = mf+1, mend
+             !
+             md = m - 1
+             mu = m + 1
+             !
+             nm  = kgrpnt(m ,n)
+             nmd = kgrpnt(md,n)
+             nmu = kgrpnt(mu,n)
+             !
+             fac1 = 0.5 * ( Ubck(nmu,1) + Ubck(nm ,1) )
+             fac2 = 0.5 * ( Ubck(nm ,1) + Ubck(nmd,1) )
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                u1(nm) = u1(nm) - dt * ( fac1 * ua(nmu)  - fac2 * ua(nm) ) / gvu(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! correct u-velocity associated with higher order approximation of advection term in y-direction at internal u-point (if appropriate)
+       !
+       do n = nfu, nl
+          do m = mf+1, mend
+             !
+             mu = m + 1
+             nd = n - 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             ndm  = kgrpnt(m ,nd)
+             ndmu = kgrpnt(mu,nd)
+             !
+             fac1 = 0.5 * ( Vbck(nm ,1) + Vbck(nmu ,1) )
+             fac2 = 0.5 * ( Vbck(ndm,1) + Vbck(ndmu,1) )
+             !
+             ! set higher order approximation near lateral boundary to zero
+             !
+             if ( ( LMYF .and. n == nfu ) .or. ( LMYL .and. n == nl ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                u1(nm) = u1(nm) - dt * ( fac1 * ua2(nm) - fac2 * ua2(ndm) ) / guu(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! exchange u-velocities with neighbouring subdomains (if appropriate)
+       !
+       call SWEXCHG ( u1, kgrpnt, 1, 1 )
+       if (STPNOW()) return
+       !
+       ! synchronize u-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( u1, kgrpnt, 1, 1 )
+       !
+    endif
     !
     ! compute the mass flux per width in x-direction in depth point based on averaging
     !
@@ -1972,6 +2556,261 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     endif
     !
+    ! include effect of ambient current - first order approximation
+    !
+    if ( iamb == 1 ) then
+       !
+       ! compute the advective v-velocity in depth point based on first order upwind
+       !
+       do m = mf, ml
+          do n = nf+1, nend
+             !
+             mu = m + 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             num  = kgrpnt(m ,nu)
+             numu = kgrpnt(mu,nu)
+             !
+             fac = 0.25 * ( Ubck(nm,1) + Ubck(num,1) + Ubck(nmu,1) + Ubck(numu,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                ua(nm) = v0(nm )
+                !
+             else
+                !
+                ua(nm) = v0(nmu)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! compute advection term in x-direction (momentum conservative) at internal v-point (prediction)
+       !
+       do m = mfu, ml
+          !
+          do n = nf+1, nend
+             !
+             md = m - 1
+             mu = m + 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmd  = kgrpnt(md,n )
+             nmu  = kgrpnt(mu,n )
+             num  = kgrpnt(m ,nu)
+             numd = kgrpnt(md,nu)
+             numu = kgrpnt(mu,nu)
+             !
+             fac1 = 0.25 * ( Ubck(nm ,1) + Ubck(num ,1) + Ubck(nmu,1) + Ubck(numu,1) )
+             fac2 = 0.25 * ( Ubck(nmd,1) + Ubck(numd,1) + Ubck(nm ,1) + Ubck(num ,1) )
+             !
+             ! to avoid boundary layer effect, set advection near lateral open boundary to zero
+             !
+             if ( ( .not.lreptx .and. LMXF .and. m == mfu ) .or. ( .not.lreptx .and. LMXL .and. m == ml ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                advecx(nm) = advecx(nm) + ( fac1 * ( ua(nm) - v0(nm) ) - fac2 * ( ua(nmd) -v0(nm) ) ) / gvv(nm)
+                !
+             endif
+             !
+             ! also add u dV/dx
+             !
+             u = 0.25 * ( u0(nm) + u0(num) + u0(nmd) + u0(numd) )
+             if ( ( .not.lreptx .and. LMXF .and. m == mfu ) .or. ( .not.lreptx .and. LMXL .and. m == ml ) ) u = 0.
+             if ( wetv(nm) == 1 ) advecx(nm) = advecx(nm) + 0.25 * u * ( Vbck(numu,1) + Vbck(nmu,1) - Vbck(numd,1) - Vbck(nmd,1) ) / gvv(nm)
+             !
+          enddo
+          !
+       enddo
+       !
+       ! compute the advective v-velocity in wl-point based on first order upwind
+       !
+       do m = mfu, ml
+          do n = nfu, nl
+             !
+             nd = n - 1
+             !
+             nm  = kgrpnt(m,n )
+             ndm = kgrpnt(m,nd)
+             !
+             if ( .not. Vbck(nm,1) < 0. ) then
+                !
+                ua(nm) = v0(ndm)
+                !
+             else
+                !
+                ua(nm) = v0(nm )
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! synchronize advective v-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! compute advection term in y-direction (momentum/energy head conservative) at internal v-point (prediction)
+       !
+       do m = mfu, ml
+          !
+          do n = nf+1, nend
+             !
+             nu = n + 1
+             !
+             nm  = kgrpnt(m,n )
+             num = kgrpnt(m,nu)
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                advecy(nm) = advecy(nm) + ( Vbck(num,1) * ua(num) - Vbck(nm,1) * ua(nm) ) / guv(nm)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+    else if ( iamb == 2 ) then
+       !
+       ! compute the advective v-velocity in depth point based on first order upwind
+       !
+       do m = mf, ml
+          do n = nf+1, nend
+             !
+             mu = m + 1
+             nu = n + 1
+             !
+             nm  = kgrpnt(m ,n )
+             nmu = kgrpnt(mu,n )
+             num = kgrpnt(m ,nu)
+             !
+             fac = 0.5 * ( Ubck(nm,1) + Ubck(num,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                ua(nm) = v0(nm )
+                !
+             else
+                !
+                ua(nm) = v0(nmu)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! compute advection term in x-direction (momentum conservative) at internal v-point (prediction)
+       !
+       do m = mfu, ml
+          !
+          do n = nf+1, nend
+             !
+             md = m - 1
+             mu = m + 1
+             nu = n + 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmd  = kgrpnt(md,n )
+             nmu  = kgrpnt(mu,n )
+             num  = kgrpnt(m ,nu)
+             numd = kgrpnt(md,nu)
+             !
+             fac1 = 0.5 * ( Ubck(nm ,1) + Ubck(num ,1) )
+             fac2 = 0.5 * ( Ubck(nmd,1) + Ubck(numd,1) )
+             !
+             ! to avoid boundary layer effect, set advection near lateral open boundary to zero
+             !
+             if ( ( .not.lreptx .and. LMXF .and. m == mfu ) .or. ( .not.lreptx .and. LMXL .and. m == ml ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                advecx(nm) = advecx(nm) + ( fac1 * ( ua(nm) - v0(nm) ) - fac2 * ( ua(nmd) -v0(nm) ) ) / gvv(nm)
+                !
+             endif
+             !
+             ! also add u dV/dx
+             !
+             u = 0.25 * ( u0(nm) + u0(num) + u0(nmd) + u0(numd) )
+             if ( ( .not.lreptx .and. LMXF .and. m == mfu ) .or. ( .not.lreptx .and. LMXL .and. m == ml ) ) u = 0.
+             if ( wetv(nm) == 1 ) advecx(nm) = advecx(nm) + 0.5 * u * ( Vbck(nmu,1) - Vbck(nmd,1) ) / gvv(nm)
+             !
+          enddo
+          !
+       enddo
+       !
+       ! compute the advective v-velocity in wl-point based on first order upwind
+       !
+       do m = mfu, ml
+          do n = nfu, nl
+             !
+             nd = n - 1
+             !
+             nm  = kgrpnt(m,n )
+             ndm = kgrpnt(m,nd)
+             !
+             fac = 0.5 * ( Vbck(nm,1) + Vbck(ndm,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                ua(nm) = v0(ndm)
+                !
+             else
+                !
+                ua(nm) = v0(nm )
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! synchronize advective v-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! compute advection term in y-direction (momentum/energy head conservative) at internal v-point (prediction)
+       !
+       do m = mfu, ml
+          !
+          do n = nf+1, nend
+             !
+             nd = n - 1
+             nu = n + 1
+             !
+             nm  = kgrpnt(m,n )
+             ndm = kgrpnt(m,nd)
+             num = kgrpnt(m,nu)
+             !
+             fac1 = 0.5 * ( Vbck(num,1) + Vbck(nm ,1) )
+             fac2 = 0.5 * ( Vbck(nm ,1) + Vbck(ndm,1) )
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                advecy(nm) = advecy(nm) + ( fac1 * ua(num) - fac2 * ua(nm) ) / guv(nm)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+    endif
+    !
     ! compute intermediate v-velocity
     !
     do m = mfu, ml
@@ -2081,6 +2920,8 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     call periodic ( v1, kgrpnt, 1, 1 )
     !
     ! compute higher order correction to the advective velocity in depth point (if appropriate)
+    !
+    propsc = nint(pnums(6))
     !
     if ( propsc /= 1 ) then
        !
@@ -2311,6 +3152,329 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     !
     if ( propsc /= 1 ) call periodic ( v1, kgrpnt, 1, 1 )
     !
+    ! include effect of ambient current - high order correction
+    !
+    propsc = nint(pnums(61))
+    !
+    if ( iamb == 1 .and. propsc /= 1 ) then
+       !
+       ! compute higher order correction to the advective velocity in depth point (if appropriate)
+       !
+       kappa  = pnums(62)
+       mbound = pnums(63)
+       phieby = pnums(64)
+       !
+       if ( lrepty ) then
+          nend = nl             ! last internal v-point in case of repeating grid
+       else
+          nend = nl - 1         ! last internal v-point
+       endif
+       !
+       do m = mf, ml
+          do n = nf+1, nend
+             !
+             md  = m  - 1
+             mu  = m  + 1
+             muu = mu + 1
+             nu  = n  + 1
+             !
+             if ( LMXF .and. md  < mfu ) md  = mfu
+             if ( LMXL .and. mu  > ml  ) mu  = ml
+             if ( LMXL .and. muu > ml  ) muu = ml
+             !
+             nm   = kgrpnt(m  ,n )
+             nmd  = kgrpnt(md ,n )
+             nmu  = kgrpnt(mu ,n )
+             nmuu = kgrpnt(muu,n )
+             num  = kgrpnt(m  ,nu)
+             numu = kgrpnt(mu ,nu)
+             !
+             fac = 0.25 * ( Ubck(nm,1) + Ubck(num,1) + Ubck(nmu,1) + Ubck(numu,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                grad1 = v1(nmu) - v0(nm )
+                grad2 = v1(nm ) - v0(nmd)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = v1(nm ) - v0(nmu )
+                grad2 = v1(nmu) - v0(nmuu)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! compute higher order correction to the advective velocity in wl-point (if appropriate)
+       !
+       do m = mfu, ml
+          do n = nfu, nl
+             !
+             nd  = n  - 1
+             ndd = nd - 1
+             nu  = n  + 1
+             !
+             if ( LMYF .and. ndd < nf ) ndd = nf
+             if ( LMYL .and. nu  > nl ) nu  = nl
+             !
+             nm   = kgrpnt(m,n  )
+             ndm  = kgrpnt(m,nd )
+             nddm = kgrpnt(m,ndd)
+             num  = kgrpnt(m,nu )
+             !
+             if ( .not. Vbck(nm,1) < 0. ) then
+                !
+                grad1 = v1(nm ) - v0(ndm )
+                grad2 = v1(ndm) - v0(nddm)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = v1(ndm) - v0(nm )
+                grad2 = v1(nm ) - v0(num)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! correct v-velocity associated with higher order approximation of advection term in x-direction (if appropriate)
+       !
+       do m = mfu, ml
+          do n = nf+1, nend
+             !
+             nu = n + 1
+             md = m - 1
+             mu = m + 1
+             !
+             nm   = kgrpnt(m ,n )
+             num  = kgrpnt(m ,nu)
+             nmd  = kgrpnt(md,n )
+             nmu  = kgrpnt(mu,n )
+             numd = kgrpnt(md,nu)
+             numu = kgrpnt(mu,nu)
+             !
+             fac1 = 0.25 * ( Ubck(nm ,1) + Ubck(num ,1) + Ubck(nmu,1) + Ubck(numu,1) )
+             fac2 = 0.25 * ( Ubck(nmd,1) + Ubck(numd,1) + Ubck(nm ,1) + Ubck(num ,1) )
+             !
+             ! set higher order approximation near lateral boundary to zero
+             !
+             if ( ( LMXF .and. m == mfu ) .or. ( LMXL .and. m == ml ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                v1(nm) = v1(nm) - dt * ( fac1 * ua2(nm) - fac2 * ua2(nmd) ) / gvv(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! correct v-velocity associated with higher order approximation of advection term in y-direction (if appropriate)
+       !
+       do m = mfu, ml
+          do n = nf+1, nend
+             !
+             nu = n + 1
+             !
+             nm  = kgrpnt(m,n )
+             num = kgrpnt(m,nu)
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                v1(nm) = v1(nm) - dt * ( Vbck(num,1) * ua(num)  - Vbck(nm,1) * ua(nm) ) / guv(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! exchange v-velocities with neighbouring subdomains (if appropriate)
+       !
+       call SWEXCHG ( v1, kgrpnt, 1, 1 )
+       if (STPNOW()) return
+       !
+       ! synchronize v-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( v1, kgrpnt, 1, 1 )
+       !
+    else if ( iamb == 2 .and. propsc /= 1 ) then
+       !
+       ! compute higher order correction to the advective velocity in depth point (if appropriate)
+       !
+       kappa  = pnums(62)
+       mbound = pnums(63)
+       phieby = pnums(64)
+       !
+       if ( lrepty ) then
+          nend = nl             ! last internal v-point in case of repeating grid
+       else
+          nend = nl - 1         ! last internal v-point
+       endif
+       !
+       do m = mf, ml
+          do n = nf+1, nend
+             !
+             md  = m  - 1
+             mu  = m  + 1
+             muu = mu + 1
+             nu  = n  + 1
+             !
+             if ( LMXF .and. md  < mfu ) md  = mfu
+             if ( LMXL .and. mu  > ml  ) mu  = ml
+             if ( LMXL .and. muu > ml  ) muu = ml
+             !
+             nm   = kgrpnt(m  ,n )
+             nmd  = kgrpnt(md ,n )
+             nmu  = kgrpnt(mu ,n )
+             nmuu = kgrpnt(muu,n )
+             num  = kgrpnt(m  ,nu)
+             !
+             fac = 0.5 * ( Ubck(nm,1) + Ubck(num,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                grad1 = v1(nmu) - v0(nm )
+                grad2 = v1(nm ) - v0(nmd)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = v1(nm ) - v0(nmu )
+                grad2 = v1(nmu) - v0(nmuu)
+                !
+                ua2(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! compute higher order correction to the advective velocity in wl-point (if appropriate)
+       !
+       do m = mfu, ml
+          do n = nfu, nl
+             !
+             nd  = n  - 1
+             ndd = nd - 1
+             nu  = n  + 1
+             !
+             if ( LMYF .and. ndd < nf ) ndd = nf
+             if ( LMYL .and. nu  > nl ) nu  = nl
+             !
+             nm   = kgrpnt(m,n  )
+             ndm  = kgrpnt(m,nd )
+             nddm = kgrpnt(m,ndd)
+             num  = kgrpnt(m,nu )
+             !
+             fac = 0.5 * ( Vbck(nm,1) + Vbck(ndm,1) )
+             !
+             if ( .not. fac < 0. ) then
+                !
+                grad1 = v1(nm ) - v0(ndm )
+                grad2 = v1(ndm) - v0(nddm)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else
+                !
+                grad1 = v1(ndm) - v0(nm )
+                grad2 = v1(nm ) - v0(num)
+                !
+                ua(nm) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       call periodic ( ua, kgrpnt, 1, 1 )
+       !
+       ! correct v-velocity associated with higher order approximation of advection term in x-direction (if appropriate)
+       !
+       do m = mfu, ml
+          do n = nf+1, nend
+             !
+             nu = n + 1
+             md = m - 1
+             !
+             nm   = kgrpnt(m ,n )
+             num  = kgrpnt(m ,nu)
+             nmd  = kgrpnt(md,n )
+             numd = kgrpnt(md,nu)
+             !
+             fac1 = 0.5 * ( Ubck(nm ,1) + Ubck(num ,1) )
+             fac2 = 0.5 * ( Ubck(nmd,1) + Ubck(numd,1) )
+             !
+             ! set higher order approximation near lateral boundary to zero
+             !
+             if ( ( LMXF .and. m == mfu ) .or. ( LMXL .and. m == ml ) ) then
+                !
+                fac1 = 0.
+                fac2 = 0.
+                !
+             endif
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                v1(nm) = v1(nm) - dt * ( fac1 * ua2(nm) - fac2 * ua2(nmd) ) / gvv(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! correct v-velocity associated with higher order approximation of advection term in y-direction (if appropriate)
+       !
+       do m = mfu, ml
+          do n = nf+1, nend
+             !
+             nd = n - 1
+             nu = n + 1
+             !
+             nm  = kgrpnt(m,n )
+             ndm = kgrpnt(m,nd)
+             num = kgrpnt(m,nu)
+             !
+             fac1 = 0.5 * ( Vbck(num,1) + Vbck(nm ,1) )
+             fac2 = 0.5 * ( Vbck(nm ,1) + Vbck(ndm,1) )
+             !
+             if ( wetv(nm) == 1 ) then
+                !
+                v1(nm) = v1(nm) - dt * ( fac1 * ua(num)  - fac2 * ua(nm) ) / guv(nm)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+       ! exchange v-velocities with neighbouring subdomains (if appropriate)
+       !
+       call SWEXCHG ( v1, kgrpnt, 1, 1 )
+       if (STPNOW()) return
+       !
+       ! synchronize v-velocities at appropriate boundaries in case of repeating grid (if appropriate)
+       !
+       call periodic ( v1, kgrpnt, 1, 1 )
+       !
+    endif
+    !
     ! compute intermediate w-velocity
     !
     if ( ihydro == 1 ) then
@@ -2470,6 +3634,196 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
                    !
                    fac1 = fac * gvv(ndm) * qy(ndm) / hs(nm)
                    fac2 = fac * gvv(nm ) * qy(nm ) / hs(nm)
+                   !
+                   if ( propsc == 3 .and. kappa == 1. ) then
+                      !
+                      ! central differences
+                      !
+                      w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(ndm)) + fac2 * (w0top(num) - w0top(nm)) )
+                      !
+                   else
+                      !
+                      ! first order upwind scheme
+                      !
+                      w1top(nm) = w1top(nm) - ( max(fac1,0.) * (w0top(nm) - w0top(ndm)) + min(fac2,0.) * (w0top(num) - w0top(nm)) )
+                      !
+                      ! add higher order (flux-limited) correction, if appropriate
+                      !
+                      if ( propsc /= 1 ) then
+                         !
+                         if ( fac2 > 0. ) then
+                            !
+                            grad1 = w0top(num) - w0top(nm )
+                            grad2 = w0top(nm ) - w0top(ndm)
+                            !
+                            w1top(nm) = w1top(nm) - 0.5 * fac2 * fluxlim(grad1,grad2)
+                            !
+                         else if ( fac2 < 0. ) then
+                            !
+                            grad1 = w0top(num ) - w0top(nm )
+                            grad2 = w0top(nuum) - w0top(num)
+                            !
+                            w1top(nm) = w1top(nm) + 0.5 * fac2 * fluxlim(grad1,grad2)
+                            !
+                         endif
+                         !
+                         if ( fac1 > 0. ) then
+                            !
+                            grad1 = w0top(nm ) - w0top(ndm )
+                            grad2 = w0top(ndm) - w0top(nddm)
+                            !
+                            w1top(nm) = w1top(nm) + 0.5 * fac1 * fluxlim(grad1,grad2)
+                            !
+                         else if ( fac1 < 0. ) then
+                            !
+                            grad1 = w0top(nm ) - w0top(ndm)
+                            grad2 = w0top(num) - w0top(nm )
+                            !
+                            w1top(nm) = w1top(nm) - 0.5 * fac1 * fluxlim(grad1,grad2)
+                            !
+                         endif
+                         !
+                      endif
+                      !
+                   endif
+                   !
+                endif
+                !
+             enddo
+          enddo
+          !
+       endif
+       !
+       if ( iamb /= 0 ) then
+          !
+          ! compute horizontal advection terms (momentum conservative and explicit)
+          !
+          propsc = nint(pnums(66))
+          kappa  = pnums(67)
+          mbound = pnums(68)
+          phieby = pnums(69)
+          !
+          do n = nfu, nl
+             do m = mfu, ml
+                !
+                md  = m  - 1
+                mdd = md - 1
+                mu  = m  + 1
+                muu = mu + 1
+                !
+                if (                   LMXF .and. mdd < mf  ) mdd = mf
+                if ( .not.lreptx .and. LMXL .and. muu > ml  ) muu = ml
+                if (      lreptx .and. LMXL .and. muu > mlu ) muu = mlu
+                !
+                nd  = n  - 1
+                ndd = nd - 1
+                nu  = n  + 1
+                nuu = nu + 1
+                !
+                if (                   LMYF .and. ndd < nf  ) ndd = nf
+                if ( .not.lrepty .and. LMYL .and. nuu > nl  ) nuu = nl
+                if (      lrepty .and. LMYL .and. nuu > nlu ) nuu = nlu
+                !
+                nm   = kgrpnt(m  ,n  )
+                nmd  = kgrpnt(md ,n  )
+                nmdd = kgrpnt(mdd,n  )
+                nmu  = kgrpnt(mu ,n  )
+                nmuu = kgrpnt(muu,n  )
+                ndm  = kgrpnt(m  ,nd )
+                nddm = kgrpnt(m  ,ndd)
+                num  = kgrpnt(m  ,nu )
+                nuum = kgrpnt(m  ,nuu)
+                !
+                ! for permanently dry neighbours, corresponding values will be mirrored
+                !
+                if ( nmd  == 1 ) nmd  = nm
+                if ( nmdd == 1 ) nmdd = nmd
+                if ( nmu  == 1 ) nmu  = nm
+                if ( nmuu == 1 ) nmuu = nmu
+                if ( ndm  == 1 ) ndm  = nm
+                if ( nddm == 1 ) nddm = ndm
+                if ( num  == 1 ) num  = nm
+                if ( nuum == 1 ) nuum = num
+                !
+                if ( wets(nm) == 1 ) then
+                   !
+                   ! advection term in x-direction
+                   !
+                   fac = 2. * dt / gsqs(nm)
+                   !
+                   if ( iamb == 1 ) then
+                      fac1 = 0.5 * ( Ubck(nm ,1) + Ubck(nmd,1) )
+                      fac2 = 0.5 * ( Ubck(nmu,1) + Ubck(nm ,1) )
+                   else if ( iamb == 2 ) then
+                      fac1 = Ubck(nmd,1)
+                      fac2 = Ubck(nm ,1)
+                   endif
+                   fac1 = fac * guu(nmd) * hu(nmd) * fac1 / hs(nm)
+                   fac2 = fac * guu(nm ) * hu(nm ) * fac2 / hs(nm)
+                   !
+                   if ( propsc == 3 .and. kappa == 1. ) then
+                      !
+                      ! central differences
+                      !
+                      w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(nmd)) + fac2 * (w0top(nmu) - w0top(nm)) )
+                      !
+                   else
+                      !
+                      ! first order upwind scheme
+                      !
+                      w1top(nm) = w1top(nm) - ( max(fac1,0.) * (w0top(nm) - w0top(nmd)) + min(fac2,0.) * (w0top(nmu) - w0top(nm)) )
+                      !
+                      ! add higher order (flux-limited) correction, if appropriate
+                      !
+                      if ( propsc /= 1 ) then
+                         !
+                         if ( fac2 > 0. ) then
+                            !
+                            grad1 = w0top(nmu) - w0top(nm )
+                            grad2 = w0top(nm ) - w0top(nmd)
+                            !
+                            w1top(nm) = w1top(nm) - 0.5 * fac2 * fluxlim(grad1,grad2)
+                            !
+                         else if ( fac2 < 0. ) then
+                            !
+                            grad1 = w0top(nmu ) - w0top(nm )
+                            grad2 = w0top(nmuu) - w0top(nmu)
+                            !
+                            w1top(nm) = w1top(nm) + 0.5 * fac2 * fluxlim(grad1,grad2)
+                            !
+                         endif
+                         !
+                         if ( fac1 > 0. ) then
+                            !
+                            grad1 = w0top(nm ) - w0top(nmd )
+                            grad2 = w0top(nmd) - w0top(nmdd)
+                            !
+                            w1top(nm) = w1top(nm) + 0.5 * fac1 * fluxlim(grad1,grad2)
+                            !
+                         else if ( fac1 < 0. ) then
+                            !
+                            grad1 = w0top(nm ) - w0top(nmd)
+                            grad2 = w0top(nmu) - w0top(nm )
+                            !
+                            w1top(nm) = w1top(nm) - 0.5 * fac1 * fluxlim(grad1,grad2)
+                            !
+                         endif
+                         !
+                      endif
+                      !
+                   endif
+                   !
+                   ! advection term in y-direction
+                   !
+                   if ( iamb == 1 ) then
+                      fac1 = 0.5 * ( Vbck(nm ,1) + Vbck(ndm,1) )
+                      fac2 = 0.5 * ( Vbck(num,1) + Vbck(nm ,1) )
+                   else if ( iamb == 2 ) then
+                      fac1 = Vbck(ndm,1)
+                      fac2 = Vbck(nm ,1)
+                   endif
+                   fac1 = fac * gvv(ndm) * hv(ndm) * fac1 / hs(nm)
+                   fac2 = fac * gvv(nm ) * hv(nm ) * fac2 / hs(nm)
                    !
                    if ( propsc == 3 .and. kappa == 1. ) then
                       !
@@ -3067,6 +4421,322 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
        call SWEXCHG ( s1, kgrpnt, 1, 1 )
        if (STPNOW()) return
+       !
+    endif
+    !
+    ! include effect of ambient current
+    !
+    if ( iamb == 1 ) then
+       !
+       so = s1
+       !
+       ! solve global continuity equation by means of the Heun method
+       !
+       do j = 1, 2
+          !
+          work(:,2) = 0.
+          !
+          if ( j == 1 ) then
+             !
+             do n = nfu, nend
+                do m = mfu, mend
+                   !
+                   md = m - 1
+                   mu = m + 1
+                   nd = n - 1
+                   nu = n + 1
+                   !
+                   nm  = kgrpnt(m ,n )
+                   nmd = kgrpnt(md,n )
+                   nmu = kgrpnt(mu,n )
+                   ndm = kgrpnt(m ,nd)
+                   num = kgrpnt(m ,nu)
+                   !
+                   work(nm,2) = work(nm,2) + ( Ubck(nmu,1) + Ubck(nm,1) ) * guu(nm) * ( so(nmu) + so(nm) ) - ( Ubck(nm,1) + Ubck(nmd,1) ) * guu(nmd) * ( so(nm) + so(nmd) )
+                   work(nm,2) = work(nm,2) + ( Vbck(num,1) + Vbck(nm,1) ) * gvv(nm) * ( so(num) + so(nm) ) - ( Vbck(nm,1) + Vbck(ndm,1) ) * gvv(ndm) * ( so(nm) + so(ndm) )
+                   work(nm,2) = 0.25 * work(nm,2)
+                   !
+                enddo
+             enddo
+             !
+          else
+             !
+             do n = nfu, nend
+                do m = mfu, mend
+                   !
+                   md = m - 1
+                   mu = m + 1
+                   nd = n - 1
+                   nu = n + 1
+                   !
+                   nm  = kgrpnt(m ,n )
+                   nmd = kgrpnt(md,n )
+                   nmu = kgrpnt(mu,n )
+                   ndm = kgrpnt(m ,nd)
+                   num = kgrpnt(m ,nu)
+                   !
+                   fac1 = thetamb * s1(nmd) + (1.-thetamb) * so(nmd)
+                   fac  = thetamb * s1(nm ) + (1.-thetamb) * so(nm )
+                   fac2 = thetamb * s1(nmu) + (1.-thetamb) * so(nmu)
+                   !
+                   work(nm,2) = work(nm,2) + ( Ubck(nmu,1) + Ubck(nm,1) ) * guu(nm) * ( fac2 + fac ) - ( Ubck(nm,1) + Ubck(nmd,1) ) * guu(nmd) * ( fac + fac1 )
+                   !
+                   fac1 = thetamb * s1(ndm) + (1.-thetamb) * so(ndm)
+                   fac2 = thetamb * s1(num) + (1.-thetamb) * so(num)
+                   !
+                   work(nm,2) = work(nm,2) + ( Vbck(num,1) + Vbck(nm,1) ) * gvv(nm) * ( fac2 + fac ) - ( Vbck(nm,1) + Vbck(ndm,1) ) * gvv(ndm) * ( fac + fac1 )
+                   !
+                   work(nm,2) = 0.25 * work(nm,2)
+                   !
+                enddo
+             enddo
+             !
+          endif
+          !
+          do n = nfu, nend
+             do m = mfu, mend
+                !
+                nm = kgrpnt(m,n)
+                !
+                s1(nm) = so(nm) - dt * work(nm,2) / gsqs(nm)
+                !
+             enddo
+          enddo
+          !
+          ! set to zero for permanently dry points
+          !
+          s1(1) = 0.
+          !
+          ! exchange water levels with neighbouring subdomains
+          !
+          call SWEXCHG ( s1, kgrpnt, 1, 1 )
+          if (STPNOW()) return
+          !
+          ! synchronize water level at appropriate boundaries in case of repeating grid
+          !
+          call periodic ( s1, kgrpnt, 1, 1 )
+          !
+          ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
+          !
+          if ( .not.lreptx ) then
+             !
+             do n = nfu, nl
+                !
+                nmf  = kgrpnt(mf ,n)
+                nmfu = kgrpnt(mfu,n)
+                nml  = kgrpnt(ml ,n)
+                nmlu = kgrpnt(mlu,n)
+                !
+                if ( ibl(n) /= 2 .and. ibl(n) /= 6 .and. LMXF ) s1(nmf ) = s1(nmfu)
+                if ( ibr(n) /= 2 .and. ibr(n) /= 6 .and. LMXL ) s1(nmlu) = s1(nml )
+                !
+             enddo
+             !
+          endif
+          !
+          if ( .not.lrepty ) then
+             !
+             do m = mfu, ml
+                !
+                nfm  = kgrpnt(m,nf )
+                nfum = kgrpnt(m,nfu)
+                nlm  = kgrpnt(m,nl )
+                nlum = kgrpnt(m,nlu)
+                !
+                if ( ibb(m) /= 2 .and. ibb(m) /= 6 .and. LMYF ) s1(nfm ) = s1(nfum)
+                if ( ibt(m) /= 2 .and. ibt(m) /= 6 .and. LMYL ) s1(nlum) = s1(nlm )
+                !
+             enddo
+             !
+          endif
+          !
+          ! in case of outflow condition, no change in water depth
+          !
+          do n = nfu, nl
+             !
+             nmf   = kgrpnt(mf   ,n)
+             nmfu  = kgrpnt(mfu  ,n)
+             nmfuu = kgrpnt(mfu+1,n)
+             nml   = kgrpnt(ml   ,n)
+             nmld  = kgrpnt(ml-1 ,n)
+             nmlu  = kgrpnt(mlu  ,n)
+             !
+             if ( ibl(n) == 10 ) s1(nmf ) = s1(nmfu) - dps(nmfu) + dps(nmfuu)
+             if ( ibr(n) == 10 ) s1(nmlu) = s1(nml ) - dps(nml ) + dps(nmld )
+             !
+          enddo
+          !
+          do m = mfu, ml
+             !
+             nfm   = kgrpnt(m,nf   )
+             nfum  = kgrpnt(m,nfu  )
+             nfuum = kgrpnt(m,nfu+1)
+             nlm   = kgrpnt(m,nl   )
+             nldm  = kgrpnt(m,nl-1 )
+             nlum  = kgrpnt(m,nlu  )
+             !
+             if ( ibb(m) == 10 ) s1(nfm ) = s1(nfum) - dps(nfum) + dps(nfuum)
+             if ( ibt(m) == 10 ) s1(nlum) = s1(nlm ) - dps(nlm ) + dps(nldm )
+             !
+          enddo
+          !
+       enddo
+       !
+    else if ( iamb == 2 ) then
+       !
+       so = s1
+       !
+       ! solve global continuity equation by means of the Heun method
+       !
+       do j = 1, 2
+          !
+          work(:,2) = 0.
+          !
+          if ( j == 1 ) then
+             !
+             do n = nfu, nend
+                do m = mfu, mend
+                   !
+                   md = m - 1
+                   mu = m + 1
+                   nd = n - 1
+                   nu = n + 1
+                   !
+                   nm  = kgrpnt(m ,n )
+                   nmd = kgrpnt(md,n )
+                   nmu = kgrpnt(mu,n )
+                   ndm = kgrpnt(m ,nd)
+                   num = kgrpnt(m ,nu)
+                   !
+                   work(nm,2) = work(nm,2) + Ubck(nm,1) * guu(nm) * ( so(nmu) + so(nm) ) - Ubck(nmd,1) * guu(nmd) * ( so(nm) + so(nmd) )
+                   work(nm,2) = work(nm,2) + Vbck(nm,1) * gvv(nm) * ( so(num) + so(nm) ) - Vbck(ndm,1) * gvv(ndm) * ( so(nm) + so(ndm) )
+                   work(nm,2) = 0.5 * work(nm,2)
+                   !
+                enddo
+             enddo
+             !
+          else
+             !
+             do n = nfu, nend
+                do m = mfu, mend
+                   !
+                   md = m - 1
+                   mu = m + 1
+                   nd = n - 1
+                   nu = n + 1
+                   !
+                   nm  = kgrpnt(m ,n )
+                   nmd = kgrpnt(md,n )
+                   nmu = kgrpnt(mu,n )
+                   ndm = kgrpnt(m ,nd)
+                   num = kgrpnt(m ,nu)
+                   !
+                   fac1 = thetamb * s1(nmd) + (1.-thetamb) * so(nmd)
+                   fac  = thetamb * s1(nm ) + (1.-thetamb) * so(nm )
+                   fac2 = thetamb * s1(nmu) + (1.-thetamb) * so(nmu)
+                   !
+                   work(nm,2) = work(nm,2) + Ubck(nm,1) * guu(nm) * ( fac2 + fac ) - Ubck(nmd,1) * guu(nmd) * ( fac + fac1 )
+                   !
+                   fac1 = thetamb * s1(ndm) + (1.-thetamb) * so(ndm)
+                   fac2 = thetamb * s1(num) + (1.-thetamb) * so(num)
+                   !
+                   work(nm,2) = work(nm,2) + Vbck(nm,1) * gvv(nm) * ( fac2 + fac ) - Vbck(ndm,1) * gvv(ndm) * ( fac + fac1 )
+                   !
+                   work(nm,2) = 0.5 * work(nm,2)
+                   !
+                enddo
+             enddo
+             !
+          endif
+          !
+          do n = nfu, nend
+             do m = mfu, mend
+                !
+                nm = kgrpnt(m,n)
+                !
+                s1(nm) = so(nm) - dt * work(nm,2) / gsqs(nm)
+                !
+             enddo
+          enddo
+          !
+          ! set to zero for permanently dry points
+          !
+          s1(1) = 0.
+          !
+          ! exchange water levels with neighbouring subdomains
+          !
+          call SWEXCHG ( s1, kgrpnt, 1, 1 )
+          if (STPNOW()) return
+          !
+          ! synchronize water level at appropriate boundaries in case of repeating grid
+          !
+          call periodic ( s1, kgrpnt, 1, 1 )
+          !
+          ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
+          !
+          if ( .not.lreptx ) then
+             !
+             do n = nfu, nl
+                !
+                nmf  = kgrpnt(mf ,n)
+                nmfu = kgrpnt(mfu,n)
+                nml  = kgrpnt(ml ,n)
+                nmlu = kgrpnt(mlu,n)
+                !
+                if ( ibl(n) /= 2 .and. ibl(n) /= 6 .and. LMXF ) s1(nmf ) = s1(nmfu)
+                if ( ibr(n) /= 2 .and. ibr(n) /= 6 .and. LMXL ) s1(nmlu) = s1(nml )
+                !
+             enddo
+             !
+          endif
+          !
+          if ( .not.lrepty ) then
+             !
+             do m = mfu, ml
+                !
+                nfm  = kgrpnt(m,nf )
+                nfum = kgrpnt(m,nfu)
+                nlm  = kgrpnt(m,nl )
+                nlum = kgrpnt(m,nlu)
+                !
+                if ( ibb(m) /= 2 .and. ibb(m) /= 6 .and. LMYF ) s1(nfm ) = s1(nfum)
+                if ( ibt(m) /= 2 .and. ibt(m) /= 6 .and. LMYL ) s1(nlum) = s1(nlm )
+                !
+             enddo
+             !
+          endif
+          !
+          ! in case of outflow condition, no change in water depth
+          !
+          do n = nfu, nl
+             !
+             nmf   = kgrpnt(mf   ,n)
+             nmfu  = kgrpnt(mfu  ,n)
+             nmfuu = kgrpnt(mfu+1,n)
+             nml   = kgrpnt(ml   ,n)
+             nmld  = kgrpnt(ml-1 ,n)
+             nmlu  = kgrpnt(mlu  ,n)
+             !
+             if ( ibl(n) == 10 ) s1(nmf ) = s1(nmfu) - dps(nmfu) + dps(nmfuu)
+             if ( ibr(n) == 10 ) s1(nmlu) = s1(nml ) - dps(nml ) + dps(nmld )
+             !
+          enddo
+          !
+          do m = mfu, ml
+             !
+             nfm   = kgrpnt(m,nf   )
+             nfum  = kgrpnt(m,nfu  )
+             nfuum = kgrpnt(m,nfu+1)
+             nlm   = kgrpnt(m,nl   )
+             nldm  = kgrpnt(m,nl-1 )
+             nlum  = kgrpnt(m,nlu  )
+             !
+             if ( ibb(m) == 10 ) s1(nfm ) = s1(nfum) - dps(nfum) + dps(nfuum)
+             if ( ibt(m) == 10 ) s1(nlum) = s1(nlm ) - dps(nlm ) + dps(nldm )
+             !
+          enddo
+          !
+       enddo
        !
     endif
     !

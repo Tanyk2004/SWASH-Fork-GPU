@@ -5,7 +5,7 @@ tides, buoyancy and wind forces. It provides a general basis for describing wave
 flows, and density driven flows in coastal seas, estuaries, lakes and rivers.
 
 For more in-depth background and scientific documentation, the reader is referred to the [SWASH website](https://swash.sourceforge.io).
-Please also check the [release notes](https://swash.sourceforge.io/modifications/modifications.htm) for any additional information on the current version **10.01**.
+Please also check the [release notes](https://swash.sourceforge.io/modifications/modifications.htm) for any additional information on the current version **10.05**.
 
 This Readme provides a brief overview of software installation and configuration instructions for users and developers.
 Please see the [Implementation Manual](https://swash.sourceforge.io/online_doc/swashimp/swashimp.html) for additional documentation.
@@ -219,7 +219,7 @@ $ mpirun -np <n> swash.exe
 
 with `<n>` the number of desired nodes.
 
-*Note: in the current version (v 10.01), the use of unstructured mesh is not supported in parallel mode.*
+*Note: in the current version (v 10.05), the use of unstructured mesh is not supported in parallel mode.*
 
 The above procedure can be done automatically using the script `/bin/swashrun` (or `\bin\swashrun.bat` in case of Windows), provided that the
 environment variable `PATH` has been adapted by including the path of the `/bin` directory.

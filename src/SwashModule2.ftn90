@@ -617,6 +617,7 @@ module m_genarr
     integer, dimension(:,:), save, allocatable :: kgrpnt      ! index table containing the address of each (active) grid point
                                                               ! =1; not active grid point
                                                               ! >1; active grid point
+    integer, dimension(:)  , save, allocatable :: kpv         ! layer index of pressure grid on finer velocity grid
     integer, dimension(:)  , save, allocatable :: kup         ! layer interfaces of pressure grid as counted in velocity grid
     integer, dimension(:)  , save, allocatable :: mend        ! end index of loop over u-points (for 2DH or 3D computation)
     integer, dimension(:)  , save, allocatable :: msta        ! start index of loop over u-points (for 2DH or 3D computation)
@@ -626,6 +627,10 @@ module m_genarr
     integer, dimension(:)  , save, allocatable :: vmspon      ! boundary markers where sponge layers are to be applied
     integer, dimension(:)  , save, allocatable :: xytst       ! grid point indices of test points
     !
+    real   , dimension(:,:), save, allocatable :: avxf        ! input field of ambient u-velocity mapped onto computational grid
+    real   , dimension(:)  , save, allocatable :: avxi        ! user-defined input field of ambient u-velocity
+    real   , dimension(:,:), save, allocatable :: avyf        ! input field of ambient v-velocity mapped onto computational grid
+    real   , dimension(:)  , save, allocatable :: avyi        ! user-defined input field of ambient v-velocity
     real   , dimension(:,:), save, allocatable :: bndval      ! array containing boundary values at two time levels
     real   , dimension(:)  , save, allocatable :: bveg        ! stem diameter for each layer
     real   , dimension(:)  , save, allocatable :: cdveg       ! drag coefficient due to vegetation for each layer
@@ -651,6 +656,7 @@ module m_genarr
     real   , dimension(:)  , save, allocatable :: hporf       ! input field of porous structure height mapped onto computational grid
     real   , dimension(:)  , save, allocatable :: lbod        ! user-defined input field of label of rigid body
     real   , dimension(:)  , save, allocatable :: lbodf       ! input field of label of rigid body mapped onto computational grid
+    real   , dimension(:)  , save, allocatable :: mwl         ! user-defined input field of mean water level (tide/wind surge)
     real   , dimension(:)  , save, allocatable :: npla        ! user-defined input field of number of plants per square meter
     real   , dimension(:)  , save, allocatable :: nplaf       ! input field of number of plants per square meter mapped onto computational grid
     real   , dimension(:)  , save, allocatable :: npor        ! user-defined input field of porosity

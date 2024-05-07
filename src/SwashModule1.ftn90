@@ -175,7 +175,7 @@ module SwashCommdata2
 !
 !   Module parameters
 !
-    integer, parameter                         :: numgrd = 20 ! maximum number of input grids
+    integer, parameter                         :: numgrd = 22 ! maximum number of input grids
     !
     real   , parameter                         :: NEAREST = -12345678. ! quantity outside input grid equals value nearest boundary of input grid
 !
@@ -214,10 +214,12 @@ module SwashCommdata2
     logical                                    :: initsf      ! indicates water level to be initialized based on input field
     logical                                    :: inituf      ! indicates u-velocity to be initialized based on input field
     logical                                    :: initvf      ! indicates v-velocity to be initialized based on input field
+    logical                                    :: varea       ! mean water level associated with ambient flow is/is not variable over space
     logical                                    :: varfr       ! friction coefficient is/is not variable over space
     logical                                    :: vargs       ! grain size of porous structure is/is not variable over space
     logical                                    :: varnpl      ! number of plants / m2 is/is not variable over space
     logical                                    :: varsh       ! structure height is/is not variable over space
+    logical                                    :: varva       ! ambient current is/is not variable over space
     logical                                    :: varwi       ! wind velocity is/is not variable over space
     logical, dimension(numgrd)                 :: lflgrd      ! indicates whether input grid equals computational grid
     logical, dimension(numgrd)                 :: lstag       ! staggering of curvilinear input grid w.r.t. computational grid
@@ -300,7 +302,7 @@ module SwashCommdata3
 !
     integer, parameter                         :: mbot  =  5  ! dimension of array pbot
     integer, parameter                         :: miwg  = 10  ! dimension of array piwg
-    integer, parameter                         :: mnums = 60  ! dimension of array pnums
+    integer, parameter                         :: mnums = 75  ! dimension of array pnums
     integer, parameter                         :: mpor  =  5  ! dimension of array ppor
     integer, parameter                         :: msed  = 15  ! dimension of array psed
     integer, parameter                         :: mship = 15  ! dimension of array pship
@@ -440,6 +442,16 @@ module SwashCommdata3
     real                                       :: hdiff       ! horizontal diffusivity
     real                                       :: hvisc       ! horizontal viscosity
     real                                       :: lmix        ! mixing length
+    !
+    ! parameters for ambient current (riverine, tidal and wind-driven flows)
+    !
+    integer                                    :: iamb        ! indicator ambient current
+                                                              ! =0; no ambient current
+                                                              ! =1; cell-centered approach
+                                                              ! =2; staggered approach
+    real                                       :: eamb        ! mean water level associated with ambient flow
+    real                                       :: uamb        ! ambient U-velocity
+    real                                       :: vamb        ! ambient V-velocity
     !
     ! parameters for floating objects
     !
@@ -706,6 +718,19 @@ module SwashCommdata3
                                                               ! =55; not used
                                                               ! =58; relative accuracy with respect to water level in the pressure projection method
                                                               ! =59; maximum number of iterations to be performed in the pressure projection method
+                                                              ! =61; propsc; discretization scheme for horizontal U-advection with ambient current
+                                                              ! =62; kappa; parameter for kappa scheme i.c. horizontal U-advection with ambient current
+                                                              ! =63; mbound; upper bound for PL-kappa scheme i.c. horizontal U-advection with ambient current
+                                                              ! =64; phieby; parameter for Sweby-phi limiter i.c. horizontal U-advection with ambient current
+                                                              ! =65; not used
+                                                              ! =66; propsc; discretization scheme for horizontal W-advection with ambient current
+                                                              ! =67; kappa; parameter for kappa scheme i.c. horizontal W-advection with ambient current
+                                                              ! =68; mbound; upper bound for PL-kappa scheme i.c. horizontal W-advection with ambient current
+                                                              ! =69; phieby; parameter for Sweby-phi limiter i.c. horizontal W-advection with ambient current
+                                                              ! =70; not used
+                                                              ! =71; thetamb; implicitness factor for time integration related to ambient current in global continuity eq
+                                                              !      =0.5: Crank-Nicolson
+                                                              !      =1.0: implicit Euler
     real*8, dimension(300,5)                   :: rcompt      !
     !
     logical                                    :: bnaut       ! indicates whether nautical or Cartesian directions are used

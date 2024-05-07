@@ -179,6 +179,8 @@ subroutine SwashPrintSettings
        !
        if ( svwp ) write (PRINTF, *) 'Space varying wind and pressure is included'
        !
+       if ( iamb /= 0 ) write (PRINTF, *) 'Ambient current is included'
+       !
        if ( irough == 1 ) then
           write (PRINTF, 215) pbot(1)
        else if ( irough == 2 ) then

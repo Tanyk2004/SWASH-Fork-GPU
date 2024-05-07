@@ -23,8 +23,9 @@
 !
 !   VERTical [kmax] < [thickness] M|PERC >
 !
-!   INPgrid  BOT|WLEV|CUR|VX|VY|FRic|WInd|WX|WY|PRessure|POROS|PSIZ|HSTRUC|    &
-!            NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment                 &
+!   INPgrid  BOT|WLEV|CUR|VX|VY|FRic|WInd|WX|WY|PRessure|POROs|PSIZ|HSTRUC|    &
+!            NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment|MWL|ACUR|       &
+!            AVX|AVY                                                           &
 !
 !      | REG [xpinp] [ypinp] [alpinp]  [mxinp] [myinp]  [dxinp] [dyinp] |
 !      |                                                                |
@@ -41,8 +42,8 @@
 !   READgrid UNSTRUCtured / -> TRIAngle \
 !                         \    EASYmesh / 'fname'
 !
-!   READinp   BOTtom|WLEVel|CURrent|FRic|WInd|PRessure|COOR|POROS|PSIZ|HSTRUC| &
-!             NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment                &
+!   READinp   BOTtom|WLEVel|CURrent|FRic|WInd|PRessure|COOR|POROs|PSIZ|HSTRUC| &
+!             NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment|MWL|ACURrent   &
 !
 !                | 'fname1'        |
 !        [fac]  <  SERIes 'fname2'  >  [idla] [nhedf] ([nhedt]) (nhedvec])     &
@@ -194,6 +195,9 @@
 !   BREaking  [alpha] [beta] [nufac]
 !
 !
+!   AMBient  [U] [V] [eta]  Cell|Stagg  [theta]
+!
+!
 !                    |    STAndard      |
 !                    |                  |
 !   NONHYDrostatic  <  -> BOX            > [theta]                             &
@@ -215,12 +219,16 @@
 !                   |         | WMOM  / -> Horizontal                  |
 !                   |         |       \    Vertical                    |
 !                   |                                                  |
-!   DISCRETization <  CORRdep                                           >      &
-!                   |                                                  |
+!                   | CORRdep                                          |
+!   DISCRETization <                                                    >      &
 !                   | TRANSPort  / -> Horizontal                       |
 !                   |            \    Vertical                         |
 !                   |                                                  |
 !                   | MIMEtic                                          |
+!                   |                                                  |
+!                   |           | -> Umom                              |
+!                   | ACURrent <                                       |
+!                   |           | Wmom                                 |
 !
 !
 !                      | NONe                                 |
