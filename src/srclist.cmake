@@ -89,6 +89,7 @@ ${SRC}/SwashKepsMod1DH.f90
 ${SRC}/SwashKepsMod2DH.f90
 ${SRC}/SwashUKepsMod.f90
 ${SRC}/SwashReynoldsStress.f90
+${SRC}/SwashAmbCurrent.f90
 ${SRC}/SwashComputStruc.f90
 ${SRC}/SwashCompUnstruc.f90
 ${SRC}/SwashComputFlow.f90

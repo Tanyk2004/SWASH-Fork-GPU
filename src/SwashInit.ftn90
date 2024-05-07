@@ -76,9 +76,9 @@ subroutine SwashInit ( inerr )
 !   Source text
 !
     VERTXT = BLANK
-    VERNUM = 10.01
+    VERNUM = 10.05
     write (VERTXT, '(f5.2)') VERNUM
-    call BUGFIX ('A')
+    !call BUGFIX ('A')
     !call BUGFIX ('B')
     !
     call OCPINI ( 'swashinit', .true., inerr )
@@ -263,6 +263,7 @@ subroutine SwashInit ( inerr )
        lstag(i)  = .false.
        excfld(i) = -1.e20
        ifldyn(i) = 0
+       iflndf(i) = 0
        ifltim(i) = -1.e20
        ifllay(i) = 1
        !
@@ -277,6 +278,8 @@ subroutine SwashInit ( inerr )
     vargs  = .false.
     varsh  = .false.
     varnpl = .false.
+    varva  = .false.
+    varea  = .false.
     !
     ! wind speed and direction
     !
@@ -345,6 +348,13 @@ subroutine SwashInit ( inerr )
     pship(10) = 0.3
     pship(11) = 0.5
     !
+    ! ambient current
+    !
+    iamb = 0
+    uamb = 0.
+    vamb = 0.
+    eamb = 0.
+    !
     ! transport of constituent
     !
     itrans = 0
@@ -410,6 +420,11 @@ subroutine SwashInit ( inerr )
     pnums(47) = 0.
     pnums(51) = 5.
     pnums(52) = 0.
+    pnums(61) = 4.
+    pnums(64) = 1.
+    pnums(66) = 4.
+    pnums(69) = 1.
+    pnums(71) = 1.
     !
     ! parameters for non-hydrostatic computation
     !

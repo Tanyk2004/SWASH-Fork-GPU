@@ -35,6 +35,7 @@ subroutine SwashCheckPrep
 !    6.02: Tom Bogaard
 !    7.01: Marcel Zijlema
 !    9.01: Marcel Zijlema
+!   10.05: Dirk Rijnsdorp
 !
 !   Updates
 !
@@ -50,6 +51,7 @@ subroutine SwashCheckPrep
 !    6.02,      July 2019: extension 3D (non)linear k-eps model
 !    7.01,   January 2020: extension to unstructured grids
 !    9.01,   October 2022: extension moving rigid bodies
+!   10.05,      July 2023: extension ambient current
 !
 !   Purpose
 !
@@ -114,6 +116,8 @@ subroutine SwashCheckPrep
     !
     real                                        :: altmp       ! an auxiliary real to temporarily store a direction
     real                                        :: cf          ! local bottom friction coefficient
+    real                                        :: cosva       ! =cos(-alpg(20)),
+                                                               ! cosine of angle of ambient velocity input grid w.r.t. computational grid
     real                                        :: dep         ! local bottom level
     real                                        :: draft       ! local draft of floating object
     real                                        :: dsiz        ! characteristic grain size
@@ -128,6 +132,8 @@ subroutine SwashCheckPrep
     real                                        :: pp          ! local atmospheric pressure
     real*8                                      :: pf0         ! another polynomial function of temperature and salinity (for sea water) in Eckart's formula
     real                                        :: rhoinf      ! spectral radius for infinite frequency to control generalized-alpha scheme
+    real                                        :: sinva       ! =sine(-alpg(20)),
+                                                               ! sine of angle of ambient velocity input grid w.r.t. computational grid
     real                                        :: ss          ! salinity/sediment
     real                                        :: sumh        ! sum of the layer thicknesses
     real                                        :: SVALQI      ! interpolated value of an input array for point given in problem coordinates
@@ -294,6 +300,21 @@ subroutine SwashCheckPrep
        if ( leds(19) == 2 ) then
           if ( leds(18) /= 2 ) call msgerr (3, 'DRAFT not read, while LABEL has been read')
        endif
+    endif
+    !
+    if ( leds(20) == 2 ) then
+       if ( leds(21) /= 2 ) call msgerr (3, 'AVY not read, while AVX has been read')
+       if ( ifllay(20) /= kpmax .and. ifllay(20) /= 1 ) call msgerr (3, 'input field of ambient current has incorrect number of layers')
+       varva = .true.
+       if ( iamb == 0 ) iamb = 2
+       altmp = - alpg(20)
+       cosva = cos(altmp)
+       sinva = sin(altmp)
+    endif
+    !
+    if ( leds(22) == 2 ) then
+       if ( leds(20) /= 2 ) call msgerr (3, 'ACURRENT not read, while MWL has been read')
+       varea = .true.
     endif
     !
     if ( leds(13) == 2 ) svwp = .true.
@@ -508,6 +529,18 @@ subroutine SwashCheckPrep
           call msgerr (4,'inconsistency found in number of velocity layers due to subgrid approach')
           return
        endif
+       !
+       ! array kpv contains layer indices of fine (velocity) grid mapped to coarse (pressure) grid
+       !
+       if (.not.allocated(kpv)) allocate(kpv(1:kmax))
+       !
+       k = 1
+       do i = 1, kpmax
+          do j = 1, npu(i)
+             kpv(k) = i
+             k      = k + 1
+          enddo
+       enddo
        !
     endif
     !
@@ -819,6 +852,19 @@ subroutine SwashCheckPrep
        if ( ihydro /= 1 .and. ihydro /= 2 ) then
           call msgerr (3, 'non-hydrostatic mode must be switch on in case of VARANS equations')
        endif
+    endif
+    !
+    ! check ambient current
+    !
+    if ( iamb /= 0 ) then
+       if ( mtimei == 2 ) call msgerr (3, 'ambient current not supported in case of semi-implicit time integration')
+       if (   optg == 5 ) call msgerr (3, 'ambient current not supported in case of unstructured grids')
+       if ( pnums(71) < 0.5 .or. pnums(71) > 1. ) then
+          call msgerr (1, 'incorrect theta value for time integration of global continuity equation due to ambient current')
+          pnums(71) = 1.
+       endif
+       horwinc = .true.
+       verwinc = .true.
     endif
     !
     ! check outputting mean transported constituents
@@ -2191,6 +2237,26 @@ subroutine SwashCheckPrep
        !
     endif
     !
+    if ( istat == 0 ) then
+       !
+       if ( varva ) then
+          !
+          if ( .not.allocated(avxf) ) allocate ( avxf(mcgrd,kpmax), stat = istat )
+          if ( istat == 0 ) then
+             avxf = 0.
+             if ( .not.allocated(avyf) ) allocate ( avyf(mcgrd,kpmax), stat = istat )
+             if ( istat == 0 ) avyf = 0.
+          endif
+          !
+       else
+          !
+          if ( .not.allocated(avxf) ) allocate ( avxf(0,0) )
+          if ( .not.allocated(avyf) ) allocate ( avyf(0,0) )
+          !
+       endif
+       !
+    endif
+    !
     if ( istat /= 0 ) then
        write (msgstr, '(a,i6)') 'allocation problem: input fields at computational grid and return code is ',istat
        call msgerr ( 4, trim(msgstr) )
@@ -2456,6 +2522,63 @@ subroutine SwashCheckPrep
                    endif
                 endif
                 !
+                ! retrieve space varying ambient velocities and map to computational grid
+                !
+                if ( varva ) then
+                   if ( ifllay(20) == 1 ) then
+                      if ( lflgrd(20) ) then
+                         uu = avxi((iygl-1)*mxg(20)+ixgl)
+                      else
+                         uu = SVALQI (xp, yp, 20, avxi, 0.)
+                      endif
+                      if ( lflgrd(21) ) then
+                         vv = avyi((iygl-1)*mxg(21)+ixgl)
+                      else
+                         vv = SVALQI (xp, yp, 21, avyi, 0.)
+                      endif
+                      avxf(indx,1) =  uu*cosva + vv*sinva
+                      avyf(indx,1) = -uu*sinva + vv*cosva
+                      if ( kpmax > 1 ) then
+                         do k = 2, kpmax
+                            avxf(indx,k) = avxf(indx,1)
+                            avyf(indx,k) = avyf(indx,1)
+                         enddo
+                      endif
+                   else
+                      do k = 1, kpmax
+                         if ( lflgrd(20) ) then
+                            uu = avxi((iygl-1+(k-1)*myg(20))*mxg(20)+ixgl)
+                         else
+                            jlow = 1+(k-1)*mxg(20)*myg(20)
+                            jupp = k*mxg(20)*myg(20)
+                            uu = SVALQI (xp, yp, 20, avxi(jlow:jupp), 0.)
+                         endif
+                         if ( lflgrd(21) ) then
+                            vv = avyi((iygl-1+(k-1)*myg(21))*mxg(21)+ixgl)
+                         else
+                            jlow = 1+(k-1)*mxg(21)*myg(21)
+                            jupp = k*mxg(21)*myg(21)
+                            vv = SVALQI (xp, yp, 21, avyi(jlow:jupp), 0.)
+                         endif
+                         avxf(indx,k) =  uu*cosva + vv*sinva
+                         avyf(indx,k) = -uu*sinva + vv*cosva
+                      enddo
+                   endif
+                endif
+                !
+                ! retrieve space varying mean water level (tide/wind surge), map to computational grid and finally add to bottom elevation
+                !
+                if ( varea ) then
+                   if ( lflgrd(22) ) then
+                      wlvl = mwl((iygl-1)*mxg(22)+ixgl)
+                   else
+                      wlvl = SVALQI (xp, yp, 22, mwl, NEAREST)
+                   endif
+                   depf(indx) = depf(indx) + wlvl
+                else
+                   depf(indx) = depf(indx) + eamb
+                endif
+                !
              endif
              !
           enddo
@@ -2708,6 +2831,63 @@ subroutine SwashCheckPrep
                    lbodf(indx) = 0.
                 endif
              endif
+          endif
+          !
+          ! retrieve space varying ambient velocities and map to computational grid
+          !
+          if ( varva ) then
+             if ( ifllay(20) == 1 ) then
+                if ( lflgrd(20) ) then
+                   uu = avxi(indx)
+                else
+                   uu = SVALQI (xp, yp, 20, avxi, 0.)
+                endif
+                if ( lflgrd(21) ) then
+                   vv = avyi(indx)
+                else
+                   vv = SVALQI (xp, yp, 21, avyi, 0.)
+                endif
+                avxf(indx,1) =  uu*cosva + vv*sinva
+                avyf(indx,1) = -uu*sinva + vv*cosva
+                if ( kpmax > 1 ) then
+                   do k = 2, kpmax
+                      avxf(indx,k) = avxf(indx,1)
+                      avyf(indx,k) = avyf(indx,1)
+                   enddo
+                endif
+             else
+                do k = 1, kpmax
+                   if ( lflgrd(20) ) then
+                      uu = avxi(indx+(k-1)*nverts)
+                   else
+                      jlow = 1+(k-1)*mxg(20)*myg(20)
+                      jupp = k*mxg(20)*myg(20)
+                      uu = SVALQI (xp, yp, 20, avxi(jlow:jupp), 0.)
+                   endif
+                   if ( lflgrd(21) ) then
+                      vv = avyi(indx+(k-1)*nverts)
+                   else
+                      jlow = 1+(k-1)*mxg(21)*myg(21)
+                      jupp = k*mxg(21)*myg(21)
+                      vv = SVALQI (xp, yp, 21, avyi(jlow:jupp), 0.)
+                   endif
+                   avxf(indx,k) =  uu*cosva + vv*sinva
+                   avyf(indx,k) = -uu*sinva + vv*cosva
+                enddo
+             endif
+          endif
+          !
+          ! retrieve space varying mean water level (tide/wind surge), map to computational grid and finally add to bottom elevation
+          !
+          if ( varea ) then
+             if ( lflgrd(22) ) then
+                wlvl = mwl(indx)
+             else
+                wlvl = SVALQI (xp, yp, 22, mwl, NEAREST)
+             endif
+             depf(indx) = depf(indx) + wlvl
+          else
+             depf(indx) = depf(indx) + eamb
           endif
           !
        enddo
@@ -3307,6 +3487,19 @@ subroutine SwashCheckPrep
        !
     endif
     !
+    if ( iamb /= 0 ) then
+       if ( oned ) then
+          if ( istat == 0 .and. .not.allocated(Ubck) ) allocate (Ubck(mcgrd,kpmax), stat = istat)
+       else if ( optg == 5 ) then
+          if ( istat == 0 .and. .not.allocated(Ubck) ) allocate (Ubck(nfaces,kpmax), stat = istat)
+       else
+          if ( istat == 0 .and. .not.allocated(Ubck) ) allocate (Ubck(mcgrd,kpmax), stat = istat)
+          if ( istat == 0 .and. .not.allocated(Vbck) ) allocate (Vbck(mcgrd,kpmax), stat = istat)
+       endif
+       if ( istat == 0 .and. .not.allocated(so ) ) allocate (so (mcgrd      ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(wrk) ) allocate (wrk(mcgrd,kpmax), stat = istat)
+    endif
+    !
     if ( istat /= 0 ) then
        write (msgstr, '(a,i6)') 'allocation problem: other flow data (discharges and some help arrays) and return code is ',istat
        call msgerr ( 4, trim(msgstr) )
@@ -3480,6 +3673,17 @@ subroutine SwashCheckPrep
        endif
     endif
     !
+    if ( iamb /= 0 ) then
+       if ( oned .or. optg == 5 ) then
+          Ubck = 0.
+       else
+          Ubck = 0.
+          Vbck = 0.
+       endif
+       so  = 0.
+       wrk = 0.
+    endif
+    !
     ! determine sponge layers
     !
     if ( optg /= 5 ) then
@@ -3532,6 +3736,11 @@ subroutine SwashCheckPrep
           call SwashInitBCUtrans
        endif
     endif
+    !
+    ! determine ambient current (tide/wind surge)
+    !
+    if ( optg /= 5 .and. iamb /= 0 ) call SwashAmbCurrent
+    if (STPNOW()) return
     !
     ! allocate and initialize layer interfaces and layer thicknesses
     !

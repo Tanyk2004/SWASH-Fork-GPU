@@ -932,6 +932,30 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
+    !                         |    Cell   |
+    ! AMBient  [U] [V] [eta] <             >  [theta]
+    !                         | -> Stagg  |
+    !
+    ! ==========================================================================
+    !
+    if ( KEYWIS ('AMB') ) then
+       iamb = 2
+       call INREAL('U'  ,uamb,'UNC',0.)
+       call INREAL('V'  ,vamb,'UNC',0.)
+       call INREAL('eta',eamb,'UNC',0.)
+       call INKEYW ('STA','S')
+       if ( KEYWIS ('C') ) then
+          iamb = 1
+       else
+          call IGNORE ('S')
+          iamb = 2
+       endif
+       call INREAL( 'THETA', pnums(71), 'STA', 1. )
+       goto 100
+    endif
+    !
+    ! ==========================================================================
+    !
     ! POROsity [size] [height] [alpha0] [beta0] [wper]
     !
     ! ==========================================================================
@@ -1866,12 +1890,16 @@ subroutine SwashReadInput ( comput )
     !                 |         |                      \    Vertical     |
     !                 | UPWind <                                         |
     !                 |         | WMOM  / -> Horizontal                  |
-    ! DISCRETization <          |       \    Vertical                     >    &
+    !                 |         |       \    Vertical                    |
     !                 |                                                  |
     !                 | CORRdep                                          |
-    !                 |                                                  |
+    ! DISCRETization <                                                    >    &
     !                 | TRANSPort  / -> Horizontal                       |
     !                 |            \    Vertical                         |
+    !                 |                                                  |
+    !                 |       | -> U                                     |
+    !                 | ACUR <                                           |
+    !                 |       | W                                        |
     !
     !
     !                    | NONe                                 |
@@ -1961,6 +1989,14 @@ subroutine SwashReadInput ( comput )
        else if ( KEYWIS ('MIME') ) then
           mimetic = .true.
           goto 100
+       else if ( KEYWIS ('ACUR') .or. KEYWIS('BCUR') .or. KEYWIS('CCUR') ) then
+          call INKEYW ('STA', 'U')
+          if ( KEYWIS('W') ) then
+             ieqn = 6
+          else
+             call IGNORE ('U')
+             ieqn = 5
+          endif
        endif
        !
        if ( ieqn /= 1 ) then
@@ -2059,6 +2095,16 @@ subroutine SwashReadInput ( comput )
           pnums(52) = kappa
           pnums(53) = mbound
           pnums(54) = phieby
+       else if ( ieqn == 5 ) then
+          pnums(61) = real(propsc)
+          pnums(62) = kappa
+          pnums(63) = mbound
+          pnums(64) = phieby
+       else if ( ieqn == 6 ) then
+          pnums(66) = real(propsc)
+          pnums(67) = kappa
+          pnums(68) = mbound
+          pnums(69) = phieby
        endif
        !
        goto 100
@@ -2273,7 +2319,7 @@ subroutine SwashReadInput ( comput )
     !
     ! INPgrid                                                                &
     !    BOTtom/WLEVel/CURrent/VX/VY/FRic/WInd/WX/WY/PRes/PORO/PSIZ/HSTRUC/  &
-    !    NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment                   &
+    !    NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/ACUR/AVX/AVY  &
     !    | REG [xpinp] [ypinp] [alpinp]  [mxinp] [myinp]  [dxinp] [dyinp] |
     !   <  CURVilinear [stagrx] [stagry] [mxinp] [myinp]                   > &
     !    | UNSTRUCtured                                                   |
@@ -2350,6 +2396,19 @@ subroutine SwashReadInput ( comput )
        else if ( KEYWIS ('LAB') .or. KEYWIS ('BODY') ) then
           igrd   = 19
           psname = 'SHIPGRID'
+       else if ( KEYWIS ('ACUR') .or. KEYWIS ('BCUR') .or. KEYWIS ('CCUR') ) then
+          igrd   = 20
+          igr2   = 21
+          psname = 'AVXGRID '
+       else if ( KEYWIS ('AVX') ) then
+          igrd   = 20
+          psname = 'AVXGRID '
+       else if ( KEYWIS ('AVY') ) then
+          igrd   = 21
+          psname = 'AVYGRID '
+       else if ( KEYWIS ('MWL') ) then
+          igrd   = 22
+          psname = 'MWLGRID '
        else
           igrd   = 1
           psname = 'BOTTGRID'
@@ -2364,7 +2423,7 @@ subroutine SwashReadInput ( comput )
     ! ==========================================================================
     !
     ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/PORO/PSIZ/HSTRUC/ &
-    !          NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment               &
+    !          NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/ACURrent  &
     !      [fac]  / 'fname1'        \
     !             \ SERIES 'fname2' /  [idla] [nhedf] ([nhedt]) (nhedvec])     &
     !      FREE / FORMAT 'form' / [idfm] / UNFORMATTED

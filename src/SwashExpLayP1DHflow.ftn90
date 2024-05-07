@@ -35,6 +35,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
 !    6.01: Panagiotis Vasarmidis
 !    6.02: Tom Bogaard
 !    8.01: Marcel Zijlema
+!   10.05: Dirk Rijnsdorp
 !
 !   Updates
 !
@@ -44,6 +45,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
 !    6.01,      June 2019: extension internal wave generation
 !    6.02,      July 2019: extension 3D (non)linear k-eps model
 !    8.01,   October 2021: Hancock scheme for global continuity equation
+!   10.05,      July 2023: extension ambient current
 !
 !   Purpose
 !
@@ -93,7 +95,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
     use ocpcomm4
     use SwashCommdata3
     use SwashTimecomm
-    use m_genarr, only: npu, kup, work
+    use m_genarr, only: npu, kup, kpv, work
     use m_parall
     use SwashSolvedata, only: icond
     use SwashFlowdata, ibltmp => ibl, &
@@ -166,6 +168,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
     real                            :: rdx      ! reciprocal of mesh size
     real                            :: rhou     ! density of water in velocity point
     real                            :: theta    ! implicitness factor for non-hydrostatic pressure gradient
+    real                            :: thetamb  ! implicitness factor for ambient current in global continuity eq
     real                            :: thetau   ! implicitness factor for vertical terms in u-momentum equation
     real                            :: thetaw   ! implicitness factor for vertical terms in w-momentum equation
     real                            :: u        ! u-velocity at point different from its point of definition
@@ -200,9 +203,10 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
     !
     rdx = 1./dx
     !
-    theta  = pnums( 5)
-    thetau = pnums(31)
-    thetaw = pnums(32)
+    theta   = pnums( 5)
+    thetau  = pnums(31)
+    thetaw  = pnums(32)
+    thetamb = pnums(71)
     !
     ! check if water level is prescribed at the boundaries
     !
@@ -1191,6 +1195,113 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
        !
     endif
     !
+    ! include effect of ambient current - first order approximation
+    !
+    if ( iamb == 1 ) then
+       !
+       ! compute the advective velocity in wl-point based on first order upwind
+       !
+       do k = 1, kmax
+          !
+          do m = mfu, ml
+             !
+             md = m - 1
+             !
+             nm  = kgrpnt(m )
+             nmd = kgrpnt(md)
+             !
+             if ( Ubck(nm,kpv(k)) > 1.0e-5 ) then
+                !
+                ua(nm,k) = u0(nmd,k)
+                !
+             else if ( Ubck(nm,kpv(k)) < -1.0e-5 ) then
+                !
+                ua(nm,k) = u0(nm ,k)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! compute horizontal advection term (momentum conservative) at internal u-point (prediction)
+       !
+       do k = 1, kmax
+          !
+          do m = mf+1, ml-1
+             !
+             mu = m + 1
+             !
+             nm  = kgrpnt(m )
+             nmu = kgrpnt(mu)
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                rhsu(nm,k) = rhsu(nm,k) - rdx * ( Ubck(nmu,kpv(k)) * ua(nmu,k) - Ubck(nm,kpv(k)) * ua(nm,k) )
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+    else if ( iamb == 2 ) then
+       !
+       ! compute the advective velocity in wl-point based on first order upwind
+       !
+       do k = 1, kmax
+          !
+          do m = mfu, ml
+             !
+             md = m - 1
+             !
+             nm  = kgrpnt(m )
+             nmd = kgrpnt(md)
+             !
+             fac = 0.5 * ( Ubck(nm,kpv(k)) + Ubck(nmd,kpv(k)) )
+             !
+             if ( fac > 1.0e-5 ) then
+                !
+                ua(nm,k) = u0(nmd,k)
+                !
+             else if ( fac < -1.0e-5 ) then
+                !
+                ua(nm,k) = u0(nm ,k)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! compute horizontal advection term (momentum conservative) at internal u-point (prediction)
+       !
+       do k = 1, kmax
+          !
+          do m = mf+1, ml-1
+             !
+             md = m - 1
+             mu = m + 1
+             !
+             nm  = kgrpnt(m )
+             nmd = kgrpnt(md)
+             nmu = kgrpnt(mu)
+             !
+             fac1 = 0.5 * ( Ubck(nmu,kpv(k)) + Ubck(nm ,kpv(k)) )
+             fac2 = 0.5 * ( Ubck(nm ,kpv(k)) + Ubck(nmd,kpv(k)) )
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                rhsu(nm,k) = rhsu(nm,k) - rdx * ( fac1 * ua(nmu,k) - fac2 * ua(nm,k) )
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+    endif
+    !
     ! compute vertical terms (implicit)
     !
     propsc = nint(pnums(36))
@@ -1466,6 +1577,157 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
     ! exchange u-velocities with neighbouring subdomains (if appropriate)
     !
     if ( propsc /= 1 ) then
+       !
+       call SWEXCHG ( u1, kgrpnt, 1, kmax )
+       if (STPNOW()) return
+       !
+    endif
+    !
+    ! include effect of ambient current - high order correction
+    !
+    propsc = nint(pnums(61))
+    !
+    if ( iamb == 1 .and. propsc /= 1 ) then
+       !
+       ! compute higher order correction to the advective velocity in wl-point (if appropriate)
+       !
+       kappa  = pnums(62)
+       mbound = pnums(63)
+       phieby = pnums(64)
+       !
+       do k = 1, kmax
+          !
+          do m = mfu, ml
+             !
+             md  = m  - 1
+             mdd = md - 1
+             mu  = m  + 1
+             if ( LMXF .and. mdd < mf ) mdd = mf
+             if ( LMXL .and. mu  > ml ) mu  = ml
+             !
+             nm   = kgrpnt(m  )
+             nmd  = kgrpnt(md )
+             nmdd = kgrpnt(mdd)
+             nmu  = kgrpnt(mu )
+             !
+             if ( Ubck(nm,kpv(k)) > 1.0e-5 ) then
+                !
+                grad1 = u1(nm ,k) - u0(nmd ,k)
+                grad2 = u1(nmd,k) - u0(nmdd,k)
+                !
+                ua(nm,k) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else if ( Ubck(nm,kpv(k)) < -1.0e-5 ) then
+                !
+                grad1 = u1(nmd,k) - u0(nm ,k)
+                grad2 = u1(nm ,k) - u0(nmu,k)
+                !
+                ua(nm,k) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! correct u-velocity associated with higher order approximation of advection term at internal u-point (if appropriate)
+       !
+       do k = 1, kmax
+          !
+          do m = mf+1, ml-1
+             !
+             mu = m + 1
+             !
+             nm  = kgrpnt(m )
+             nmu = kgrpnt(mu)
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                u1(nm,k) = u1(nm,k) - dt * rdx * ( Ubck(nmu,kpv(k)) * ua(nmu,k)  - Ubck(nm,kpv(k)) * ua(nm,k) )
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! exchange u-velocities with neighbouring subdomains (if appropriate)
+       !
+       call SWEXCHG ( u1, kgrpnt, 1, kmax )
+       if (STPNOW()) return
+       !
+    else if ( iamb == 2 .and. propsc /= 1 ) then
+       !
+       ! compute higher order correction to the advective velocity in wl-point (if appropriate)
+       !
+       kappa  = pnums(62)
+       mbound = pnums(63)
+       phieby = pnums(64)
+       !
+       do k = 1, kmax
+          !
+          do m = mfu, ml
+             !
+             md  = m  - 1
+             mdd = md - 1
+             mu  = m  + 1
+             if ( LMXF .and. mdd < mf ) mdd = mf
+             if ( LMXL .and. mu  > ml ) mu  = ml
+             !
+             nm   = kgrpnt(m  )
+             nmd  = kgrpnt(md )
+             nmdd = kgrpnt(mdd)
+             nmu  = kgrpnt(mu )
+             !
+             fac = 0.5 * ( Ubck(nm,kpv(k)) + Ubck(nmd,kpv(k)) )
+             !
+             if ( fac > 1.0e-5 ) then
+                !
+                grad1 = u1(nm ,k) - u0(nmd ,k)
+                grad2 = u1(nmd,k) - u0(nmdd,k)
+                !
+                ua(nm,k) = 0.5 * fluxlim(grad1,grad2)
+                !
+             else if ( fac < -1.0e-5 ) then
+                !
+                grad1 = u1(nmd,k) - u0(nm ,k)
+                grad2 = u1(nm ,k) - u0(nmu,k)
+                !
+                ua(nm,k) = 0.5 * fluxlim(grad1,grad2)
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! correct u-velocity associated with higher order approximation of advection term at internal u-point (if appropriate)
+       !
+       do k = 1, kmax
+          !
+          do m = mf+1, ml-1
+             !
+             md = m - 1
+             mu = m + 1
+             !
+             nm  = kgrpnt(m )
+             nmd = kgrpnt(md)
+             nmu = kgrpnt(mu)
+             !
+             fac1 = 0.5 * ( Ubck(nmu,kpv(k)) + Ubck(nm ,kpv(k)) )
+             fac2 = 0.5 * ( Ubck(nm ,kpv(k)) + Ubck(nmd,kpv(k)) )
+             !
+             if ( wetu(nm) == 1 ) then
+                !
+                u1(nm,k) = u1(nm,k) - dt * rdx * ( fac1 * ua(nmu,k)  - fac2 * ua(nm,k) )
+                !
+             endif
+             !
+          enddo
+          !
+       enddo
+       !
+       ! exchange u-velocities with neighbouring subdomains (if appropriate)
        !
        call SWEXCHG ( u1, kgrpnt, 1, kmax )
        if (STPNOW()) return
@@ -1755,6 +2017,108 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
              enddo
              !
           endif
+          !
+       endif
+       !
+       if ( iamb /= 0 ) then
+          !
+          ! compute horizontal advection term due to ambient current (momentum conservative and explicit)
+          !
+          propsc = nint(pnums(66))
+          kappa  = pnums(67)
+          mbound = pnums(68)
+          phieby = pnums(69)
+          !
+          do k = 0, kpmax-1
+             !
+             kd = max(k,1)
+             !
+             do m = mfu, ml
+                !
+                md  = m  - 1
+                mdd = md - 1
+                mu  = m  + 1
+                muu = mu + 1
+                if ( LMXF .and. mdd < mf ) mdd = mf
+                if ( LMXL .and. muu > ml ) muu = ml
+                !
+                nm   = kgrpnt(m  )
+                nmd  = kgrpnt(md )
+                nmdd = kgrpnt(mdd)
+                nmu  = kgrpnt(mu )
+                nmuu = kgrpnt(muu)
+                !
+                if ( wets(nm) == 1 ) then
+                   !
+                   fac = 0.5 * dx * ( hksc(nm,kd) + hksc(nm,k+1) )
+                   !
+                   if ( iamb == 1 ) then
+                      fac1 = 0.25 * ( hkuc(nmd,kd)*(Ubck(nm ,kd) + Ubck(nmd,kd)) + hkuc(nmd,k+1)*(Ubck(nm ,k+1) + Ubck(nmd,k+1)) )
+                      fac2 = 0.25 * ( hkuc(nm ,kd)*(Ubck(nmu,kd) + Ubck(nm ,kd)) + hkuc(nm ,k+1)*(Ubck(nmu,k+1) + Ubck(nm ,k+1)) )
+                   else if ( iamb == 2 ) then
+                      fac1 = 0.5 * ( hkuc(nmd,kd)*Ubck(nmd,kd) + hkuc(nmd,k+1)*Ubck(nmd,k+1) )
+                      fac2 = 0.5 * ( hkuc(nm ,kd)*Ubck(nm ,kd) + hkuc(nm ,k+1)*Ubck(nm ,k+1) )
+                   endif
+                   fac1 = fac1 / fac
+                   fac2 = fac2 / fac
+                   !
+                   if ( propsc == 3 .and. kappa == 1. ) then
+                      !
+                      ! central differences
+                      !
+                      rhsw(nm,k) = rhsw(nm,k) - 0.5 * ( fac1 * (w0p(nm,k) - w0p(nmd,k)) + fac2 * (w0p(nmu,k) - w0p(nm,k)) )
+                      !
+                   else
+                      !
+                      ! first order upwind scheme
+                      !
+                      rhsw(nm,k) = rhsw(nm,k) - ( max(fac1,0.) * (w0p(nm,k) - w0p(nmd,k)) + min(fac2,0.) * (w0p(nmu,k) - w0p(nm,k)) )
+                      !
+                      ! add higher order (flux-limited) correction, if appropriate
+                      !
+                      if ( propsc /= 1 ) then
+                         !
+                         if ( fac2 > 0. ) then
+                            !
+                            grad1 = w0p(nmu,k) - w0p(nm ,k)
+                            grad2 = w0p(nm ,k) - w0p(nmd,k)
+                            !
+                            rhsw(nm,k) = rhsw(nm,k) - 0.5 * fac2 * fluxlim(grad1,grad2)
+                            !
+                         else if ( fac2 < 0. ) then
+                            !
+                            grad1 = w0p(nmu ,k) - w0p(nm ,k)
+                            grad2 = w0p(nmuu,k) - w0p(nmu,k)
+                            !
+                            rhsw(nm,k) = rhsw(nm,k) + 0.5 * fac2 * fluxlim(grad1,grad2)
+                            !
+                         endif
+                         !
+                         if ( fac1 > 0. ) then
+                            !
+                            grad1 = w0p(nm ,k) - w0p(nmd ,k)
+                            grad2 = w0p(nmd,k) - w0p(nmdd,k)
+                            !
+                            rhsw(nm,k) = rhsw(nm,k) + 0.5 * fac1 * fluxlim(grad1,grad2)
+                            !
+                         else if ( fac1 < 0. ) then
+                            !
+                            grad1 = w0p(nm ,k) - w0p(nmd,k)
+                            grad2 = w0p(nmu,k) - w0p(nm ,k)
+                            !
+                            rhsw(nm,k) = rhsw(nm,k) - 0.5 * fac1 * fluxlim(grad1,grad2)
+                            !
+                         endif
+                         !
+                      endif
+                      !
+                   endif
+                   !
+                endif
+                !
+             enddo
+             !
+          enddo
           !
        endif
        !
@@ -2155,6 +2519,102 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
                 !
                 fac1 = fac * hu(nmd) * udep(nmd) / hs(nm)
                 fac2 = fac * hu(nm ) * udep(nm ) / hs(nm)
+                !
+                if ( propsc == 3 .and. kappa == 1. ) then
+                   !
+                   ! central differences
+                   !
+                   w1top(nm) = w1top(nm) - 0.5 * ( fac1 * (w0top(nm) - w0top(nmd)) + fac2 * (w0top(nmu) - w0top(nm)) )
+                   !
+                else
+                   !
+                   ! first order upwind scheme
+                   !
+                   w1top(nm) = w1top(nm) - ( max(fac1,0.) * (w0top(nm) - w0top(nmd)) + min(fac2,0.) * (w0top(nmu) - w0top(nm)) )
+                   !
+                   ! add higher order (flux-limited) correction, if appropriate
+                   !
+                   if ( propsc /= 1 ) then
+                      !
+                      if ( fac2 > 0. ) then
+                         !
+                         grad1 = w0top(nmu) - w0top(nm )
+                         grad2 = w0top(nm ) - w0top(nmd)
+                         !
+                         w1top(nm) = w1top(nm) - 0.5 * fac2 * fluxlim(grad1,grad2)
+                         !
+                      else if ( fac2 < 0. ) then
+                         !
+                         grad1 = w0top(nmu ) - w0top(nm )
+                         grad2 = w0top(nmuu) - w0top(nmu)
+                         !
+                         w1top(nm) = w1top(nm) + 0.5 * fac2 * fluxlim(grad1,grad2)
+                         !
+                      endif
+                      !
+                      if ( fac1 > 0. ) then
+                         !
+                         grad1 = w0top(nm ) - w0top(nmd )
+                         grad2 = w0top(nmd) - w0top(nmdd)
+                         !
+                         w1top(nm) = w1top(nm) + 0.5 * fac1 * fluxlim(grad1,grad2)
+                         !
+                      else if ( fac1 < 0. ) then
+                         !
+                         grad1 = w0top(nm ) - w0top(nmd)
+                         grad2 = w0top(nmu) - w0top(nm )
+                         !
+                         w1top(nm) = w1top(nm) - 0.5 * fac1 * fluxlim(grad1,grad2)
+                         !
+                      endif
+                      !
+                   endif
+                   !
+                endif
+                !
+             endif
+             !
+          enddo
+          !
+       endif
+       !
+       if ( iamb /= 0 ) then
+          !
+          ! compute horizontal advection term due to ambient current (momentum conservative and explicit)
+          !
+          propsc = nint(pnums(66))
+          kappa  = pnums(67)
+          mbound = pnums(68)
+          phieby = pnums(69)
+          !
+          fac = 2. * dt * rdx
+          !
+          do m = mfu, ml
+             !
+             md  = m  - 1
+             mdd = md - 1
+             mu  = m  + 1
+             muu = mu + 1
+             if ( LMXF .and. mdd < mf ) mdd = mf
+             if ( LMXL .and. muu > ml ) muu = ml
+             !
+             nm   = kgrpnt(m  )
+             nmd  = kgrpnt(md )
+             nmdd = kgrpnt(mdd)
+             nmu  = kgrpnt(mu )
+             nmuu = kgrpnt(muu)
+             !
+             if ( wets(nm) == 1 ) then
+                !
+                if ( iamb == 1 ) then
+                   fac1 = 0.5 * ( Ubck(nm ,1) + Ubck(nmd,1) )
+                   fac2 = 0.5 * ( Ubck(nmu,1) + Ubck(nm ,1) )
+                else if ( iamb == 2 ) then
+                   fac1 = Ubck(nmd,1)
+                   fac2 = Ubck(nm ,1)
+                endif
+                fac1 = fac * hu(nmd) * fac1 / hs(nm)
+                fac2 = fac * hu(nm ) * fac2 / hs(nm)
                 !
                 if ( propsc == 3 .and. kappa == 1. ) then
                    !
@@ -2990,6 +3450,152 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
        !
        call SWEXCHG ( s1, kgrpnt, 1, 1 )
        if (STPNOW()) return
+       !
+    endif
+    !
+    ! include effect of ambient current
+    !
+    if ( iamb == 1 ) then
+       !
+       so = s1
+       !
+       ! solve global continuity equation by means of the Heun method
+       !
+       do j = 1, 2
+          !
+          work(:,2) = 0.
+          !
+          if ( j == 1 ) then
+             !
+             do m = mfu, mend
+                !
+                md = m - 1
+                mu = m + 1
+                !
+                nm  = kgrpnt(m )
+                nmd = kgrpnt(md)
+                nmu = kgrpnt(mu)
+                !
+                work(nm,2) = 0.25 * rdx * ( ( Ubck(nmu,1) + Ubck(nm,1) ) * ( so(nmu) + so(nm) ) - ( Ubck(nm,1) + Ubck(nmd,1) ) * ( so(nm) + so(nmd) ) )
+                !
+             enddo
+             !
+          else
+             !
+             do m = mfu, mend
+                !
+                md = m - 1
+                mu = m + 1
+                !
+                nm  = kgrpnt(m )
+                nmd = kgrpnt(md)
+                nmu = kgrpnt(mu)
+                !
+                fac1 = thetamb * s1(nmd) + (1.-thetamb) * so(nmd)
+                fac  = thetamb * s1(nm ) + (1.-thetamb) * so(nm )
+                fac2 = thetamb * s1(nmu) + (1.-thetamb) * so(nmu)
+                !
+                work(nm,2) = 0.25 * rdx * ( ( Ubck(nmu,1) + Ubck(nm,1) ) * ( fac2 + fac ) - ( Ubck(nm,1) + Ubck(nmd,1) ) * ( fac + fac1 ) )
+                !
+             enddo
+             !
+          endif
+          !
+          do m = mfu, mend
+             !
+             nm = kgrpnt(m)
+             !
+             s1(nm) = so(nm) - dt * work(nm,2)
+             !
+          enddo
+          !
+          ! exchange water levels with neighbouring subdomains
+          !
+          call SWEXCHG ( s1, kgrpnt, 1, 1 )
+          if (STPNOW()) return
+          !
+          ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
+          !
+          if ( ibl /= 2 .and. ibl /= 6 .and. LMXF ) s1(nmf ) = s1(nmfu)
+          if ( ibr /= 2 .and. ibr /= 6 .and. LMXL ) s1(nmlu) = s1(nml )
+          !
+          ! in case of outflow condition, no change in water depth
+          !
+          if ( ibl == 10 ) s1(nmf ) = s1(nmfu) - dps(nmfu) + dps(nmfuu)
+          if ( ibr == 10 ) s1(nmlu) = s1(nml ) - dps(nml ) + dps(nmld )
+          !
+       enddo
+       !
+    else if ( iamb == 2 ) then
+       !
+       so = s1
+       !
+       ! solve global continuity equation by means of the Heun method
+       !
+       do j = 1, 2
+          !
+          work(:,2) = 0.
+          !
+          if ( j == 1 ) then
+             !
+             do m = mfu, mend
+                !
+                md = m - 1
+                mu = m + 1
+                !
+                nm  = kgrpnt(m )
+                nmd = kgrpnt(md)
+                nmu = kgrpnt(mu)
+                !
+                work(nm,2) = 0.5 * rdx * ( Ubck(nm,1) * ( so(nmu) + so(nm) ) - Ubck(nmd,1) * ( so(nm) + so(nmd) ) )
+                !
+             enddo
+             !
+          else
+             !
+             do m = mfu, mend
+                !
+                md = m - 1
+                mu = m + 1
+                !
+                nm  = kgrpnt(m )
+                nmd = kgrpnt(md)
+                nmu = kgrpnt(mu)
+                !
+                fac1 = thetamb * s1(nmd) + (1.-thetamb) * so(nmd)
+                fac  = thetamb * s1(nm ) + (1.-thetamb) * so(nm )
+                fac2 = thetamb * s1(nmu) + (1.-thetamb) * so(nmu)
+                !
+                work(nm,2) = 0.5 * rdx * ( Ubck(nm,1) * ( fac2 + fac ) - Ubck(nmd,1) * ( fac + fac1 ) )
+                !
+             enddo
+             !
+          endif
+          !
+          do m = mfu, mend
+             !
+             nm = kgrpnt(m)
+             !
+             s1(nm) = so(nm) - dt * work(nm,2)
+             !
+          enddo
+          !
+          ! exchange water levels with neighbouring subdomains
+          !
+          call SWEXCHG ( s1, kgrpnt, 1, 1 )
+          if (STPNOW()) return
+          !
+          ! copy to virtual cells at boundaries except for both water level and Riemann invariant openings
+          !
+          if ( ibl /= 2 .and. ibl /= 6 .and. LMXF ) s1(nmf ) = s1(nmfu)
+          if ( ibr /= 2 .and. ibr /= 6 .and. LMXL ) s1(nmlu) = s1(nml )
+          !
+          ! in case of outflow condition, no change in water depth
+          !
+          if ( ibl == 10 ) s1(nmf ) = s1(nmfu) - dps(nmfu) + dps(nmfuu)
+          if ( ibr == 10 ) s1(nmlu) = s1(nml ) - dps(nml ) + dps(nmld )
+          !
+       enddo
        !
     endif
     !

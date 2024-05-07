@@ -129,7 +129,7 @@ subroutine SwashUpdateFld ( igr1, igr2, arrx, arry, cosfc, sinfc, arrfx, arrfy, 
                        iflndf(igr1),                             &
                        iflnds(igr1), iflifm(igr1), iflfrm(igr1), &
                        iflidl(igr1), iflfac(igr1),               &
-                       iflnhd(igr1), iflnhf(igr1), 1 )
+                       iflnhd(igr1), iflnhf(igr1) )
           if (STPNOW()) return
        endif
        call SWBROADC( iflidl(igr1), 1, SWINT )
@@ -155,7 +155,7 @@ subroutine SwashUpdateFld ( igr1, igr2, arrx, arry, cosfc, sinfc, arrfx, arrfy, 
              call INAR2D( arry, mxg(igr2), myg(igr2), iflndf(igr2),   &
                           iflnds(igr2), iflifm(igr2), iflfrm(igr2),   &
                           iflidl(igr2), iflfac(igr2), iflnhd(igr2),   &
-                          0, 1 )
+                          0 )
              if (STPNOW()) return
           endif
           call SWBROADC( arry, mxg(igr2)*myg(igr2), SWREAL )
