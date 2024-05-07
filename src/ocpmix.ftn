@@ -782,7 +782,7 @@
 !*****************************************************************
 !                                                                *
       SUBROUTINE INAR2D (ARR, MXA, MYA, NDSL, NDSD, IDFM, RFORM,          40.00
-     &  IDLA, VFAC, NHED, NHEDF, KMAX)                                    40.00
+     &  IDLA, VFAC, NHED, NHEDF)                                          40.00
 !                                                                *
 !*****************************************************************
 !
@@ -860,7 +860,6 @@
 !     40.08, Mar. 03: Changed an INQUIRE statement so that it does not produce
 !                     misleading results.
 !     40.41, Oct. 04: common blocks replaced by modules, include files removed
-!      1.50, Dec. 13: extension to read nonuniform input
 !
 !  2. Purpose
 !
@@ -873,7 +872,6 @@
 !
 !     IDFM   : input    format index
 !     IDLAM  : input    lay-out indicator
-!     KMAX   : input    number of layers                                   1.50
 !     MXA    : input    number of points along x-side of grid
 !     MYA    : input    number of points along y-side of grid
 !     NDSD   : input    unit number of the file from which to read the dataset
@@ -882,13 +880,13 @@
 !     NHEDL  : input    number of heading lines in the file
 !                       before each array
 !
-      INTEGER   IDFM, IDLA, MXA, MYA, NDSD, NDSL, NHED, NHEDF, KMAX
+      INTEGER   IDFM, IDLA, MXA, MYA, NDSD, NDSL, NHED, NHEDF
 !
 !     ARR    : input    results appear in this array
 !     RFORM  : input    format used in reading data (char. string)
 !     VFAC   : input    factor by which data must be multiplied.
 !
-      REAL      ARR(MXA,MYA,KMAX), VFAC
+      REAL      ARR(MXA,MYA), VFAC
 !
       CHARACTER RFORM *(*)
 !
@@ -907,7 +905,7 @@
 !     IY     : ??
 !     NUMFIL : ??
 !
-      INTEGER   IERR, IENT, IOERR, IH, IX, IY, K, NUMFIL                  40.02
+      INTEGER   IERR, IENT, IOERR, IH, IX, IY, NUMFIL                     40.02
 !
 !     HEDLIN : Content of a header line
 !
@@ -936,11 +934,10 @@
 !
 !     *** NUMFIL is the number of files that is open in one time step  **
       NUMFIL = 0                                                          30.00
-      K      = 1                                                           1.50
       IF (ITEST.GE.100) THEN
-        WRITE (PRINTF, 12) MXA, MYA, KMAX, NDSD, IDFM, RFORM,             40.00
+        WRITE (PRINTF, 12) MXA, MYA, NDSD, IDFM, RFORM,                   40.00
      &  IDLA, VFAC, NHED
-  12    FORMAT (' * TEST INAR2D *', 5I4, 1X, A16, I3, 1X, E12.4, I3)
+  12    FORMAT (' * TEST INAR2D *', 4I4, 1X, A16, I3, 1X, E12.4, I3)
       ENDIF
 !
 !     Read heading lines, and print the same:
@@ -963,13 +960,11 @@
 !
 !     divide existing values in the array by VFAC
 !
-      IF ( KMAX.EQ.1 ) THEN
-        DO 39 IY = 1, MYA                                                 30.72
-          DO 38 IX = 1, MXA
-            ARR(IX,IY,1) = ARR(IX,IY,1) / VFAC
-  38      CONTINUE                                                        30.72
-  39    CONTINUE                                                          30.72
-      ENDIF
+      DO 39 IY = 1, MYA                                                   30.72
+        DO 38 IX = 1, MXA
+          ARR(IX,IY) = ARR(IX,IY) / VFAC
+  38    CONTINUE                                                          30.72
+  39  CONTINUE                                                            30.72
 !
 !     start reading of 2D-array
 !
@@ -979,27 +974,27 @@
         CASE(1)                                                           40.02
           DO IY=MYA, 1, -1                                                40.02
             READ (NDSD, *, END=910, ERR=920, IOSTAT=IERR)                 40.02
-     &      (ARR(IX,IY,K), IX=1,MXA)                                      40.02
+     &      (ARR(IX,IY), IX=1,MXA)                                        40.02
           ENDDO                                                           40.02
         CASE(2)                                                           40.02
           READ (NDSD, *, END=910, ERR=920, IOSTAT=IERR)                   40.02
-     &               ((ARR(IX,IY,K), IX=1,MXA), IY=MYA,1,-1)              40.02
+     &               ((ARR(IX,IY), IX=1,MXA), IY=MYA,1,-1)                40.02
         CASE(3)                                                           40.02
           DO IY=1, MYA                                                    40.02
             READ (NDSD, *, END=910, ERR=920, IOSTAT=IERR)                 40.02
-     &               (ARR(IX,IY,K), IX=1,MXA)                             40.02
+     &               (ARR(IX,IY), IX=1,MXA)                               40.02
           ENDDO                                                           40.02
         CASE(4)                                                           40.02
           READ (NDSD, *, END=910, ERR=920, IOSTAT=IERR)                   40.02
-     &              ((ARR(IX,IY,K), IX=1,MXA), IY=1,MYA)                  40.02
+     &              ((ARR(IX,IY), IX=1,MXA), IY=1,MYA)                    40.02
         CASE(5)                                                           40.02
           DO IX=1, MXA                                                    40.02
             READ (NDSD, *, END=910, ERR=920, IOSTAT=IERR)                 40.02
-     &               (ARR(IX,IY,K), IY=1,MYA)                             40.02
+     &               (ARR(IX,IY), IY=1,MYA)                               40.02
           ENDDO                                                           40.02
         CASE(6)                                                           40.02
           READ (NDSD, *, END=910, ERR=920, IOSTAT=IERR)                   40.02
-     &               ((ARR(IX,IY,K), IY=1,MYA), IX=1,MXA)                 40.02
+     &               ((ARR(IX,IY), IY=1,MYA), IX=1,MXA)                   40.02
         END SELECT                                                        40.02
       ELSE IF (IDFM.GT.0) THEN
 !       read with fixed format
@@ -1007,27 +1002,27 @@
         CASE(1)                                                           40.02
           DO IY=MYA, 1, -1                                                40.02
             READ (NDSD, RFORM, END=910, ERR=920, IOSTAT=IERR)             40.02
-     &      (ARR(IX,IY,K), IX=1,MXA)                                      40.02
+     &      (ARR(IX,IY), IX=1,MXA)                                        40.02
           ENDDO                                                           40.02
         CASE(2)                                                           40.02
           READ (NDSD, RFORM, END=910, ERR=920, IOSTAT=IERR)               40.02
-     &    ((ARR(IX,IY,K), IX=1,MXA), IY=MYA,1,-1)                         40.02
+     &    ((ARR(IX,IY), IX=1,MXA), IY=MYA,1,-1)                           40.02
         CASE(3)                                                           40.02
           DO IY=1, MYA                                                    40.02
             READ (NDSD, RFORM, END=910, ERR=920, IOSTAT=IERR)             40.02
-     &      (ARR(IX,IY,K), IX=1,MXA)                                      40.02
+     &      (ARR(IX,IY), IX=1,MXA)                                        40.02
           ENDDO                                                           40.02
         CASE(4)                                                           40.02
           READ (NDSD, RFORM, END=910, ERR=920, IOSTAT=IERR)               40.02
-     &    ((ARR(IX,IY,K), IX=1,MXA), IY=1,MYA)                            40.02
+     &    ((ARR(IX,IY), IX=1,MXA), IY=1,MYA)                              40.02
         CASE(5)                                                           40.02
           DO IX=1, MXA                                                    40.02
             READ (NDSD, RFORM, END=910, ERR=920, IOSTAT=IERR)             40.02
-     &      (ARR(IX,IY,K), IY=1,MYA)                                      40.02
+     &      (ARR(IX,IY), IY=1,MYA)                                        40.02
           ENDDO                                                           40.02
         CASE(6)                                                           40.02
           READ (NDSD, RFORM, END=910, ERR=920, IOSTAT=IERR)               40.02
-     &    ((ARR(IX,IY,K), IY=1,MYA), IX=1,MXA)                            40.02
+     &    ((ARR(IX,IY), IY=1,MYA), IX=1,MXA)                              40.02
         END SELECT                                                        40.02
       ELSE
 !       unformatted read
@@ -1035,43 +1030,38 @@
         CASE(1)
           DO IY=MYA, 1, -1                                                40.02
             READ (NDSD, END=910, ERR=920, IOSTAT=IERR)                    40.02
-     &      (ARR(IX,IY,K), IX=1,MXA)                                      40.02
+     &      (ARR(IX,IY), IX=1,MXA)                                        40.02
           ENDDO                                                           40.02
         CASE(2)                                                           40.02
           READ (NDSD, END=910, ERR=920, IOSTAT=IERR)                      40.02
-     &    ((ARR(IX,IY,K), IX=1,MXA), IY=MYA,1,-1)                         40.02
+     &    ((ARR(IX,IY), IX=1,MXA), IY=MYA,1,-1)                           40.02
         CASE(3)                                                           40.02
           DO IY=1, MYA                                                    40.02
             READ (NDSD, END=910, ERR=920, IOSTAT=IERR)                    40.02
-     &      (ARR(IX,IY,K), IX=1,MXA)                                      40.02
+     &      (ARR(IX,IY), IX=1,MXA)                                        40.02
           ENDDO                                                           40.02
         CASE(4)                                                           40.02
           READ (NDSD, END=910, ERR=920, IOSTAT=IERR)                      40.02
-     &    ((ARR(IX,IY,K), IX=1,MXA), IY=1,MYA)                            40.02
+     &    ((ARR(IX,IY), IX=1,MXA), IY=1,MYA)                              40.02
         CASE(5)                                                           40.02
           DO IX=1, MXA                                                    40.02
             READ (NDSD, END=910, ERR=920, IOSTAT=IERR)                    40.02
-     &      (ARR(IX,IY,K), IY=1,MYA)                                      40.02
+     &      (ARR(IX,IY), IY=1,MYA)                                        40.02
           ENDDO                                                           40.02
         CASE(6)                                                           40.02
           READ (NDSD, END=910, ERR=920, IOSTAT=IERR)                      40.02
-     &    ((ARR(IX,IY,K), IY=1,MYA), IX=1,MXA)                            40.02
+     &    ((ARR(IX,IY), IY=1,MYA), IX=1,MXA)                              40.02
         END SELECT                                                        40.02
       ENDIF
       GOTO 900                                                            40.02
 !
-!     *** End of data file, in case SERIES/LAYERS next file is opened
+!     *** End of data file, in case SERIES next file is opened
 !     *** unit = NDSD is closed before the next one is opened
 !
  910  CONTINUE
       CLOSE(NDSD)
-      IF (KMAX.EQ.1) THEN                                                  1.50
-         NUMFIL = NUMFIL + 1
-      ELSE
-         K      = K      + 1                                               1.50
-      ENDIF
-      IF (NUMFIL.GT.1) GO TO 911
-      IF (K.GT.KMAX) GO TO 911                                             1.50
+      NUMFIL = NUMFIL + 1
+      IF (NUMFIL .GE. 2) GO TO 911
       IF (NDSL.GT.0) THEN
         READ (NDSL, '(A)', END=930) FILENM                                40.13
         IF (IDFM.NE.-1) THEN
@@ -1137,17 +1127,16 @@
 !
  900  DO 909 IY = 1, MYA                                                  30.72
         DO 908 IX = 1, MXA
-          ARR(IX,IY,K) = ARR(IX,IY,K) * VFAC
+          ARR(IX,IY) = ARR(IX,IY) * VFAC
  908    CONTINUE                                                          30.72
  909  CONTINUE                                                            30.72
 !
  990  IF (ITEST.GE.100 .OR. IDLA.LT.0) THEN
         DO 996 IY=MYA, 1, -1
-          WRITE (PRINTF, 994) (ARR(IX,IY,1), IX=1,MXA)
+          WRITE (PRINTF, 994) (ARR(IX,IY), IX=1,MXA)
  994      FORMAT ((1X, 10E12.4))
  996    CONTINUE
       ENDIF
-      IF (K.LT.KMAX) GO TO 11                                              1.50
       RETURN
 
 !     No more files in NDSL:

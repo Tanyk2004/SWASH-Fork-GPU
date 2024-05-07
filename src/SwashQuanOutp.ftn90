@@ -753,7 +753,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                          !
                       else
                          !
-                         oparr(indx,13) = 0.5 * ( q(indx,kmax) + q(indxr,kmax) )
+                         oparr(indx,13) = 0.5 * ( q(indx,kpmax) + q(indxr,kpmax) )
                          !
                       endif
                       !
@@ -879,7 +879,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                          !
                       else
                          !
-                         oparr(indx,13) = q(indxr,kmax)
+                         oparr(indx,13) = q(indxr,kpmax)
                          !
                       endif
                       !
@@ -1240,7 +1240,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                             !
                          else
                             !
-                            oparr(indx,13) = 0.25 * ( q(indx,kmax) + q(indxr,kmax) + q(indxu,kmax) + q(indxs,kmax) )
+                            oparr(indx,13) = 0.25 * ( q(indx,kpmax) + q(indxr,kpmax) + q(indxu,kpmax) + q(indxs,kpmax) )
                             !
                          endif
                          !
@@ -1608,7 +1608,7 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                             !
                          else
                             !
-                            oparr(indx,13) = q(indxs,kmax)
+                            oparr(indx,13) = q(indxs,kpmax)
                             !
                          endif
                          !

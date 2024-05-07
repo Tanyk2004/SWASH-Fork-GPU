@@ -313,6 +313,7 @@ module SwashFlowdata
     real  , dimension(:,:)    , save, allocatable :: u1p          ! u-velocity on coarse (pressure) grid at current time level
     real  , dimension(:,:)    , save, allocatable :: ua           ! advective velocity based on finite differencing
     real  , dimension(:,:)    , save, allocatable :: ua2          ! another advective velocity based on finite differencing
+    real  , dimension(:,:)    , save, allocatable :: Ubck         ! ambient U-velocity in wl-point or u-point
     real  , dimension(:)      , save, allocatable :: udep         ! depth-averaged u-velocity
     real  , dimension(:,:)    , save, allocatable :: ui           ! intermediate u-velocity in iterative process of pressure projection method
     real  , dimension(:,:)    , save, allocatable :: up           ! upwind velocity (for energy head computation)
@@ -322,6 +323,7 @@ module SwashFlowdata
     real  , dimension(:,:)    , save, allocatable :: v0p          ! v-velocity on coarse (pressure) grid at previous time level
     real  , dimension(:,:)    , save, allocatable :: v1           ! v-velocity at current time level
     real  , dimension(:,:)    , save, allocatable :: v1p          ! v-velocity on coarse (pressure) grid at current time level
+    real  , dimension(:,:)    , save, allocatable :: Vbck         ! ambient V-velocity in wl-point or v-point
     real  , dimension(:)      , save, allocatable :: vdep         ! depth-averaged v-velocity
     real  , dimension(:,:)    , save, allocatable :: vi           ! intermediate v-velocity in iterative process of pressure projection method
     real  , dimension(:)      , save, allocatable :: visc         ! horizontal viscosity terms for momentum equations

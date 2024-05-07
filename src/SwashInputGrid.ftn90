@@ -90,15 +90,23 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
     !            |          |
     !            | VY       |
     !            |          |
+    !            | MWL      |
+    !            |          |
+    !            | ACURrent |
+    !            |          |
+    !            | AVX      |
+    !            |          |
+    !            | AVY      |
+    !            |          |
     !            | FRiction |
     !            |          |
     !            | WInd     |
     !            |          |
     !            | WX       |
-    !            |          |
+    ! INPgrid  (<            >) &
     !            | WY       |
     !            |          |
-    ! INPgrid  (<  PRessure  >) &
+    !            | PRessure |
     !            |          |
     !            | POROsity |
     !            |          |
@@ -258,7 +266,8 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
             igrid1 == 10 .or. igrid1 == 11 .or. igrid1 == 12 .or. &
             igrid1 == 14 .or.                                     &
             igrid1 == 15 .or. igrid1 == 16 .or. igrid1 == 17 .or. &
-            igrid1 == 19                                          ) call msgerr (2, 'nonstationary input field not allowed in this case')
+            igrid1 == 19 .or.                                     &
+            igrid1 == 20 .or. igrid1 == 21 .or. igrid1 == 22      ) call msgerr (2, 'nonstationary input field not allowed in this case')
        call INCTIM (ITMOPT,'TBEGINP',iflbeg(igrid1),'REQ',0d0)
        call INITVD ('DELTINP', iflint(igrid1), 'REQ', 0d0)
        call INCTIM (ITMOPT,'TENDINP',iflend(igrid1),'STA',1.d20)
@@ -281,13 +290,20 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
     call INKEYW ('STA', ' ')
     if ( KEYWIS ('NONUNIF') .or. KEYWIS ('VERT') ) then
        if ( kmax == 1 ) call msgerr (3, 'keyword NONUNIF not allowed in depth-averaged mode')
-       if ( igrid1 /= 15 .and. igrid1 /= 16 .and. igrid1 /= 17 ) then
+       if ( igrid1 /= 15 .and. igrid1 /= 16 .and. igrid1 /= 17 .and. igrid1 /= 20 .and. igrid1 /= 21 ) then
           call msgerr (2, 'this input parameter cannot be nonuniform in vertical')
        endif
        call ININTG ('KMAX', ifllay(igrid1), 'RQI', 0)
        if ( ifllay(igrid1) /= kmax .and. ifllay(igrid1) /= 1 ) then
-          call msgerr (1, 'incorrect number of layers, input field now regarded as uniform')
-          ifllay(igrid1) = 1
+          if ( igrid1 /= 20 .and. igrid1 /= 21 ) then
+             call msgerr (1, 'incorrect number of layers, input field now regarded as uniform')
+             ifllay(igrid1) = 1
+          else
+             if (ifllay(igrid1) > kmax ) then
+                call msgerr (2, 'more than maximum number of layers encountered with ambient current input')
+                ifllay(igrid1) = kmax
+             endif
+          endif
        endif
        if ( igrid2 > 0 ) ifllay(igrid2) = ifllay(igrid1)
     endif
