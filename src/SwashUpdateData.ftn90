@@ -807,8 +807,8 @@ subroutine SwashUpdateData ( it )
                                   !
                                   do j = 1, nfreq-1
                                      !
-                                     omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                     omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                     omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                     omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                      !
                                      fvalu = fvalu + subuc(i,j,1) * cos( omegsb*timco ) + subus(i,j,1) * sin( omegsb*timco ) &
                                                    + supuc(i,j,1) * cos( omegsp*timco ) + supus(i,j,1) * sin( omegsp*timco )
@@ -913,8 +913,8 @@ subroutine SwashUpdateData ( it )
                                   !
                                   do j = 1, nfreq-1
                                      !
-                                     omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                     omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                     omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                     omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                      !
                                      fvalu = fvalu + subuc(i,j,1) * cos( omegsb*timco ) + subus(i,j,1) * sin( omegsb*timco ) &
                                                    + supuc(i,j,1) * cos( omegsp*timco ) + supus(i,j,1) * sin( omegsp*timco )
@@ -1061,8 +1061,8 @@ subroutine SwashUpdateData ( it )
                                      !
                                      do j = 1, nfreq-1
                                         !
-                                        omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                        omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                        omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                        omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                         !
                                         fvalu = fvalu + subuc(i,j,k) * cos( omegsb*timco ) + subus(i,j,k) * sin( omegsb*timco ) &
                                                       + supuc(i,j,k) * cos( omegsp*timco ) + supus(i,j,k) * sin( omegsp*timco )
@@ -1210,8 +1210,8 @@ subroutine SwashUpdateData ( it )
                                      !
                                      do j = 1, nfreq-1
                                         !
-                                        omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                        omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                        omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                        omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                         !
                                         fvalu = fvalu + subuc(i,j,k) * cos( omegsb*timco ) + subus(i,j,k) * sin( omegsb*timco ) &
                                                       + supuc(i,j,k) * cos( omegsp*timco ) + supus(i,j,k) * sin( omegsp*timco )
@@ -1603,8 +1603,8 @@ subroutine SwashUpdateData ( it )
                                   !
                                   do j = 1, nfreq-1
                                      !
-                                     omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                     omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                     omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                     omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                      !
                                      fvalu = fvalu + ( subuc(i,j,1) + fac*subzc(i,j) ) * cos( omegsb*timco ) + ( subus(i,j,1) + fac*subzs(i,j) ) * sin( omegsb*timco ) &
                                                    + ( supuc(i,j,1) + fac*supzc(i,j) ) * cos( omegsp*timco ) + ( supus(i,j,1) + fac*supzs(i,j) ) * sin( omegsp*timco )
@@ -1716,8 +1716,8 @@ subroutine SwashUpdateData ( it )
                                   !
                                   do j = 1, nfreq-1
                                      !
-                                     omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                     omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                     omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                     omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                      !
                                      fvalu = fvalu + ( subuc(i,j,1) + fac*subzc(i,j) * cosbnd ) * cos( omegsb*timco ) + ( subus(i,j,1) + fac*subzs(i,j) * cosbnd ) * sin( omegsb*timco ) &
                                                    + ( supuc(i,j,1) + fac*supzc(i,j) * cosbnd ) * cos( omegsp*timco ) + ( supus(i,j,1) + fac*supzs(i,j) * cosbnd ) * sin( omegsp*timco )
@@ -1868,8 +1868,8 @@ subroutine SwashUpdateData ( it )
                                      !
                                      do j = 1, nfreq-1
                                         !
-                                        omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                        omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                        omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                        omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                         !
                                         fvalu = fvalu + ( subuc(i,j,k) + fac*subzc(i,j) ) * cos( omegsb*timco ) + ( subus(i,j,k) + fac*subzs(i,j) ) * sin( omegsb*timco ) &
                                                       + ( supuc(i,j,k) + fac*supzc(i,j) ) * cos( omegsp*timco ) + ( supus(i,j,k) + fac*supzs(i,j) ) * sin( omegsp*timco )
@@ -2024,8 +2024,8 @@ subroutine SwashUpdateData ( it )
                                      !
                                      do j = 1, nfreq-1
                                         !
-                                        omegsb = curbfs%omega(1) - curbfs%omega(j+1)
-                                        omegsp = curbfs%omega(1) + curbfs%omega(j+1)
+                                        omegsb = curbfs%omega(j+1) - curbfs%omega(1)
+                                        omegsp = curbfs%omega(j+1) + curbfs%omega(1)
                                         !
                                         fvalu = fvalu + ( subuc(i,j,k) + fac*subzc(i,j) * cosbnd ) * cos( omegsb*timco ) + ( subus(i,j,k) + fac*subzs(i,j) * cosbnd ) * sin( omegsb*timco ) &
                                                       + ( supuc(i,j,k) + fac*supzc(i,j) * cosbnd ) * cos( omegsp*timco ) + ( supus(i,j,k) + fac*supzs(i,j) * cosbnd ) * sin( omegsp*timco )
