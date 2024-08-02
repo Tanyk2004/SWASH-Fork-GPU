@@ -81,8 +81,8 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
 !
 !   Parameter variables
 !
-    real, parameter :: khmin = 0.4 ! minimum dimensionless depth
-    real, parameter :: khmax = 10. ! maximum dimensionless depth
+    real, parameter :: khmin = 0.2 ! minimum dimensionless depth
+    real, parameter :: khmax =  5. ! maximum dimensionless depth
 !
 !   Local variables
 !
@@ -113,6 +113,8 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
     real                  :: theta2    ! wave direction of second primary wave component with respect to computational coordinates
     real                  :: theta3    ! wave direction of bound wave component with respect to problem coordinates
     real, dimension(kmax) :: vel       ! local 2nd order transfer function of layer-dependent velocity
+    real                  :: w0        ! first angular frequency
+    real                  :: wn        ! last angular frequency
 !
 !   Structure
 !
@@ -140,6 +142,8 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
     endif
     !
     dw = bcfour%omega(2) - bcfour%omega(1)
+    w0 = bcfour%omega(1)
+    wn = bcfour%omega(nfreq)
     !
     floop: do j = 1, nfreq
        !
@@ -275,13 +279,15 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
              !
              if ( kd2 > khmin .and. kd2 < khmax .and. ampl2 /= 0. ) then
                 !
-                ! calculate frequency index
+                ! calculate wave frequency of bound sub-harmonic component
                 !
                 omega3 = omega2 - omega1
                 !
+                ! calculate frequency index
+                !
                 l = nint(omega3/dw)
                 !
-                ! calculate bound wave number
+                ! calculate wave number of bound sub-harmonic component
                 !
                 kwav3 = real(sqrt( dble(kwav1)**2 + dble(kwav2)**2 - 2.*dble(kwav1)*dble(kwav2)*cos(theta1-theta2) ))
                 !
@@ -335,6 +341,19 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
                    subvc(ibgrpt,l,:) = subvc(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * cos( phase3 )
                    subvs(ibgrpt,l,:) = subvs(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * sin( phase3 )
                 endif
+                !
+                ! calculate wave frequency of bound super-harmonic component
+                !
+                omega3 = omega1 + omega2
+                !
+                ! calculate frequency index
+                !
+                l = nint((omega3-2.*w0)/dw)
+                if ( nfreq > 2 .and. omega3 > wn ) exit sloop
+                !
+                ! calculate wave number of bound super-harmonic component
+                !
+                kwav3 = real(sqrt( dble(kwav1)**2 + dble(kwav2)**2 + 2.*dble(kwav1)*dble(kwav2)*cos(theta1-theta2) ))
                 !
                 ! calculate direction of bound super-harmonic component
                 !
