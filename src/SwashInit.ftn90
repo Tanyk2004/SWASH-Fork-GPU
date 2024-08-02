@@ -78,7 +78,7 @@ subroutine SwashInit ( inerr )
     VERTXT = BLANK
     VERNUM = 10.05
     write (VERTXT, '(f5.2)') VERNUM
-    !call BUGFIX ('A')
+    call BUGFIX ('A')
     !call BUGFIX ('B')
     !
     call OCPINI ( 'swashinit', .true., inerr )
