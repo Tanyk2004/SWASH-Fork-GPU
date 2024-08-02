@@ -73,12 +73,8 @@ subroutine SwashBCStokeswave ( bcfour, nfreq, ibgrpt, swd, istok )
     real           :: fac                 ! multiplication factor
     real           :: kd                  ! dimensionless still water depth
     real           :: kwav                ! wave number of a Fourier component
-    real           :: omeg                ! angular frequency of a Fourier component
     real           :: sph                 ! sine of phase
     real           :: s2ph                ! sine of two times phase
-    real           :: wn                  ! last angular frequency
-    !
-    logical        :: spectrum            ! indicates whether wave spectrum is dealt with or not
 !
 !   Structure
 !
@@ -87,16 +83,6 @@ subroutine SwashBCStokeswave ( bcfour, nfreq, ibgrpt, swd, istok )
 !   Source text
 !
     if (ltrace) call strace (ient,'SwashBCStokeswave')
-    !
-    ! is Fourier series a spectrum?
-    !
-    if ( istok == 3 .and. nfreq > 2 ) then
-       spectrum = .true.
-    else
-       spectrum = .false.
-    endif
-    !
-    wn = bcfour%omega(nfreq)
     !
     if ( kmax == 1 ) then
        !
@@ -130,12 +116,10 @@ subroutine SwashBCStokeswave ( bcfour, nfreq, ibgrpt, swd, istok )
           !
           do j = 1, nfreq
              !
-             ampl = bcfour%ampl (j)
-             omeg = bcfour%omega(j)
+             ampl = bcfour%ampl(j)
              kwav = kwave(ibgrpt,j)
              !
              if ( .not. ampl /= 0. ) cycle
-             if ( spectrum .and. 2.*omeg > wn ) exit
              !
              kd = kwav * swd
              !
@@ -202,12 +186,10 @@ subroutine SwashBCStokeswave ( bcfour, nfreq, ibgrpt, swd, istok )
           !
           do j = 1, nfreq
              !
-             ampl = bcfour%ampl (j)
-             omeg = bcfour%omega(j)
+             ampl = bcfour%ampl(j)
              kwav = kwave(ibgrpt,j)
              !
              if ( .not. ampl /= 0. ) cycle
-             if ( spectrum .and. 2.*omeg > wn ) exit
              !
              kd = kwav * swd
              !
@@ -286,12 +268,10 @@ subroutine SwashBCStokeswave ( bcfour, nfreq, ibgrpt, swd, istok )
           !
           do j = 1, nfreq
              !
-             ampl = bcfour%ampl (j)
-             omeg = bcfour%omega(j)
+             ampl = bcfour%ampl(j)
              kwav = kwave(ibgrpt,j)
              !
              if ( .not. ampl /= 0. ) cycle
-             if ( spectrum .and. 2.*omeg > wn ) exit
              !
              kd = kwav * swd
              !
@@ -380,12 +360,10 @@ subroutine SwashBCStokeswave ( bcfour, nfreq, ibgrpt, swd, istok )
           !
           do j = 1, nfreq
              !
-             ampl = bcfour%ampl (j)
-             omeg = bcfour%omega(j)
+             ampl = bcfour%ampl(j)
              kwav = kwave(ibgrpt,j)
              !
              if ( .not. ampl /= 0. ) cycle
-             if ( spectrum .and. 2.*omeg > wn ) exit
              !
              kd = kwav * swd
              !
