@@ -30,10 +30,12 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
 !   Authors
 !
 !    1.00: Panagiotis Vasarmidis
+!   10.05: Panagiotis Vasarmidis
 !
 !   Updates
 !
 !    1.00, November 2023: New subroutine
+!   10.05,   August 2024: bug fix: exclude very small omega3
 !
 !   Purpose
 !
@@ -81,8 +83,9 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
 !
 !   Parameter variables
 !
-    real, parameter :: khmin = 0.2 ! minimum dimensionless depth
-    real, parameter :: khmax =  5. ! maximum dimensionless depth
+    real, parameter :: khmin = 0.2  ! minimum dimensionless depth
+    real, parameter :: khmax = 5.   ! maximum dimensionless depth
+    real, parameter :: odmin = 0.02 ! minimum difference angular frequency
 !
 !   Local variables
 !
@@ -283,127 +286,134 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
                 !
                 omega3 = omega2 - omega1
                 !
-                ! calculate frequency index
-                !
-                l = nint(omega3/dw)
-                !
-                ! calculate wave number of bound sub-harmonic component
-                !
-                kwav3 = real(sqrt( dble(kwav1)**2 + dble(kwav2)**2 - 2.*dble(kwav1)*dble(kwav2)*cos(theta1-theta2) ))
-                !
-                ! calculate direction of bound sub-harmonic component
-                !
-                theta3 = alpc + atan( ( kwav2*sin(theta2) - kwav1*sin(theta1) ) / ( kwav2*cos(theta2) - kwav1*cos(theta1) ) )
-                !
-                ! calculate phase of bound sub-harmonic component
-                !
-                phase3 = phase2 - phase1
-                !
-                ! include phase shift related to wave direction and wave number
-                !
-                phase3 = phase3 + kwav3 * ( cos(theta3)*xp + sin(theta3)*yp )
-                !
-                ! compute sub-harmonic transfer functions
-                !
-                if ( kmax == 1 ) then
-                   eta    = etasub1()
-                   vel(1) = velsb11()
-                else if ( kmax == 2 ) then
-                   eta    = etasub2()
-                   vel(1) = velsb12()
-                   vel(2) = velsb22()
-                else if ( kmax == 3 ) then
-                   eta    = etasub3()
-                   vel(1) = velsb13()
-                   vel(2) = velsb23()
-                   vel(3) = velsb33()
-                else if ( kmax == 4 ) then
-                   eta    = etasub4()
-                   vel(1) = velsb14()
-                   vel(2) = velsb24()
-                   vel(3) = velsb34()
-                   vel(4) = velsb44()
-                endif
-                !
-                ! store surface elevation and velocity of sub-harmonic component
-                !
-                rval = ampl1 * ampl2
-                !
-                subzc(ibgrpt,l) = subzc(ibgrpt,l) + eta * rval * cos( phase3 )
-                subzs(ibgrpt,l) = subzs(ibgrpt,l) + eta * rval * sin( phase3 )
-                !
-                if ( oned .or. optg == 5 ) then
-                   subuc(ibgrpt,l,:) = subuc(ibgrpt,l,:) + vel(:) * rval * cos( phase3 )
-                   subus(ibgrpt,l,:) = subus(ibgrpt,l,:) + vel(:) * rval * sin( phase3 )
-                else
-                   subuc(ibgrpt,l,:) = subuc(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * cos( phase3 )
-                   subus(ibgrpt,l,:) = subus(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * sin( phase3 )
-                   subvc(ibgrpt,l,:) = subvc(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * cos( phase3 )
-                   subvs(ibgrpt,l,:) = subvs(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * sin( phase3 )
+                if ( nfreq == 2 .or. .not. omega3 < odmin ) then
+                   !
+                   ! calculate frequency index
+                   !
+                   l = nint(omega3/dw)
+                   !
+                   ! calculate wave number of bound sub-harmonic component
+                   !
+                   kwav3 = real(sqrt( dble(kwav1)**2 + dble(kwav2)**2 - 2.*dble(kwav1)*dble(kwav2)*cos(theta1-theta2) ))
+                   !
+                   ! calculate direction of bound sub-harmonic component
+                   !
+                   theta3 = alpc + atan( ( kwav2*sin(theta2) - kwav1*sin(theta1) ) / ( kwav2*cos(theta2) - kwav1*cos(theta1) ) )
+                   !
+                   ! calculate phase of bound sub-harmonic component
+                   !
+                   phase3 = phase2 - phase1
+                   !
+                   ! include phase shift related to wave direction and wave number
+                   !
+                   phase3 = phase3 + kwav3 * ( cos(theta3)*xp + sin(theta3)*yp )
+                   !
+                   ! compute sub-harmonic transfer functions
+                   !
+                   if ( kmax == 1 ) then
+                      eta    = etasub1()
+                      vel(1) = velsb11()
+                   else if ( kmax == 2 ) then
+                      eta    = etasub2()
+                      vel(1) = velsb12()
+                      vel(2) = velsb22()
+                   else if ( kmax == 3 ) then
+                      eta    = etasub3()
+                      vel(1) = velsb13()
+                      vel(2) = velsb23()
+                      vel(3) = velsb33()
+                   else if ( kmax == 4 ) then
+                      eta    = etasub4()
+                      vel(1) = velsb14()
+                      vel(2) = velsb24()
+                      vel(3) = velsb34()
+                      vel(4) = velsb44()
+                   endif
+                   !
+                   ! store surface elevation and velocity of sub-harmonic component
+                   !
+                   rval = ampl1 * ampl2
+                   !
+                   subzc(ibgrpt,l) = subzc(ibgrpt,l) + eta * rval * cos( phase3 )
+                   subzs(ibgrpt,l) = subzs(ibgrpt,l) + eta * rval * sin( phase3 )
+                   !
+                   if ( oned .or. optg == 5 ) then
+                      subuc(ibgrpt,l,:) = subuc(ibgrpt,l,:) + vel(:) * rval * cos( phase3 )
+                      subus(ibgrpt,l,:) = subus(ibgrpt,l,:) + vel(:) * rval * sin( phase3 )
+                   else
+                      subuc(ibgrpt,l,:) = subuc(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * cos( phase3 )
+                      subus(ibgrpt,l,:) = subus(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * sin( phase3 )
+                      subvc(ibgrpt,l,:) = subvc(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * cos( phase3 )
+                      subvs(ibgrpt,l,:) = subvs(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * sin( phase3 )
+                   endif
+                   !
                 endif
                 !
                 ! calculate wave frequency of bound super-harmonic component
                 !
                 omega3 = omega1 + omega2
                 !
-                ! calculate frequency index
-                !
-                l = nint((omega3-2.*w0)/dw)
-                if ( nfreq > 2 .and. omega3 > wn ) exit sloop
-                !
-                ! calculate wave number of bound super-harmonic component
-                !
-                kwav3 = real(sqrt( dble(kwav1)**2 + dble(kwav2)**2 + 2.*dble(kwav1)*dble(kwav2)*cos(theta1-theta2) ))
-                !
-                ! calculate direction of bound super-harmonic component
-                !
-                theta3 = alpc + atan( ( kwav1*sin(theta1) + kwav2*sin(theta2) ) / ( kwav1*cos(theta1) + kwav2*cos(theta2) ) )
-                !
-                ! calculate phase of bound super-harmonic component
-                !
-                phase3 = phase1 + phase2
-                !
-                ! include phase shift related to wave direction and wave number
-                !
-                phase3 = phase3 + kwav3 * ( cos(theta3)*xp + sin(theta3)*yp )
-                !
-                ! compute super-harmonic transfer functions
-                !
-                if ( kmax == 1 ) then
-                   eta    = etasup1()
-                   vel(1) = velsp11()
-                else if ( kmax == 2 ) then
-                   eta    = etasup2()
-                   vel(1) = velsp12()
-                   vel(2) = velsp22()
-                else if ( kmax == 3 ) then
-                   eta    = etasup3()
-                   vel(1) = velsp13()
-                   vel(2) = velsp23()
-                   vel(3) = velsp33()
-                else if ( kmax == 4 ) then
-                   eta    = etasup4()
-                   vel(1) = velsp14()
-                   vel(2) = velsp24()
-                   vel(3) = velsp34()
-                   vel(4) = velsp44()
-                endif
-                !
-                ! store surface elevation and velocity of super-harmonic component
-                !
-                rval = ampl1 * ampl2
-                !
-                supzc(ibgrpt,l) = supzc(ibgrpt,l) + eta * rval * cos( phase3 )
-                supzs(ibgrpt,l) = supzs(ibgrpt,l) + eta * rval * sin( phase3 )
-                !
-                if ( oned .or. optg == 5 ) then
-                   supuc(ibgrpt,l,:) = supuc(ibgrpt,l,:) + vel(:) * rval * cos( phase3 )
-                   supus(ibgrpt,l,:) = supus(ibgrpt,l,:) + vel(:) * rval * sin( phase3 )
-                else
-                   supuc(ibgrpt,l,:) = supuc(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * cos( phase3 )
-                   supus(ibgrpt,l,:) = supus(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * sin( phase3 )
-                   supvc(ibgrpt,l,:) = supvc(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * cos( phase3 )
-                   supvs(ibgrpt,l,:) = supvs(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * sin( phase3 )
+                if ( nfreq == 2 .or. .not. omega3 > wn ) then
+                   !
+                   ! calculate frequency index
+                   !
+                   l = nint((omega3-2.*w0)/dw)
+                   !
+                   ! calculate wave number of bound super-harmonic component
+                   !
+                   kwav3 = real(sqrt( dble(kwav1)**2 + dble(kwav2)**2 + 2.*dble(kwav1)*dble(kwav2)*cos(theta1-theta2) ))
+                   !
+                   ! calculate direction of bound super-harmonic component
+                   !
+                   theta3 = alpc + atan( ( kwav1*sin(theta1) + kwav2*sin(theta2) ) / ( kwav1*cos(theta1) + kwav2*cos(theta2) ) )
+                   !
+                   ! calculate phase of bound super-harmonic component
+                   !
+                   phase3 = phase1 + phase2
+                   !
+                   ! include phase shift related to wave direction and wave number
+                   !
+                   phase3 = phase3 + kwav3 * ( cos(theta3)*xp + sin(theta3)*yp )
+                   !
+                   ! compute super-harmonic transfer functions
+                   !
+                   if ( kmax == 1 ) then
+                      eta    = etasup1()
+                      vel(1) = velsp11()
+                   else if ( kmax == 2 ) then
+                      eta    = etasup2()
+                      vel(1) = velsp12()
+                      vel(2) = velsp22()
+                   else if ( kmax == 3 ) then
+                      eta    = etasup3()
+                      vel(1) = velsp13()
+                      vel(2) = velsp23()
+                      vel(3) = velsp33()
+                   else if ( kmax == 4 ) then
+                      eta    = etasup4()
+                      vel(1) = velsp14()
+                      vel(2) = velsp24()
+                      vel(3) = velsp34()
+                      vel(4) = velsp44()
+                   endif
+                   !
+                   ! store surface elevation and velocity of super-harmonic component
+                   !
+                   rval = ampl1 * ampl2
+                   !
+                   supzc(ibgrpt,l) = supzc(ibgrpt,l) + eta * rval * cos( phase3 )
+                   supzs(ibgrpt,l) = supzs(ibgrpt,l) + eta * rval * sin( phase3 )
+                   !
+                   if ( oned .or. optg == 5 ) then
+                      supuc(ibgrpt,l,:) = supuc(ibgrpt,l,:) + vel(:) * rval * cos( phase3 )
+                      supus(ibgrpt,l,:) = supus(ibgrpt,l,:) + vel(:) * rval * sin( phase3 )
+                   else
+                      supuc(ibgrpt,l,:) = supuc(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * cos( phase3 )
+                      supus(ibgrpt,l,:) = supus(ibgrpt,l,:) + vel(:) * rval * cos( theta3 ) * sin( phase3 )
+                      supvc(ibgrpt,l,:) = supvc(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * cos( phase3 )
+                      supvs(ibgrpt,l,:) = supvs(ibgrpt,l,:) + vel(:) * rval * sin( theta3 ) * sin( phase3 )
+                   endif
+                   !
                 endif
                 !
              endif
