@@ -30,10 +30,12 @@ subroutine SwashBCtransferfnc ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, 
 !   Authors
 !
 !    1.00: Panagiotis Vasarmidis
+!   10.05: Panagiotis Vasarmidis
 !
 !   Updates
 !
 !    1.00, November 2023: New subroutine
+!   10.05,   August 2024: bug fix: exclude very small omega3
 !
 !   Purpose
 !
