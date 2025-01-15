@@ -11,7 +11,7 @@ subroutine SwashImpLayP2DHflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -347,7 +347,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! compute the discharge per width in x-direction
+    ! compute the mass flux per width in x-direction
     !
     do k = 1, kmax
        !
@@ -363,11 +363,11 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qx, kgrpnt, 1, kmax )
     !
-    ! compute the discharge per width in x-direction in wl-point based on averaging
+    ! compute the mass flux per width in x-direction in wl-point based on averaging
     !
     do k = 1, kmax
        !
@@ -386,7 +386,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qxm, kgrpnt, 1, kmax )
     !
@@ -507,7 +507,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! compute the discharge per width in y-direction
+    ! compute the mass flux per width in y-direction
     !
     do k = 1, kmax
        !
@@ -523,11 +523,11 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qy, kgrpnt, 1, kmax )
     !
-    ! compute the discharge per width in y-direction in depth point based on averaging
+    ! compute the mass flux per width in y-direction in depth point based on averaging
     !
     do k = 1, kmax
        !
@@ -2266,7 +2266,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! compute the discharge per width in x-direction in depth point based on averaging
+    ! compute the mass flux per width in x-direction in depth point based on averaging
     !
     if ( lrepty ) then
        nlast = nl               ! last  internal v-point in case of repeating grid
@@ -2387,7 +2387,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! compute the discharge per width in y-direction in wl-point based on averaging
+    ! compute the mass flux per width in y-direction in wl-point based on averaging
     !
     do k = 1, kmax
        !
@@ -2406,7 +2406,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qym, kgrpnt, 1, kmax )
     !
@@ -6470,7 +6470,7 @@ subroutine SwashImpLayP2DHflow
        !
     endif
     !
-    ! compute the discharge in x-direction
+    ! compute the mass flux in x-direction
     !
     do k = 1, kmax
        !
@@ -6486,7 +6486,7 @@ subroutine SwashImpLayP2DHflow
        !
     enddo
     !
-    ! compute the discharge in y-direction
+    ! compute the mass flux in y-direction
     !
     do k = 1, kmax
        !

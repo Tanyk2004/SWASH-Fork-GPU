@@ -11,7 +11,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -99,10 +99,10 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     real   , dimension(mcgrd,2), intent(out)   :: gmatu    ! gradient matrix for pressure in u-point
     real   , dimension(mcgrd,2), intent(out)   :: gmatv    ! gradient matrix for pressure in v-point
     real   , dimension(mcgrd)  , intent(inout) :: q        ! non-hydrostatic pressure
-    real   , dimension(mcgrd)  , intent(out)   :: qx       ! discharge per width in x-direction
-    real   , dimension(mcgrd)  , intent(out)   :: qxm      ! discharge per width in x-direction based on averaging
-    real   , dimension(mcgrd)  , intent(out)   :: qy       ! discharge per width in y-direction
-    real   , dimension(mcgrd)  , intent(out)   :: qym      ! discharge per width in y-direction based on averaging
+    real   , dimension(mcgrd)  , intent(out)   :: qx       ! mass flux per width in x-direction
+    real   , dimension(mcgrd)  , intent(out)   :: qxm      ! mass flux per width in x-direction based on averaging
+    real   , dimension(mcgrd)  , intent(out)   :: qy       ! mass flux per width in y-direction
+    real   , dimension(mcgrd)  , intent(out)   :: qym      ! mass flux per width in y-direction based on averaging
     real   , dimension(mcgrd)  , intent(in)    :: rho      ! density of water
     real   , dimension(mcgrd)  , intent(in)    :: u0       ! u-velocity at previous time level
     real   , dimension(mcgrd)  , intent(inout) :: u1       ! u-velocity at current time level
@@ -311,7 +311,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     enddo
     !
-    ! compute the discharge per width in x-direction
+    ! compute the mass flux per width in x-direction
     !
     do n = nfu, nl
        do m = mf, ml
@@ -323,11 +323,11 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        enddo
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qx, kgrpnt, 1, 1 )
     !
-    ! compute the discharge per width in x-direction in wl-point based on averaging
+    ! compute the mass flux per width in x-direction in wl-point based on averaging
     !
     do n = nfu, nl
        do m = mfu, ml
@@ -342,7 +342,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        enddo
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qxm, kgrpnt, 1, 1 )
     !
@@ -464,7 +464,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     enddo
     !
-    ! compute the discharge per width in y-direction
+    ! compute the mass flux per width in y-direction
     !
     do n = nf, nl
        do m = mfu, ml
@@ -476,11 +476,11 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        enddo
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qy, kgrpnt, 1, 1 )
     !
-    ! compute the discharge per width in y-direction in depth point based on averaging
+    ! compute the mass flux per width in y-direction in depth point based on averaging
     !
     do n = nf, nl
        do m = msta, mend
@@ -1393,7 +1393,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     !
     if ( propsc /= 1 ) call periodic ( u1, kgrpnt, 1, 1 )
     !
-    ! compute the discharge per width in x-direction in depth point based on averaging
+    ! compute the mass flux per width in x-direction in depth point based on averaging
     !
     nsta = nf + 1               ! first internal v-point
     if ( lrepty ) then
@@ -1519,7 +1519,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     enddo
     !
-    ! compute the discharge per width in y-direction in wl-point based on averaging
+    ! compute the mass flux per width in y-direction in wl-point based on averaging
     !
     do m = mfu, ml
        do n = nfu, nl
@@ -1534,7 +1534,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        enddo
     enddo
     !
-    ! synchronize discharges at appropriate boundaries in case of repeating grid (if appropriate)
+    ! synchronize mass fluxes at appropriate boundaries in case of repeating grid (if appropriate)
     !
     call periodic ( qym, kgrpnt, 1, 1 )
     !
@@ -3726,7 +3726,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     endif
     !
-    ! compute the discharge in x-direction
+    ! compute the mass flux in x-direction
     !
     do n = nfu, nl
        do m = mf, ml
@@ -3738,7 +3738,7 @@ subroutine SwashImpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        enddo
     enddo
     !
-    ! compute the discharge in y-direction
+    ! compute the mass flux in y-direction
     !
     do n = nf, nl
        do m = mfu, ml

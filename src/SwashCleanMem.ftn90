@@ -11,7 +11,7 @@ subroutine SwashCleanMem
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -234,6 +234,7 @@ subroutine SwashCleanMem
     if ( allocated(presu ) )  deallocate(presu )
     if ( allocated(presv ) )  deallocate(presv )
     if ( allocated(skc   ) )  deallocate(skc   )
+    if ( allocated(qn    ) )  deallocate(qn    )
     if ( allocated(quf   ) )  deallocate(quf   )
     if ( allocated(qx    ) )  deallocate(qx    )
     if ( allocated(qy    ) )  deallocate(qy    )
@@ -277,6 +278,12 @@ subroutine SwashCleanMem
     if ( allocated(icretb) )  deallocate(icretb)
     if ( allocated(icrett) )  deallocate(icrett)
     if ( allocated(icretu) )  deallocate(icretu)
+    if ( allocated(mcell ) )  deallocate(mcell )
+    if ( allocated(mlev  ) )  deallocate(mlev  )
+    if ( allocated(dtc   ) )  deallocate(dtc   )
+    if ( allocated(rp0   ) )  deallocate(rp0   )
+    if ( allocated(rp1   ) )  deallocate(rp1   )
+    if ( allocated(rpi   ) )  deallocate(rpi   )
     if ( allocated(visc  ) )  deallocate(visc  )
     if ( allocated(vnu2d ) )  deallocate(vnu2d )
     if ( allocated(vnu3d ) )  deallocate(vnu3d )
@@ -312,6 +319,7 @@ subroutine SwashCleanMem
     if ( allocated(bcrpo ) )  deallocate(bcrpo )
     if ( allocated(bcs   ) )  deallocate(bcs   )
     if ( allocated(bcso  ) )  deallocate(bcso  )
+    if ( allocated(pfac  ) )  deallocate(pfac  )
     if ( allocated(uwetp ) )  deallocate(uwetp )
     if ( allocated(vwetp ) )  deallocate(vwetp )
     if ( allocated(slimp ) )  deallocate(slimp )

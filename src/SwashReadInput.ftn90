@@ -11,7 +11,7 @@ subroutine SwashReadInput ( comput )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -174,6 +174,7 @@ subroutine SwashReadInput ( comput )
     character(6)                       :: qovsnm             ! user-defined short name of output quantity (see command QUANT)
     character(40)                      :: qovlnm             ! user-defined long name of output quantity (see command QUANT)
     !
+    logical                            :: chgdry             ! value of epsdry changed
     logical                            :: found              ! keyword found
     logical                            :: KEYWIS             ! indicates whether keyword in user manual is found or not
     logical, save                      :: liwg   = .false.   ! indicates whether linked list of parameters for internal-generated waves is initialized or not (see command SOURCE)
@@ -524,6 +525,7 @@ subroutine SwashReadInput ( comput )
        call INREAL ('LEVEL',    swl,    'UNC', 0.)
        call INREAL ('NOR',      dnorth, 'UNC', 0.)
        call INREAL ('DEPMIN',   epsdry, 'UNC', 0.)
+       chgdry = CHGVAL
        call ININTG ('MAXMES',   maxmes, 'UNC', 0 )
        call ININTG ('MAXERR',   MAXERR, 'UNC', 0 )
        call ININTG ('SEED',     myseed, 'UNC', 0 )
@@ -550,6 +552,7 @@ subroutine SwashReadInput ( comput )
        if ( KEYWIS ('CART') ) bnaut = .false.
        !
        call INREAL ('EPSHU', epshu, 'UNC', 0.)
+       if ( .not.CHGVAL .and. chgdry ) epshu = epsdry
        !
        call INKEYW ('STA',' ')
        if ( KEYWIS ('CC') ) ccn = .false.

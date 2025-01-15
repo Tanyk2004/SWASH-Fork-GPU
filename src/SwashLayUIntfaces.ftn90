@@ -11,7 +11,7 @@ subroutine SwashLayUIntfaces
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -81,7 +81,24 @@ subroutine SwashLayUIntfaces
        !
     enddo
     !
-    ! calculate the layer thicknesses based on hu and hum
+    ! first, calculate layer thicknesses based on humn (extrapolated in time; see subroutine SwashUpdateUDepths)
+    ! note: use zkum temporarily!
+    !
+    ! --- determine layer interfaces at u-point
+    !
+    zkum(:,0) = zkum(:,kmax) + humn(:)
+    !
+    call sigmacoor( zkum, humn, nfaces )
+    !
+    ! --- determine layer thicknesses at u-point
+    !
+    do k = 1, kmax
+       !
+       hkumn(:,k) = zkum(:,k-1) - zkum(:,k)
+       !
+    enddo
+    !
+    ! next, calculate the layer thicknesses based on hu and hum
     !
     ! --- determine layer interfaces at u-point
     !

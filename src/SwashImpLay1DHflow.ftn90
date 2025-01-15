@@ -11,7 +11,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -309,7 +309,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
        !
     enddo
     !
-    ! compute the discharge
+    ! compute the mass flux
     !
     do k = 1, kmax
        !
@@ -323,7 +323,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
        !
     enddo
     !
-    ! compute the discharge in wl-point based on averaging
+    ! compute the mass flux in wl-point based on averaging
     !
     do k = 1, kmax
        !
@@ -2933,7 +2933,7 @@ subroutine SwashImpLay1DHflow ( ibl, ibr, kgrpnt )
        !
     endif
     !
-    ! compute the discharge
+    ! compute the mass flux
     !
     do k = 1, kmax
        !

@@ -11,7 +11,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -97,8 +97,8 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
     real   , dimension(mcgrd)  , intent(inout) :: dqgrd  ! gradient of pressure correction to be employed in pressure projection method
     real   , dimension(mcgrd,2), intent(out)   :: gmat   ! gradient matrix for pressure in u-point
     real   , dimension(mcgrd)  , intent(inout) :: q      ! non-hydrostatic pressure
-    real   , dimension(mcgrd)  , intent(out)   :: qm     ! discharge in wl-point based on averaging
-    real   , dimension(mcgrd)  , intent(out)   :: qx     ! discharge in x-direction
+    real   , dimension(mcgrd)  , intent(out)   :: qm     ! mass flux in wl-point based on averaging
+    real   , dimension(mcgrd)  , intent(out)   :: qx     ! mass flux in x-direction
     real   , dimension(mcgrd)  , intent(in)    :: rho    ! density of water
     real   , dimension(mcgrd)  , intent(in)    :: u0     ! u-velocity at previous time level
     real   , dimension(mcgrd)  , intent(inout) :: u1     ! u-velocity at current time level
@@ -232,7 +232,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
        !
     endif
     !
-    ! compute the discharge
+    ! compute the mass flux
     !
     do m = mf, ml
        !
@@ -242,7 +242,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
        !
     enddo
     !
-    ! compute the discharge in wl-point based on averaging
+    ! compute the mass flux in wl-point based on averaging
     !
     do m = mfu, ml
        !
@@ -1520,7 +1520,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
        !
     endif
     !
-    ! compute the discharge
+    ! compute the mass flux
     !
     do m = mf, ml
        !
