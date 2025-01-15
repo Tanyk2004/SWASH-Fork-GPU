@@ -1,4 +1,4 @@
-subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
+subroutine SwashExpDepUtrans ( rp, rpo, rp1, rp0, rpi, u1, qn, fluxt )
 !
 !   --|-----------------------------------------------------------|--
 !     | Delft University of Technology                            |
@@ -11,7 +11,7 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -41,10 +41,14 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
 !
 !   Method
 !
-!   The time integration is fully explicit.
+!   The time integration is fully explicit. Local time stepping is employed.
 !
 !   The space discretization is a cell-centered finite volume discretization and
 !   is consistent with the discretization of the global continuity equation.
+!
+!   The concentration is located at the centroid of the triangular cell.
+!
+!   The discretization is mass conservative and complies with the discrete maximum principle.
 !
 !   The advective term is approximated by either first order upwind or higher order (flux-limited) scheme
 !   (CDS, Fromm, BDF, QUICK, MUSCL, Koren, etc.). For the r-ratio the most upwave vertex of upwind cell is used.
@@ -62,9 +66,12 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
     use SwashCommdata3
     use SwashTimecomm
     use SwashFlowdata, fluxttmp => fluxt, &
+                       qntmp    => qn   , &
                        rptmp    => rp   , &
                        rpotmp   => rpo  , &
-                       u0tmp    => u0   , &
+                       rp1tmp   => rp1  , &
+                       rp0tmp   => rp0  , &
+                       rpitmp   => rpi  , &
                        u1tmp    => u1
     use SwanGriddata
     use SwanGridobjects
@@ -74,60 +81,77 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
 !
 !   Argument variables
 !
-    real, dimension(nfaces)       , intent(out)   :: fluxt    ! total flux at faces
-    real, dimension(ncells,ltrans), intent(inout) :: rp       ! concentration at current time level
-    real, dimension(ncells)       , intent(out)   :: rpo      ! concentration at previous time level
-    real, dimension(nfaces)       , intent(in)    :: u0       ! face velocity at previous time level
-    real, dimension(nfaces)       , intent(in)    :: u1       ! face velocity at current time level
+    real, dimension(nfaces)             , intent(out)   :: fluxt            ! total flux at faces
+    real, dimension(nfaces)             , intent(inout) :: qn               ! mass flux at triangular face
+    real, dimension(ncells,ltrans)      , intent(inout) :: rp               ! concentration at current time level
+    real, dimension(ncells)             , intent(out)   :: rp0              ! concentration at previous substep for local time stepping
+    real, dimension(ncells)             , intent(out)   :: rp1              ! concentration at current substep for local time stepping
+    real, dimension(ncells,0:2**mtamx-1), intent(out)   :: rpi              ! intermediate transport constituent at various time-step levels
+    real, dimension(ncells)             , intent(out)   :: rpo              ! concentration at previous time level
+    real, dimension(nfaces)             , intent(in)    :: u1               ! face velocity at current time level
+!
+!   Parameter variables
+!
+    real, parameter                                     :: nuval = -999999. ! a special value that marks it as non-used
 !
 !   Local variables
 !
-    integer                                       :: btype    ! boundary type (see SwashUpdateUData.f90)
-    integer                                       :: icell    ! cell index / loop counter over cells
-    integer                                       :: icelll   ! left cell of present face
-    integer                                       :: icellr   ! right cell of present face
-    integer                                       :: icistb   ! counter for number of instable points
-    integer, save                                 :: ient = 0 ! number of entries in this subroutine
-    integer                                       :: iface    ! face index / loop counter over faces
-    integer                                       :: j        ! loop counter
-    integer                                       :: jc       ! loop counter
-    integer                                       :: jf       ! loop counter
-    integer                                       :: l        ! loop counter over constituents
-    integer, dimension(3)                         :: v        ! vertices of present cell
-    integer                                       :: vf1      ! first vertex of present face
-    integer                                       :: vf2      ! second vertex of present face
-    integer                                       :: vu       ! upwind vertex
+    integer                                             :: btype            ! boundary type (see SwashUpdateUData.f90)
+    integer                                             :: icell            ! cell index / loop counter over cells
+    integer                                             :: icelll           ! left cell of present face
+    integer                                             :: icellr           ! right cell of present face
+    integer                                             :: icistb           ! counter for number of instable points
+    integer, save                                       :: ient = 0         ! number of entries in this subroutine
+    integer                                             :: iface            ! face index / loop counter over faces
+    integer                                             :: j                ! loop counter
+    integer                                             :: jc               ! loop counter over cells of vertex
+    integer                                             :: jf               ! loop counter over faces (of cell)
+    integer                                             :: jj               ! offset index in range of substeps
+    integer                                             :: l                ! loop counter over constituents
+    integer                                             :: m                ! loop counter over time-step levels
+    integer                                             :: maxsb            ! maximum number of substeps
+    integer                                             :: mtmax            ! maximum time-step level used in local time stepping
+    integer                                             :: n                ! loop counter over substeps
+    integer                                             :: nc               ! number of cells corresponding to specific time-step level
+    integer                                             :: nsub             ! number of substeps in local time stepping
+    integer, dimension(3)                               :: v                ! vertices of present cell
+    integer                                             :: vf1              ! first vertex of present face
+    integer                                             :: vf2              ! second vertex of present face
+    integer                                             :: vu               ! upwind vertex
     !
-    real                                          :: area     ! area of present cell
-    real                                          :: areal    ! area of left cell of present face
-    real                                          :: arear    ! area of right cell of present face
-    real                                          :: cfl      ! CFL number
-    real                                          :: contrib  ! total contribution of transport flux per cell
-    real                                          :: dif2d    ! horizontal eddy diffusivity coefficient in velocity point
-    real                                          :: fac      ! a factor
-    real                                          :: finp     ! interpolation factor
-    real                                          :: fluxlim  ! flux limiter
-    real                                          :: grad1    ! solution gradient
-    real                                          :: grad2    ! another solution gradient
-    real                                          :: lf       ! length of present face
-    real                                          :: mass     ! total mass
-    real                                          :: psm      ! Prandtl-Schmidt number
-    real                                          :: qf       ! mass flux
-    real                                          :: rdx      ! reciprocal of distance between circumcenters adjacent to face
-    real                                          :: rproc    ! auxiliary variable with percentage of instable points
-    real                                          :: rpu      ! averaged concentration in upwind vertex
-    real                                          :: rsgn     ! sign for indicating face orientation
-    real                                          :: stabmx   ! auxiliary variable with maximum diffusivity based stability criterion
-    real                                          :: sumqf    ! sum of outgoing mass fluxes per cell
-    real                                          :: u        ! local flow velocity
-    real                                          :: theta    ! implicitness factor for flow velocity
-    real                                          :: totarea  ! total area of all cells around vertex
+    real                                                :: area             ! area of present cell
+    real                                                :: areal            ! area of left cell of present face
+    real                                                :: arear            ! area of right cell of present face
+    real                                                :: cfl              ! cell-based CFL number
+    real                                                :: contrib          ! total contribution of transport flux per cell
+    real                                                :: dh               ! local increment in water depth
+    real                                                :: dif2d            ! horizontal eddy diffusivity coefficient in velocity point
+    real                                                :: fac              ! a factor
+    real                                                :: finp             ! interpolation factor
+    real                                                :: fluxlim          ! flux limiter
+    real                                                :: grad1            ! solution gradient
+    real                                                :: grad2            ! another solution gradient
+    real                                                :: h0               ! water depth at previous substep
+    real                                                :: h1               ! water depth at current substep
+    real                                                :: lf               ! length of present face
+    real                                                :: mass             ! total mass
+    real                                                :: psm              ! Prandtl-Schmidt number
+    real                                                :: qf               ! mass flux
+    real                                                :: rdx              ! reciprocal of distance between circumcenters adjacent to face
+    real                                                :: rnsb             ! reciprocal of number of substeps
+    real                                                :: rproc            ! auxiliary variable with percentage of instable points
+    real                                                :: rpu              ! averaged concentration in upwind vertex
+    real                                                :: rsgn             ! sign for indicating face orientation
+    real                                                :: rval             ! auxiliary real
+    real                                                :: stabmx           ! auxiliary variable with maximum diffusivity based stability criterion
+    real                                                :: sumqf            ! sum of outgoing mass fluxes per cell
+    real                                                :: totarea          ! total area of all cells around vertex
     !
-    character(120)                                :: msgstr   ! string to pass message
+    character(120)                                      :: msgstr           ! string to pass message
     !
-    type(verttype), dimension(:), pointer         :: vert     ! datastructure for vertices with their attributes
-    type(celltype), dimension(:), pointer         :: cell     ! datastructure for cells with their attributes
-    type(facetype), dimension(:), pointer         :: face     ! datastructure for faces with their attributes
+    type(verttype), dimension(:), pointer               :: vert             ! datastructure for vertices with their attributes
+    type(celltype), dimension(:), pointer               :: cell             ! datastructure for cells with their attributes
+    type(facetype), dimension(:), pointer               :: face             ! datastructure for faces with their attributes
 !
 !   Structure
 !
@@ -143,82 +167,122 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
     cell => gridobject%cell_grid
     face => gridobject%face_grid
     !
-    ! determine implicitness factor for flow velocity
-    ! note: consistent with continuity equation
+    ! if momentum equation has been skipped, compute the mass flux
     !
-    if ( mtimei == 1 ) then
-       theta = 1.
-    else if ( mtimei == 2 ) then
-       theta = pnums(1)
+    if ( momskip ) then
+       !
+       do iface = 1, nfaces
+          !
+          lf = face(iface)%attr(FACELEN)
+          !
+          qn(iface) = lf * hu(iface) * u1(iface)
+          !
+       enddo
+       !
     endif
     !
-    ! if momentum equation has been skipped or Newton method is applied, check CFL criterion first
+    ! compute the time-step level for each cell
     !
-    if ( (momskip .or. inewt /= 0) .and. ITEST >= 30 ) then
+    mlev = 0
+    !
+    do icell = 1, ncells
        !
-       cflmax = -999.
+       ! compute the sum of mass fluxes leaving the cell
        !
-       do icell = 1, ncells
+       sumqf = 0.
+       !
+       do jf = 1, cell(icell)%nof
           !
-          ! compute the sum of mass fluxes leaving the cell
+          ! face identifier
           !
-          sumqf = 0.
+          iface = cell(icell)%face(jf)%atti(FACEID)
           !
-          do jf = 1, cell(icell)%nof
-             !
-             ! face identifier
-             !
-             iface = cell(icell)%face(jf)%atti(FACEID)
-             !
-             ! get length of current face
-             !
-             lf = face(iface)%attr(FACELEN)
-             !
-             ! consider left and right cells of current face
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             ! take into account orientation of the current face
-             !
-             if ( icell == icelll ) then
-                rsgn =  1.
-             else if ( icell == icellr ) then
-                rsgn = -1.
-             endif
-             !
-             ! compute mass flux at current face
-             !
-             u  = theta*u1(iface) + (1.-theta)*u0(iface)
-             qf = rsgn * lf * hu(iface) * u
-             !
-             if ( qf > 0. ) sumqf = sumqf + qf
-             !
-          enddo
+          ! consider left and right cells of current face
           !
-          ! compute the "flow" Courant number
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
           !
-          if ( hs(icell) > epsdry ) then
+          ! take into account orientation of the current face
+          !
+          if ( icell == icelll ) then
+             rsgn =  1.
+          else if ( icell == icellr ) then
+             rsgn = -1.
+          endif
+          !
+          ! compute outgoing mass flux at current face
+          !
+          qf = rsgn * qn(iface)
+          !
+          if ( qf > 0. ) sumqf = sumqf + qf
+          !
+       enddo
+       !
+       ! compute the "flow" Courant number
+       ! note: it must not be larger than 0.5 to fulfill the max-min property
+       !
+       if ( hso(icell) > epsdry ) then
+          !
+          area = cell(icell)%attr(CELLAREA)
+          !
+          cfl = sumqf * dt / hso(icell) / area
+          !
+          mlev(icell) = max( 0, 1+floor( log(2.*cfl)/log(2.) ) )
+          !
+       endif
+       !
+    enddo
+    !
+    ! smooth transition between various time-step levels
+    !
+    do icell = 1, ncells
+       !
+       mtmax = 0
+       !
+       ! loop over faces of the cell
+       !
+       do jf = 1, cell(icell)%nof
+          !
+          ! face identifier
+          !
+          iface = cell(icell)%face(jf)%atti(FACEID)
+          !
+          ! consider left and right cells of current face
+          !
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          ! take maximum time-step level of neighbouring cell
+          !
+          if ( icell == icelll .and. icellr /= 0 ) then
              !
-             area = cell(icell)%attr(CELLAREA)
+             if ( mlev(icellr) > mtmax ) mtmax = mlev(icellr)
              !
-             cfl = sumqf * dt / hs(icell) / area
-             if ( cfl > cflmax ) cflmax = cfl
+          elseif ( icell == icellr .and. icelll /= 0 ) then
+             !
+             if ( mlev(icelll) > mtmax ) mtmax = mlev(icelll)
              !
           endif
           !
        enddo
        !
-       ! give warning in case of CFL > 0.5
+       mlev(icell) = max( mtmax, mlev(icell) )
        !
-       if ( cflmax > 0.5 ) then
-          !
-          call msgerr ( 1, 'The max-min property cannot be complied with!')
-          call msgerr ( 0, 'If desired, reduce the time step' )
-          !
-       endif
-       !
+    enddo
+    !
+    ! compute maximum time-step level
+    !
+    mtmax = maxval( mlev )
+    if ( mtmax > mtamx ) then
+       mtmax = mtamx
+       call msgerr ( 1, 'The maximum number of time-step level is exceeded!')
+       call msgerr ( 0, 'It is advised to reduce the time step!' )
     endif
+    if ( ITEST >= 30 ) write (PRINTF,101) mtmax
+    !
+    ! compute actual time step for each cell
+    !
+    dtc = dt / 2.**mlev
     !
     ! loop over constituents
     !
@@ -276,8 +340,7 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
              !
              ! compute mass flux at boundary face
              !
-             u  = theta*u1(iface) + (1.-theta)*u0(iface)
-             qf = lf * hu(iface) * u
+             qf = qn(iface)
              !
              if ( rsgn * qf > 0. ) then
                 !
@@ -285,7 +348,7 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
                 !
                 fluxt(iface) = qf * rpo(icell)
                 !
-                bcrp(jf,1,l) = bcrpo(jf,1,l) - dt * rsgn * lf * u * ( bcrpo(jf,1,l) - rpo(icell) ) / area
+                bcrp(jf,1,l) = bcrpo(jf,1,l) - dt * rsgn * lf * u1(iface) * ( bcrpo(jf,1,l) - rpo(icell) ) / area
                 !
                 if ( l == lsal ) then
                    coutu (jf,1) = bcrp(jf,1,l)
@@ -312,248 +375,349 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
              !
              ! --- boundary face closed: no advective flux
              !
-             fluxt(iface) = 0.
+             fluxt(iface    ) = 0.
+             bcrp (jf   ,1,l) = rp(icell,l)
              !
           endif
           !
        enddo
        !
-       ! compute advective and diffusive fluxes at internal faces
+       ! initialize intermediate solution at all time-step levels
        !
-       do iface = 1, nfaces
-          !
-          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
-             !
-             finp = face(iface)%attr(FACELINPF)
-             !
-             ! get vertices of current face
-             !
-             vf1 = face(iface)%atti(FACEV1)
-             vf2 = face(iface)%atti(FACEV2)
-             !
-             ! get length of current face
-             !
-             lf = face(iface)%attr(FACELEN)
-             !
-             ! get reciprocal distance between the centers adjacent to current face
-             !
-             rdx = face(iface)%attr(FACEDISTC)
-             !
-             ! consider left and right cells of current face
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             areal = cell(icelll)%attr(CELLAREA)
-             arear = cell(icellr)%attr(CELLAREA)
-             !
-             propsc = nint(pnums(46))
-             kappa  = pnums(47)
-             mbound = pnums(48)
-             phieby = pnums(49)
-             !
-             ! compute mass flux at current face
-             !
-             u  = theta*u1(iface) + (1.-theta)*u0(iface)
-             qf = lf * hu(iface) * u
-             !
-             ! compute the advective flux based on first order upwind
-             !
-             if ( qf > 0. ) then
-                !
-                fluxt(iface) = qf * rpo(icelll)
-                !
-             else
-                !
-                fluxt(iface) = qf * rpo(icellr)
-                !
-             endif
-             !
-             ! add second order approximation
-             !
-             if ( propsc /= 1 ) then
-                !
-                if ( qf > 0. ) then
-                   !
-                   ! get vertices of upwind cell
-                   !
-                   v(1) = cell(icelll)%atti(CELLV1)
-                   v(2) = cell(icelll)%atti(CELLV2)
-                   v(3) = cell(icelll)%atti(CELLV3)
-                   !
-                   ! search for most upwave vertex
-                   !
-                   do j = 1, 3
-                      if ( v(j) /= vf1 .and. v(j) /= vf2 ) then
-                         vu = v(j)
-                         exit
-                      endif
-                   enddo
-                   !
-                   ! compute area-weighted averaged concentration at upwave vertex
-                   !
-                   rpu     = 0.
-                   totarea = 0.
-                   !
-                   do jc = 1, vert(vu)%noc
-                      !
-                      icell = vert(vu)%cell(jc)%atti(CELLID)
-                      !
-                      area = cell(icell)%attr(CELLAREA)
-                      !
-                      rpu = rpu + area * rpo(icell)
-                      !
-                      totarea = totarea + area
-                      !
-                   enddo
-                   !
-                   rpu = rpu / totarea
-                   !
-                   ! compute solution gradients
-                   !
-                   grad1 = rpo(icellr) - rpo(icelll)
-                   grad2 = rpo(icelll) - rpu
-                   !
-                   ! update flux
-                   !
-                   fluxt(iface) = fluxt(iface) + 0.5 * qf * fluxlim(grad1,grad2)
-                   !
-                else
-                   !
-                   ! get vertices of upwind cell
-                   !
-                   v(1) = cell(icellr)%atti(CELLV1)
-                   v(2) = cell(icellr)%atti(CELLV2)
-                   v(3) = cell(icellr)%atti(CELLV3)
-                   !
-                   ! search for most upwave vertex
-                   !
-                   do j = 1, 3
-                      if ( v(j) /= vf1 .and. v(j) /= vf2 ) then
-                         vu = v(j)
-                         exit
-                      endif
-                   enddo
-                   !
-                   ! compute area-weighted averaged concentration at upwave vertex
-                   !
-                   rpu     = 0.
-                   totarea = 0.
-                   !
-                   do jc = 1, vert(vu)%noc
-                      !
-                      icell = vert(vu)%cell(jc)%atti(CELLID)
-                      !
-                      area = cell(icell)%attr(CELLAREA)
-                      !
-                      rpu = rpu + area * rpo(icell)
-                      !
-                      totarea = totarea + area
-                      !
-                   enddo
-                   !
-                   rpu = rpu / totarea
-                   !
-                   ! compute solution gradients
-                   !
-                   grad1 = rpo(icelll) - rpo(icellr)
-                   grad2 = rpo(icellr) - rpu
-                   !
-                   ! update flux
-                   !
-                   fluxt(iface) = fluxt(iface) + 0.5 * qf * fluxlim(grad1,grad2)
-                   !
-                endif
-                !
-             endif
-             !
-             ! compute effective horizontal diffusivity coefficient at current face
-             !
-             if ( hdiff > 0. ) then
-                !
-                dif2d = hdiff
-                !
-             else
-                !
-                if ( ihvisc == 2 .or. ihvisc == 3 ) then
-                   !
-                   dif2d = vnu2d(iface) / psm
-                   !
-                else
-                   !
-                   dif2d = 0.
-                   !
-                endif
-                !
-             endif
-             !
-             stabmx = ( finp*areal + (1.-finp)*arear ) / ( 3. * rdx * lf * dt )
-             !
-             ! check stability
-             !
-             if ( .not. dif2d < stabmx ) then
-                dif2d  = stabmx
-                icistb = icistb + 1
-             endif
-             !
-             ! compute the diffusive flux and update total flux
-             !
-             fluxt(iface) = fluxt(iface) - dif2d * hu(iface) * lf * rdx * ( rpo(icellr) - rpo(icelll) )
-             !
-          else if ( face(iface)%atti(FMARKER) == 0 ) then
-             !
-             fluxt(iface) = 0.
-             !
-          endif
-          !
-       enddo
+       rpi = nuval
        !
-       !  compute concentration in cells (based on finite volume approach)
+       ! determine maximum number of substeps of the highest time-step level
        !
-       do icell = 1, ncells
+       maxsb = 2**mtmax
+       !
+       ! loop over time-step levels, starting with the coarsest one
+       !
+       do m = 0, mtmax
           !
-          contrib = 0.
+          ! determine number of substeps of current time-step level
           !
-          ! loop over faces of the cell
+          nsub = 2**m
+          rnsb = 1./real(nsub)
           !
-          do jf = 1, cell(icell)%nof
+          jj = maxsb / 2
+          !
+          ! construct cell-based index table for time-step level m
+          !
+          nc = 0
+          !
+          do icell = 1, ncells
              !
-             ! face identifier
-             !
-             iface = cell(icell)%face(jf)%atti(FACEID)
-             !
-             ! consider left and right cells of current face
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             ! take into account orientation of the current face
-             !
-             if ( icell == icelll ) then
-                rsgn =  1.
-             else if ( icell == icellr ) then
-                rsgn = -1.
+             if ( mlev(icell) == m ) then
+                nc = nc + 1
+                mcell(nc) = icell
              endif
-             !
-             ! get advective/diffusive flux at current face and add to other faces of the cell
-             !
-             contrib = contrib + rsgn * fluxt(iface)
              !
           enddo
           !
-          ! update in wet cell
+          ! initialize solution to the concentration at previous time step n
           !
-          if ( hs(icell) > epsdry ) then
+          rp1 = rpo
+          !
+          ! start local time stepping
+          !
+          do n = 1, nsub
              !
-             area = cell(icell)%attr(CELLAREA)
+             ! store concentration to previous substep
              !
-             rp(icell,l) = hso(icell) * rpo(icell) - dt * contrib / area
+             rp0 = rp1
              !
-             ! compute depth-averaged concentration
+             ! compute advective and diffusive fluxes at internal faces
              !
-             rp(icell,l) = rp(icell,l) / hs(icell)
+             do iface = 1, nfaces
+                !
+                if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+                   !
+                   finp = face(iface)%attr(FACELINPF)
+                   !
+                   ! get vertices of current face
+                   !
+                   vf1 = face(iface)%atti(FACEV1)
+                   vf2 = face(iface)%atti(FACEV2)
+                   !
+                   ! get length of current face
+                   !
+                   lf = face(iface)%attr(FACELEN)
+                   !
+                   ! get reciprocal distance between the centroids adjacent to current face
+                   !
+                   rdx = face(iface)%attr(FACEDISTG)
+                   !
+                   ! consider left and right cells of current face
+                   !
+                   icelll = face(iface)%atti(FACECL)
+                   icellr = face(iface)%atti(FACECR)
+                   !
+                   areal = cell(icelll)%attr(CELLAREA)
+                   arear = cell(icellr)%attr(CELLAREA)
+                   !
+                   propsc = nint(pnums(46))
+                   kappa  = pnums(47)
+                   mbound = pnums(48)
+                   phieby = pnums(49)
+                   !
+                   ! compute mass flux at current face
+                   !
+                   qf = qn(iface)
+                   !
+                   ! compute the advective flux based on first order upwind
+                   !
+                   if ( qf > 0. ) then
+                      !
+                      fluxt(iface) = qf * rp0(icelll)
+                      !
+                   else
+                      !
+                      fluxt(iface) = qf * rp0(icellr)
+                      !
+                   endif
+                   !
+                   ! add second order approximation
+                   !
+                   if ( propsc /= 1 ) then
+                      !
+                      if ( qf > 0. ) then
+                         !
+                         ! get vertices of upwind cell
+                         !
+                         v(1) = cell(icelll)%atti(CELLV1)
+                         v(2) = cell(icelll)%atti(CELLV2)
+                         v(3) = cell(icelll)%atti(CELLV3)
+                         !
+                         ! search for most upwave vertex
+                         !
+                         do j = 1, 3
+                            if ( v(j) /= vf1 .and. v(j) /= vf2 ) then
+                               vu = v(j)
+                               exit
+                            endif
+                         enddo
+                         !
+                         ! compute area-weighted averaged concentration at upwave vertex
+                         !
+                         rpu     = 0.
+                         totarea = 0.
+                         !
+                         do jc = 1, vert(vu)%noc
+                            !
+                            icell = vert(vu)%cell(jc)%atti(CELLID)
+                            !
+                            area = cell(icell)%attr(CELLAREA)
+                            !
+                            rpu = rpu + area * rp0(icell)
+                            !
+                            totarea = totarea + area
+                            !
+                         enddo
+                         !
+                         rpu = rpu / totarea
+                         !
+                         ! compute solution gradients
+                         !
+                         grad1 = rp0(icellr) - rp0(icelll)
+                         grad2 = rp0(icelll) - rpu
+                         !
+                         ! update flux
+                         !
+                         fluxt(iface) = fluxt(iface) + 0.5 * qf * fluxlim(grad1,grad2)
+                         !
+                      else
+                         !
+                         ! get vertices of upwind cell
+                         !
+                         v(1) = cell(icellr)%atti(CELLV1)
+                         v(2) = cell(icellr)%atti(CELLV2)
+                         v(3) = cell(icellr)%atti(CELLV3)
+                         !
+                         ! search for most upwave vertex
+                         !
+                         do j = 1, 3
+                            if ( v(j) /= vf1 .and. v(j) /= vf2 ) then
+                               vu = v(j)
+                               exit
+                            endif
+                         enddo
+                         !
+                         ! compute area-weighted averaged concentration at upwave vertex
+                         !
+                         rpu     = 0.
+                         totarea = 0.
+                         !
+                         do jc = 1, vert(vu)%noc
+                            !
+                            icell = vert(vu)%cell(jc)%atti(CELLID)
+                            !
+                            area = cell(icell)%attr(CELLAREA)
+                            !
+                            rpu = rpu + area * rp0(icell)
+                            !
+                            totarea = totarea + area
+                            !
+                         enddo
+                         !
+                         rpu = rpu / totarea
+                         !
+                         ! compute solution gradients
+                         !
+                         grad1 = rp0(icelll) - rp0(icellr)
+                         grad2 = rp0(icellr) - rpu
+                         !
+                         ! update flux
+                         !
+                         fluxt(iface) = fluxt(iface) + 0.5 * qf * fluxlim(grad1,grad2)
+                         !
+                      endif
+                      !
+                   endif
+                   !
+                   ! compute effective horizontal diffusivity coefficient at current face
+                   !
+                   if ( hdiff > 0. ) then
+                      !
+                      dif2d = hdiff
+                      !
+                   else
+                      !
+                      if ( ihvisc == 2 .or. ihvisc == 3 ) then
+                         !
+                         dif2d = vnu2d(iface) / psm
+                         !
+                      else
+                         !
+                         dif2d = 0.
+                         !
+                      endif
+                      !
+                   endif
+                   !
+                   rval   = max( dtc(icelll), dtc(icellr) )
+                   stabmx = 0.5 * min( areal, arear ) / rval
+                   !
+                   ! check stability
+                   !
+                   if ( .not. dif2d < stabmx ) then
+                      dif2d  = stabmx
+                      icistb = icistb + 1
+                   endif
+                   !
+                   ! compute the diffusive flux and update total flux
+                   !
+                   fluxt(iface) = fluxt(iface) - ( finp*hso(icelll)+(1.-finp)*hso(icellr) ) * dif2d * lf * rdx * ( rp0(icellr) - rp0(icelll) )
+                   !
+                else if ( face(iface)%atti(FMARKER) == 0 ) then
+                   !
+                   fluxt(iface) = 0.
+                   !
+                endif
+                !
+             enddo
              !
-          endif
+             !  compute concentration in cells (based on finite volume approach)
+             !
+             do j = 1, nc
+                !
+                ! consider cells with time-step level m
+                !
+                icell = mcell(j)
+                !
+                contrib = 0.
+                !
+                ! loop over faces of the cell
+                !
+                do jf = 1, cell(icell)%nof
+                   !
+                   ! face identifier
+                   !
+                   iface = cell(icell)%face(jf)%atti(FACEID)
+                   !
+                   ! consider left and right cells of current face
+                   !
+                   icelll = face(iface)%atti(FACECL)
+                   icellr = face(iface)%atti(FACECR)
+                   !
+                   ! take into account orientation of the current face
+                   !
+                   if ( icell == icelll ) then
+                      rsgn =  1.
+                   else if ( icell == icellr ) then
+                      rsgn = -1.
+                   endif
+                   !
+                   ! get advective/diffusive flux at current face and add to other faces of the cell
+                   !
+                   contrib = contrib + rsgn * fluxt(iface)
+                   !
+                enddo
+                !
+                ! update in wet cell
+                !
+                if ( hs(icell) > epsdry ) then
+                   !
+                   area = cell(icell)%attr(CELLAREA)
+                   !
+                   ! compute water depths at current and previous substeps
+                   !
+                   dh = rnsb * ( hs(icell) - hso(icell) )
+                   !
+                   h0 = hso(icell) + real(n-1) * dh
+                   h1 = h0         + dh
+                   !
+                   rp1(icell) = h0 * rp0(icell) - dtc(icell) * contrib / area
+                   !
+                   ! compute depth-averaged concentration
+                   !
+                   rp1(icell) = rp1(icell) / h1
+                   !
+                endif
+                !
+             enddo
+             !
+             ! also use intermediate solution of coarser time-step levels
+             !
+             do icell = 1, ncells
+                !
+                if ( mlev(icell) < m ) then
+                   !
+                   rval = rpi(icell,n*maxsb)
+                   if (rval > nuval ) rp1(icell) = rval
+                   !
+                endif
+                !
+             enddo
+             !
+             ! finally, estimate intermediate concentration to be used at finer time-step levels
+             !
+             do j = 1, nc
+                !
+                ! consider cells with time-step level m
+                !
+                icell = mcell(j)
+                !
+                rpi(icell,jj+(n-1)*maxsb) = 0.5 * ( rp0(icell) + rp1(icell) )
+                !
+             enddo
+             !
+          enddo
+          !
+          ! store final solution at time step n+1
+          !
+          do j = 1, nc
+             !
+             ! consider cells with time-step level m
+             !
+             icell = mcell(j)
+             !
+             rp(icell,l) = rp1(icell)
+             !
+          enddo
+          !
+          ! compute maximum number of substeps with respect to the next level
+          !
+          maxsb = maxsb / 2
           !
        enddo
        !
@@ -573,9 +737,9 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
              !
           enddo
           !
-          if ( l == lsal  ) write(PRINTF,101) mass
-          if ( l == ltemp ) write(PRINTF,102) mass
-          if ( l == lsed  ) write(PRINTF,103) mass*rhos
+          if ( l == lsal  ) write(PRINTF,102) mass
+          if ( l == ltemp ) write(PRINTF,103) mass
+          if ( l == lsed  ) write(PRINTF,104) mass*rhos
           !
        endif
        !
@@ -602,8 +766,9 @@ subroutine SwashExpDepUtrans ( rp, rpo, u1, u0, fluxt )
        !
     enddo
     !
- 101 format (2x,'the total mass associated with saline water is ',e14.8e2)
- 102 format (2x,'the total mass associated with heat is ',e14.8e2)
- 103 format (2x,'the total mass associated with suspended sediment ',e14.8e2)
+ 101 format (' maximum level used in local time stepping = ',i2)
+ 102 format (2x,'the total mass associated with saline water is ',e14.8e2)
+ 103 format (2x,'the total mass associated with heat is ',e14.8e2)
+ 104 format (2x,'the total mass associated with suspended sediment ',e14.8e2)
     !
 end subroutine SwashExpDepUtrans

@@ -11,7 +11,7 @@ module SwashFlowdata
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -76,10 +76,10 @@ module SwashFlowdata
     integer                                       :: nlu          ! =myc;   index of point nl+1 in y-direction of computational grid
                                                                   !         last wl-point considering as a virtual one
     !
-    integer, dimension(:), save, allocatable      :: brks         ! mask value for wave breaking at wl-point
+    integer, dimension(:)  , save, allocatable    :: brks         ! mask value for wave breaking at wl-point
                                                                   ! =0; no breaking
                                                                   ! =1; breaking
-    integer, dimension(:), save, allocatable      :: ibb          ! boundary condition type at lower boundary
+    integer, dimension(:)  , save, allocatable    :: ibb          ! boundary condition type at lower boundary
                                                                   ! = 1; closed boundary
                                                                   ! = 2; water level opening
                                                                   ! = 3; velocity opening
@@ -90,40 +90,42 @@ module SwashFlowdata
                                                                   ! = 8; Sommerfeld radiation condition
                                                                   ! =10; outflow condition
                                                                   ! < 0; =-ibb, where both normal and tangential components are described
-    integer, dimension(:), save, allocatable      :: ibl          ! boundary condition type at left boundary
+    integer, dimension(:)  , save, allocatable    :: ibl          ! boundary condition type at left boundary
                                                                   ! see variable ibb for meaning
-    integer, dimension(:), save, allocatable      :: ibr          ! boundary condition type at right boundary
+    integer, dimension(:)  , save, allocatable    :: ibr          ! boundary condition type at right boundary
                                                                   ! see variable ibb for meaning
-    integer, dimension(:), save, allocatable      :: ibt          ! boundary condition type at upper boundary
+    integer, dimension(:)  , save, allocatable    :: ibt          ! boundary condition type at upper boundary
                                                                   ! see variable ibb for meaning
-    integer, dimension(:), save, allocatable      :: lfbs         ! label of floating body in wl-point
-    integer, dimension(:), save, allocatable      :: presp        ! mask value for free surface/pressurized flow at pressure/wl-point
+    integer, dimension(:)  , save, allocatable    :: lfbs         ! label of floating body in wl-point
+    integer, dimension(:)  , save, allocatable    :: mcell        ! cell-based index table for each time-step level (unstructured-mesh transport module)
+    integer, dimension(:)  , save, allocatable    :: mlev         ! time-step level for local time stepping (unstructured-mesh transport module)
+    integer, dimension(:)  , save, allocatable    :: presp        ! mask value for free surface/pressurized flow at pressure/wl-point
                                                                   ! =0; free surface flow
                                                                   ! =1; pressurized flow
-    integer, dimension(:), save, allocatable      :: presu        ! mask value for free surface/pressurized flow at u-point
+    integer, dimension(:)  , save, allocatable    :: presu        ! mask value for free surface/pressurized flow at u-point
                                                                   ! =0; free surface flow
                                                                   ! =1; pressurized flow
-    integer, dimension(:), save, allocatable      :: presv        ! mask value for free surface/pressurized flow at v-point
+    integer, dimension(:)  , save, allocatable    :: presv        ! mask value for free surface/pressurized flow at v-point
                                                                   ! =0; free surface flow
                                                                   ! =1; pressurized flow
-    integer, dimension(:), save, allocatable      :: uwetp        ! indicate a wet and valid u-point for 3D computation
+    integer, dimension(:)  , save, allocatable    :: uwetp        ! indicate a wet and valid u-point for 3D computation
                                                                   ! =0; dry
                                                                   ! =1; wet
-    integer, dimension(:), save, allocatable      :: vwetp        ! indicate a wet and valid v-point for 3D computation
+    integer, dimension(:)  , save, allocatable    :: vwetp        ! indicate a wet and valid v-point for 3D computation
                                                                   ! =0; dry
                                                                   ! =1; wet
-    integer, dimension(:), save, allocatable      :: wets         ! mask value for wetting and drying at wl-point
+    integer, dimension(:)  , save, allocatable    :: wets         ! mask value for wetting and drying at wl-point
                                                                   ! =0; dry
                                                                   ! =1; wet
-    integer, dimension(:), save, allocatable      :: wetu         ! mask value for wetting and drying at u-point
+    integer, dimension(:)  , save, allocatable    :: wetu         ! mask value for wetting and drying at u-point
                                                                   ! =0; dry
                                                                   ! =1; wet
-    integer, dimension(:), save, allocatable      :: wetv         ! mask value for wetting and drying at v-point
+    integer, dimension(:)  , save, allocatable    :: wetv         ! mask value for wetting and drying at v-point
                                                                   ! =0; dry
                                                                   ! =1; wet
     !
     integer                                       :: nconct       ! number of connections in one row of the matrix
-    integer, dimension(:), save, allocatable      :: ishif        ! the shifts of the layer index for a given point in the Keller-box scheme
+    integer, dimension(:)  , save, allocatable    :: ishif        ! the shifts of the layer index for a given point in the Keller-box scheme
     !
     real  , dimension(:)      , save, allocatable :: a            ! lower diagonal of tri-diagonal matrix
     real  , dimension(:)      , save, allocatable :: advec        ! contribution to advective term (1DH)
@@ -201,6 +203,7 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: dq0          ! non-hydrostatic pressure correction for a pressure layer in layer-averaged case
     real  , dimension(:)      , save, allocatable :: ds           ! water level correction
     real  , dimension(:)      , save, allocatable :: dsrc         ! distance source to boundary for internal wave generation (unstructured grids)
+    real  , dimension(:)      , save, allocatable :: dtc          ! cell-based time step for local time stepping (unstructured-mesh transport module)
     real  , dimension(:,:)    , save, allocatable :: fcor         ! Coriolis parameter
     real  , dimension(:)      , save, allocatable :: flos         ! draft of floating object in wl-point
     real  , dimension(:)      , save, allocatable :: flou         ! draft of floating object in u-point
@@ -260,17 +263,21 @@ module SwashFlowdata
     real  , dimension(:)      , save, allocatable :: nporu        ! volumetric porosity in u-point
     real  , dimension(:)      , save, allocatable :: nporv        ! volumetric porosity in v-point
     real  , dimension(:)      , save, allocatable :: patm         ! atmospheric pressure in wl-point
+    real  , dimension(:)      , save, allocatable :: pfac         ! factor for hydrostatic pressure gradient at water level boundary
+                                                                  ! = 0.5; take distance between boundary face and cell center twice
+                                                                  ! = 1; represents distance between boundary face and cell center
     real  , dimension(:)      , save, allocatable :: pgrad        ! pressure gradient term due to density and atmospheric pressure
     real  , dimension(:,:)    , save, allocatable :: q            ! non-hydrostatic pressure
     real  , dimension(:)      , save, allocatable :: qbot         ! non-hydrostatic pressure at bottom
     real  , dimension(:)      , save, allocatable :: qgrad        ! pressure gradient term
-    real  , dimension(:,:)    , save, allocatable :: qm           ! discharge in wl-point based on averaging (1DH)
-    real  , dimension(:,:,:)  , save, allocatable :: quf          ! mass flux per face width in flow direction (unstructured grids)
+    real  , dimension(:,:)    , save, allocatable :: qm           ! mass flux in wl-point based on averaging (1DH)
+    real  , dimension(:,:)    , save, allocatable :: qn           ! mass flux at triangular face (unstructured grids)
+    real  , dimension(:,:,:)  , save, allocatable :: quf          ! mass flux at cell face in flow direction (unstructured grids)
     real  , dimension(:,:)    , save, allocatable :: qv           ! non-hydrostatic pressure on fine (velocity) grid
-    real  , dimension(:,:)    , save, allocatable :: qx           ! discharge per width in x-direction
-    real  , dimension(:,:)    , save, allocatable :: qxm          ! discharge per width in x-direction based on averaging
-    real  , dimension(:,:)    , save, allocatable :: qy           ! discharge per width in y-direction
-    real  , dimension(:,:)    , save, allocatable :: qym          ! discharge per width in y-direction based on averaging
+    real  , dimension(:,:)    , save, allocatable :: qx           ! mass flux per width in x-direction
+    real  , dimension(:,:)    , save, allocatable :: qxm          ! mass flux per width in x-direction based on averaging
+    real  , dimension(:,:)    , save, allocatable :: qy           ! mass flux per width in y-direction
+    real  , dimension(:,:)    , save, allocatable :: qym          ! mass flux per width in y-direction based on averaging
     real  , dimension(:,:)    , save, allocatable :: rho          ! water density relative to reference density
     real  , dimension(:)      , save, allocatable :: rhs          ! right-hand side of the system of equations
     real  , dimension(:,:)    , save, allocatable :: rhsc         ! right-hand side of tri-diagonal system of transport equation
@@ -280,6 +287,9 @@ module SwashFlowdata
     real  , dimension(:,:)    , save, allocatable :: rhsu         ! right-hand side of tri-diagonal system of u-momentum equation
     real  , dimension(:,:)    , save, allocatable :: rhsw         ! right-hand side of tri-diagonal system of w-momentum equation
     real  , dimension(:,:,:)  , save, allocatable :: rp           ! transport constituents in wl-point
+    real  , dimension(:,:)    , save, allocatable :: rp0          ! cell-based transport constituent at previous substep (for local time stepping)
+    real  , dimension(:,:)    , save, allocatable :: rp1          ! cell-based transport constituent at current substep (for local time stepping)
+    real  , dimension(:,:,:)  , save, allocatable :: rpi          ! intermediate transport constituent at various time-step levels (for local time stepping)
     real  , dimension(:,:)    , save, allocatable :: rpo          ! transport constituents in wl-point at previous time level
     real  , dimension(:,:)    , save, allocatable :: rsuu         ! Reynolds stress component -u'u'
     real  , dimension(:,:)    , save, allocatable :: rsuv         ! Reynolds stress component -u'v'

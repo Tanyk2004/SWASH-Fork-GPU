@@ -21,7 +21,7 @@ module SwashCommdata1
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -135,7 +135,7 @@ module SwashCommdata2
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -260,7 +260,7 @@ module SwashCommdata3
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -309,6 +309,9 @@ module SwashCommdata3
     integer, parameter                         :: msurf =  5  ! dimension of array psurf
     integer, parameter                         :: mturb =  5  ! dimension of array pturb
     integer, parameter                         :: mwnd  = 10  ! dimension of array pwnd
+    !
+    integer, parameter                         :: mtamx = 3   ! assumed maximum number of time-step level in local time stepping
+                                                              ! (to be used in unstructured-mesh transport module)
 !
 !   Module variables
 !
@@ -770,7 +773,7 @@ module SwashCommdata4
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -861,7 +864,7 @@ module SwashTimecomm
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by

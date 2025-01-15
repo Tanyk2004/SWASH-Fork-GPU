@@ -23,7 +23,7 @@ subroutine disprel ( htot, omega, kwav, cg, n )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -208,7 +208,7 @@ subroutine jonswap ( spec, fmin, df, nfreq, fp, gamma )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -317,7 +317,7 @@ real function fluxlim ( a, b )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -464,7 +464,7 @@ subroutine sigmacoor ( zk, h, ntot )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -607,7 +607,7 @@ subroutine periodic ( u, kgrpnt, ks, ke )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -870,7 +870,7 @@ subroutine periodici ( u, kgrpnt, ks, ke )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by

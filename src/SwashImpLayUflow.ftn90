@@ -11,7 +11,7 @@ subroutine SwashImpLayUflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -54,7 +54,7 @@ subroutine SwashImpLayUflow
 !
 !   The space discretization of the advective term is momentum conservative and is approximated by
 !   first order upwind or higher order (flux-limited) scheme (CDS, Fromm, BDF, QUICK, MUSCL, Koren, etc.).
-!   The r-ratio formulation of Casulli and Zanolli (2005) is employed.
+!   The r-ratio formulation based on most upwave vertex is employed.
 !
 !   The space discretization of the vertical advective and viscosity terms is based on central differences
 !   in a finite volume fashion.
@@ -92,13 +92,10 @@ subroutine SwashImpLayUflow
 !
 !   Local variables
 !
-    integer                                :: FC       ! cell number containing present face
-    integer                                :: FCD      ! cell number downwind of present face
-    integer                                :: FCU      ! cell number upwind of present face
     integer                                :: bcell    ! boundary cell index for sponge layer
     integer                                :: bface    ! boundary face index for sponge layer
     integer                                :: icell    ! cell index / loop counter over cells
-    integer                                :: icella   ! upwind cell for cell-based advection vector
+    integer                                :: icella   ! cell index for computing area-weighted averaged quantity
     integer                                :: icellb   ! boundary cell
     integer                                :: icelld   ! cell index of downwind cell
     integer                                :: icelll   ! left cell of present face
@@ -107,11 +104,9 @@ subroutine SwashImpLayUflow
     integer, save                          :: ient = 0 ! number of entries in this subroutine
     integer                                :: iface    ! face index / loop counter over faces
     integer                                :: ifacel   ! local face
-    integer                                :: ifaceu   ! face index of upwind cell
     integer                                :: j        ! loop counter
     integer                                :: jc       ! loop counter
     integer                                :: jf       ! loop counter
-    integer                                :: juf      ! loop counter over upwind cell
     integer                                :: k        ! loop counter over vertical layers
     integer                                :: kd       ! index of layer k-1
     integer                                :: kdd      ! index of layer k-2
@@ -125,8 +120,8 @@ subroutine SwashImpLayUflow
     !
     real                                   :: area     ! area of present cell
     real                                   :: bi       ! inverse of main diagonal of the matrix
+    real                                   :: cadv     ! contribution to advection term
     real                                   :: cfl      ! CFL number
-    real                                   :: ctrhf    ! contribution to right hand side at considered face
     real                                   :: ctrkb    ! contribution of vertical terms below considered point
     real                                   :: ctrkt    ! contribution of vertical terms above considered point
     real                                   :: ctrs     ! contribution to system of water level equations
@@ -135,7 +130,7 @@ subroutine SwashImpLayUflow
     real                                   :: fac      ! a factor
     real                                   :: fac1     ! another factor
     real                                   :: fac2     ! some other factor
-    real                                   :: faca     ! weighting factor for advection term
+    real                                   :: faca     ! contribution weight to left/right cells for advection/viscosity term
     real                                   :: finp     ! interpolation factor
     real                                   :: fluxlim  ! flux limiter
     real                                   :: gamma    ! relaxation parameter for sponge layer
@@ -156,11 +151,8 @@ subroutine SwashImpLayUflow
     real                                   :: nx       ! x-component of normal to face
     real                                   :: ny       ! y-component of normal to face
     real                                   :: qf       ! (total) mass flux
-    real                                   :: rden     ! denominator in r-ratio
     real                                   :: rdx      ! reciprocal of distance between circumcenters adjacent to face
     real                                   :: rhou     ! density of water in velocity point
-    real                                   :: rnumx    ! x-component of numerator in r-ratio
-    real                                   :: rnumy    ! y-component of numerator in r-ratio
     real                                   :: rsgn     ! sign for indicating face orientation
     real                                   :: theta    ! implicitness factor for time integration of continuity equation
     real                                   :: theta2   ! implicitness factor for water level gradient
@@ -172,6 +164,8 @@ subroutine SwashImpLayUflow
     real                                   :: uf       ! updated depth-integrated flow velocity at present face
     real                                   :: ut       ! tangential velocity component
     real                                   :: utot     ! velocity magnitude
+    real                                   :: ux       ! x-component of flow velocity in cell circumenter
+    real                                   :: uy       ! y-component of flow velocity in cell circumenter
     real                                   :: v        ! layer-averaged v-velocity component
     real                                   :: vol      ! total displaced volume of water
     real                                   :: w0u      ! averaged w-velocity in upwind vertex
@@ -304,7 +298,153 @@ subroutine SwashImpLayUflow
     !
     ! compute horizontal advection term using first order upwind (momentum conservative)
     !
-    do k = 1, kmax
+    do iface = 1, nfaces
+       !
+       if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+          !
+          finp = face(iface)%attr(FACELINPF)
+          !
+          nx = face(iface)%attr(FACENORMX)
+          ny = face(iface)%attr(FACENORMY)
+          !
+          do l = 1, 2
+             !
+             if ( l == 1 ) then
+                !
+                ! left cell of current face
+                !
+                icell = face(iface)%atti(FACECL)
+                faca  = finp
+                !
+             else
+                !
+                ! right cell of current face
+                !
+                icell = face(iface)%atti(FACECR)
+                faca  = 1. - finp
+                !
+             endif
+             !
+             area = cell(icell)%attr(CELLAREA)
+             !
+             do k = 1, kmax
+                !
+                cadv = 0.
+                !
+                ! loop over faces of the cell under consideration
+                !
+                do jf = 1, cell(icell)%nof
+                   !
+                   ! local face
+                   !
+                   ifacel = cell(icell)%face(jf)%atti(FACEID)
+                   !
+                   if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
+                      !
+                      ! consider left and right cells of local face
+                      !
+                      icelll = face(ifacel)%atti(FACECL)
+                      icellr = face(ifacel)%atti(FACECR)
+                      !
+                      ! take upwind cell of local face
+                      !
+                      if ( u0(ifacel,k) > 0. ) then
+                         icellu = icelll
+                      else
+                         icellu = icellr
+                      endif
+                      !
+                      ! compute contribution to advection term - only update for ingoing flux
+                      !
+                      if ( quf(icell,k,jf) < 0. ) cadv = cadv + quf(icell,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
+                      !
+                   endif
+                   !
+                enddo
+                !
+                rhsu(iface,k) = rhsu(iface,k) - faca * cadv / area / hkumn(iface,k)
+                !
+             enddo
+             !
+          enddo
+          !
+       else if ( face(iface)%atti(FBTYPE) == 2 ) then
+          !
+          nx = face(iface)%attr(FACENORMX)
+          ny = face(iface)%attr(FACENORMY)
+          !
+          ! consider left and right cells of boundary face and ...
+          !
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          ! ... boundary cell
+          !
+          icellb = face(iface)%atti(FACEC1)
+          !
+          area = cell(icellb)%attr(CELLAREA)
+          !
+          ! get orientation at boundary face
+          !
+          if ( icellb == icelll ) then
+             rsgn =  1.
+          else if ( icellb == icellr ) then
+             rsgn = -1.
+          endif
+          !
+          do k = 1, kmax
+             !
+             if ( rsgn * u0(iface,k) > 0. ) then
+                !
+                ! outflow
+                !
+                cadv = 0.
+                !
+                ! loop over faces of the boundary cell
+                !
+                do jf = 1, cell(icellb)%nof
+                   !
+                   ! local face
+                   !
+                   ifacel = cell(icellb)%face(jf)%atti(FACEID)
+                   !
+                   if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
+                      !
+                      ! take upwind cell of local face
+                      !
+                      if ( u0(ifacel,k) > 0. ) then
+                         icellu = face(ifacel)%atti(FACECL)
+                      else
+                         icellu = face(ifacel)%atti(FACECR)
+                      endif
+                      !
+                      ! update for ingoing flux
+                      !
+                      if ( quf(icellb,k,jf) < 0. ) cadv = cadv + quf(icellb,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
+                      !
+                   endif
+                   !
+                enddo
+                !
+                rhsu(iface,k) = rhsu(iface,k) - cadv / area / hkumn(iface,k)
+                !
+             endif
+             !
+          enddo
+          !
+       endif
+       !
+    enddo
+    !
+    ! add second order approximation based on Lax-Wendroff method (if appropriate)
+    !
+    propsc = nint(pnums(6))
+    !
+    if ( propsc /= 1 ) then
+       !
+       kappa  = pnums(7)
+       mbound = pnums(8)
+       phieby = pnums(9)
        !
        do iface = 1, nfaces
           !
@@ -315,252 +455,123 @@ subroutine SwashImpLayUflow
              nx = face(iface)%attr(FACENORMX)
              ny = face(iface)%attr(FACENORMY)
              !
-             ! consider left and right cells of current face
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             if ( u0(iface,k) > 0. ) then
+             do l = 1, 2
                 !
-                icella = icelll
-                FC     = FACECL
-                faca   = finp
-                !
-             else
-                !
-                icella = icellr
-                FC     = FACECR
-                faca   = 1. - finp
-                !
-             endif
-             !
-             ctrhf = 0.
-             !
-             ! loop over faces of the cell under consideration
-             !
-             do jf = 1, cell(icella)%nof
-                !
-                ! consider upwind cell of the current face
-                !
-                ifaceu = cell(icella)%face(jf)%atti(FACEID)
-                !
-                if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
+                if ( l == 1 ) then
                    !
-                   icellu = face(ifaceu)%atti(FC)
+                   ! left cell of current face
                    !
-                   !  update for ingoing flux
-                   !
-                   if ( quf(icella,k,jf) < 0. ) ctrhf = ctrhf + quf(icella,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
-                   !
-                endif
-                !
-             enddo
-             !
-             area = cell(icella)%attr(CELLAREA)
-             !
-             ctrhf = faca * ctrhf / area / hkum(iface,k)
-             !
-             rhsu(iface,k) = rhsu(iface,k) - ctrhf
-             !
-          else if ( wlimp(iface) ) then
-             !
-             finp = face(iface)%attr(FACELINPF)
-             !
-             nx = face(iface)%attr(FACENORMX)
-             ny = face(iface)%attr(FACENORMY)
-             !
-             ! consider left and right cells of boundary face and ...
-             !
-             icelll = face(iface)%atti(FACECL)
-             icellr = face(iface)%atti(FACECR)
-             !
-             ! ... boundary cell
-             !
-             icellb = face(iface)%atti(FACEC1)
-             !
-             ! get orientation at boundary face
-             !
-             if ( icellb == icelll ) then
-                rsgn = 1.
-                FC   = FACECL
-                faca = finp
-             else if ( icellb == icellr ) then
-                rsgn = -1.
-                FC   = FACECR
-                faca = 1. - finp
-             endif
-             !
-             if ( rsgn * u0(iface,k) > 0. ) then
-                !
-                ! outflow
-                !
-                ctrhf = 0.
-                !
-                ! loop over faces of the boundary cell
-                !
-                do jf = 1, cell(icellb)%nof
-                   !
-                   ! consider upwind cell of the current face
-                   !
-                   ifaceu = cell(icellb)%face(jf)%atti(FACEID)
-                   !
-                   if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
-                      !
-                      icellu = face(ifaceu)%atti(FC)
-                      !
-                      !  update for ingoing flux
-                      !
-                      if ( quf(icellb,k,jf) < 0. ) ctrhf = ctrhf + quf(icellb,k,jf) * ( nx * uvc(icellu,k,1) + ny * uvc(icellu,k,2) - u0(iface,k) )
-                      !
-                   endif
-                   !
-                enddo
-                !
-                area = cell(icellb)%attr(CELLAREA)
-                !
-                ctrhf = faca * ctrhf / area / hkum(iface,k)
-                !
-                rhsu(iface,k) = rhsu(iface,k) - ctrhf
-                !
-             endif
-             !
-          endif
-          !
-       enddo
-       !
-    enddo
-    !
-    ! add second order approximation based on Lax-Wendroff method (if appropriate)
-    !
-    propsc = nint(pnums(6))
-    !
-    if ( propsc /= 1 ) then
-       !
-       kappa  = -pnums(7)
-       mbound =  pnums(8)
-       phieby =  pnums(9)
-       !
-       do k = 1, kmax
-          !
-          do iface = 1, nfaces
-             !
-             if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
-                !
-                nx = face(iface)%attr(FACENORMX)
-                ny = face(iface)%attr(FACENORMY)
-                !
-                ! consider upwind cell of current face
-                !
-                if ( u0(iface,k) > 0. ) then
-                   !
-                   icella = face(iface)%atti(FACECL)
-                   FCU    = FACECL
-                   FCD    = FACECR
-                   faca   = face(iface)%attr(FACELINPF)
+                   icell = face(iface)%atti(FACECL)
+                   faca  = finp
                    !
                 else
                    !
-                   icella = face(iface)%atti(FACECR)
-                   FCU    = FACECR
-                   FCD    = FACECL
-                   faca   = 1. - face(iface)%attr(FACELINPF)
+                   ! right cell of current face
+                   !
+                   icell = face(iface)%atti(FACECR)
+                   faca  = 1. - finp
                    !
                 endif
                 !
-                ctrhf = 0.
-                !
-                ! loop over faces of the upwind cell
-                !
-                do jf = 1, cell(icella)%nof
+                do k = 1, kmax
                    !
-                   !  only update for ingoing flux
+                   cadv = 0.
                    !
-                   if ( quf(icella,k,jf) < 0. ) then
+                   ! loop over faces of the cell under consideration
+                   !
+                   do jf = 1, cell(icell)%nof
                       !
-                      ifaceu = cell(icella)%face(jf)%atti(FACEID)
+                      ! local face
                       !
-                      if ( face(ifaceu)%atti(FMARKER) == 0 .and. wetu(ifaceu) == 1 ) then
+                      ifacel = cell(icell)%face(jf)%atti(FACEID)
+                      !
+                      if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
                          !
-                         ! get reciprocal distance between the centers adjacent to upwind face
+                         ! compute local Lax-Wendroff factor
                          !
-                         rdx = face(ifaceu)%attr(FACEDISTC)
+                         rdx   = face(ifacel)%attr(FACEDISTC)
+                         lwfac = 1. - rdx * dt * abs(u0(ifacel,k))
                          !
-                         lwfac = 1. - rdx * dt * abs(u0(ifaceu,k))
+                         ! get vertices of face under consideration
                          !
-                         ! consider up- and downwind cells of the face under consideration
+                         vf1 = face(ifacel)%atti(FACEV1)
+                         vf2 = face(ifacel)%atti(FACEV2)
                          !
-                         icellu = face(ifaceu)%atti(FCU)
-                         icelld = face(ifaceu)%atti(FCD)
+                         ! consider up- and downwind cells of local face
                          !
-                         ! compute solution gradients
-                         !
-                         if ( u0(iface,k) > 0. ) then
-                            grad2x = uvc(icelld,k,1) - uvc(icellu,k,1)
-                            grad2y = uvc(icelld,k,2) - uvc(icellu,k,2)
+                         if ( u0(ifacel,k) > 0. ) then
+                            icellu = face(ifacel)%atti(FACECL)
+                            icelld = face(ifacel)%atti(FACECR)
                          else
-                            grad2x = uvc(icellu,k,1) - uvc(icelld,k,1)
-                            grad2y = uvc(icellu,k,2) - uvc(icelld,k,2)
+                            icellu = face(ifacel)%atti(FACECR)
+                            icelld = face(ifacel)%atti(FACECL)
                          endif
                          !
-                         rnumx = 0.
-                         rnumy = 0.
-                         rden  = 0.
+                         ! get vertices of upwind cell
                          !
-                         ! loop over faces of the upwind cell
+                         vc(1) = cell(icellu)%atti(CELLV1)
+                         vc(2) = cell(icellu)%atti(CELLV2)
+                         vc(3) = cell(icellu)%atti(CELLV3)
                          !
-                         do juf = 1, cell(icellu)%nof
-                            !
-                            if ( quf(icellu,k,juf) < 0. ) then
-                               !
-                               ifacel = cell(icellu)%face(juf)%atti(FACEID)
-                               !
-                               if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
-                                  !
-                                  ! consider left and right cells of local face
-                                  !
-                                  icelll = face(ifacel)%atti(FCU)
-                                  icellr = face(ifacel)%atti(FCD)
-                                  !
-                                  rnumx = rnumx + quf(icellu,k,juf) * ( uvc(icelll,k,1) - uvc(icellr,k,1) )
-                                  rnumy = rnumy + quf(icellu,k,juf) * ( uvc(icelll,k,2) - uvc(icellr,k,2) )
-                                  rden  = rden  - quf(icellu,k,juf)
-                                  !
-                               endif
-                               !
+                         ! search for most upwave vertex
+                         !
+                         do j = 1, 3
+                            if ( vc(j) /= vf1 .and. vc(j) /= vf2 ) then
+                               vu = vc(j)
+                               exit
                             endif
+                         enddo
+                         !
+                         ! compute area-weighted averaged velocity components at upwave vertex
+                         !
+                         ux      = 0.
+                         uy      = 0.
+                         totarea = 0.
+                         !
+                         do jc = 1, vert(vu)%noc
+                            !
+                            icella = vert(vu)%cell(jc)%atti(CELLID)
+                            !
+                            area = cell(icella)%attr(CELLAREA)
+                            !
+                            ux = ux + area * uvc(icella,k,1)
+                            uy = uy + area * uvc(icella,k,2)
+                            !
+                            totarea = totarea + area
                             !
                          enddo
                          !
-                         if ( rden /= 0. ) then
-                            grad1x = rnumx / rden
-                            grad1y = rnumy / rden
-                         else
-                            grad1x = 0.
-                            grad1y = 0.
-                         endif
+                         ux = ux / totarea
+                         uy = uy / totarea
+                         !
+                         ! compute solution gradients
+                         !
+                         grad1x = uvc(icelld,k,1) - uvc(icellu,k,1)
+                         grad2x = uvc(icellu,k,1) - ux
+                         !
+                         grad1y = uvc(icelld,k,2) - uvc(icellu,k,2)
+                         grad2y = uvc(icellu,k,2) - uy
                          !
                          ! compute high order limited part
                          !
                          hox = 0.5 * max(0.,lwfac) * fluxlim(grad1x,grad2x)
                          hoy = 0.5 * max(0.,lwfac) * fluxlim(grad1y,grad2y)
                          !
-                         ctrhf = ctrhf + quf(icella,k,jf) * ( nx * hox + ny * hoy )
+                         cadv = cadv + quf(icell,k,jf) * ( nx * hox + ny * hoy )
                          !
                       endif
                       !
-                   endif
+                   enddo
+                   !
+                   area = cell(icell)%attr(CELLAREA)
+                   !
+                   rhsu(iface,k) = rhsu(iface,k) - faca * cadv / area / hkumn(iface,k)
                    !
                 enddo
                 !
-                area = cell(icella)%attr(CELLAREA)
-                !
-                ctrhf = faca * ctrhf / area / hkum(iface,k)
-                !
-                rhsu(iface,k) = rhsu(iface,k) - ctrhf
-                !
-             endif
+             enddo
              !
-          enddo
+          endif
           !
        enddo
        !
@@ -619,7 +630,7 @@ subroutine SwashImpLayUflow
                 !
                 ! store water level gradient
                 !
-                rhsu(iface,k) = rhsu(iface,k) - grav * rdx * hf * hlay(k) * ( bcso(iface) - s0(icellb) ) / hkum(iface,k)
+                rhsu(iface,k) = rhsu(iface,k) - pfac(iface) * grav * rdx * hf * hlay(k) * ( bcso(iface) - s0(icellb) ) / hkum(iface,k)
                 !
              enddo
              !
@@ -962,114 +973,83 @@ subroutine SwashImpLayUflow
     !
     if ( ihvisc /= 0 ) then
        !
-       do k = 1, kmax
+       do iface = 1, nfaces
           !
-          do iface = 1, nfaces
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
              !
-             if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+             finp = face(iface)%attr(FACELINPF)
+             !
+             nx = face(iface)%attr(FACENORMX)
+             ny = face(iface)%attr(FACENORMY)
+             !
+             do l = 1, 2
                 !
-                finp = face(iface)%attr(FACELINPF)
-                !
-                nx = face(iface)%attr(FACENORMX)
-                ny = face(iface)%attr(FACENORMY)
-                !
-                ! consider left cell of current face
-                !
-                icell = face(iface)%atti(FACECL)
-                !
-                cvisc = 0.
-                !
-                ! loop over faces of the cell under consideration
-                !
-                do jf = 1, cell(icell)%nof
+                if ( l == 1 ) then
                    !
-                   ! local face
+                   ! left cell of current face
                    !
-                   ifacel = cell(icell)%face(jf)%atti(FACEID)
+                   icell = face(iface)%atti(FACECL)
+                   faca  = finp
                    !
-                   if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
-                      !
-                      ! get length and normal distance of local face
-                      !
-                      lf  = face(ifacel)%attr(FACELEN)
-                      rdx = face(ifacel)%attr(FACEDISTC)
-                      !
-                      ! consider left and right cells of local face
-                      !
-                      icelll = face(ifacel)%atti(FACECL)
-                      icellr = face(ifacel)%atti(FACECR)
-                      !
-                      ! take into account orientation of local face
-                      !
-                      if ( icell == icelll ) then
-                         rsgn =  1.
-                      else if ( icell == icellr ) then
-                         rsgn = -1.
-                      endif
-                      !
-                      ! compute contribution to viscosity term
-                      !
-                      cvisc = cvisc + rsgn * vnu2d(ifacel) * hkum(ifacel,k) * lf * rdx * ( nx * ( uvc(icellr,k,1)- uvc(icelll,k,1) ) + &
-                                                                                           ny * ( uvc(icellr,k,2)- uvc(icelll,k,2) ) )
-                      !
-                   endif
+                else
                    !
-                enddo
+                   ! right cell of current face
+                   !
+                   icell = face(iface)%atti(FACECR)
+                   faca  = 1. - finp
+                   !
+                endif
                 !
                 area = cell(icell)%attr(CELLAREA)
                 !
-                rhsu(iface,k) = rhsu(iface,k) + finp * cvisc / area / hkum(iface,k)
-                !
-                ! consider right cell of current face
-                !
-                icell = face(iface)%atti(FACECR)
-                !
-                cvisc = 0.
-                !
-                ! loop over faces of the cell under consideration
-                !
-                do jf = 1, cell(icell)%nof
+                do k = 1, kmax
                    !
-                   ! local face
+                   cvisc = 0.
                    !
-                   ifacel = cell(icell)%face(jf)%atti(FACEID)
+                   ! loop over faces of the cell under consideration
                    !
-                   if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
+                   do jf = 1, cell(icell)%nof
                       !
-                      ! get length and normal distance of local face
+                      ! local face
                       !
-                      lf  = face(ifacel)%attr(FACELEN)
-                      rdx = face(ifacel)%attr(FACEDISTC)
+                      ifacel = cell(icell)%face(jf)%atti(FACEID)
                       !
-                      ! consider left and right cells of local face
-                      !
-                      icelll = face(ifacel)%atti(FACECL)
-                      icellr = face(ifacel)%atti(FACECR)
-                      !
-                      ! take into account orientation of local face
-                      !
-                      if ( icell == icelll ) then
-                         rsgn =  1.
-                      else if ( icell == icellr ) then
-                         rsgn = -1.
+                      if ( face(ifacel)%atti(FMARKER) == 0 .and. wetu(ifacel) == 1 ) then
+                         !
+                         ! get length and normal distance of local face
+                         !
+                         lf  = face(ifacel)%attr(FACELEN)
+                         rdx = face(ifacel)%attr(FACEDISTC)
+                         !
+                         ! consider left and right cells of local face
+                         !
+                         icelll = face(ifacel)%atti(FACECL)
+                         icellr = face(ifacel)%atti(FACECR)
+                         !
+                         ! take into account orientation of local face
+                         !
+                         if ( icell == icelll ) then
+                            rsgn =  1.
+                         else if ( icell == icellr ) then
+                            rsgn = -1.
+                         endif
+                         !
+                         ! compute contribution to viscosity term
+                         !
+                         cvisc = cvisc + rsgn * vnu2d(ifacel) * hkum(ifacel,k) * lf * rdx * ( nx * ( uvc(icellr,k,1)- uvc(icelll,k,1) ) + &
+                                                                                              ny * ( uvc(icellr,k,2)- uvc(icelll,k,2) ) )
+                         !
                       endif
                       !
-                      ! compute contribution to viscosity term
-                      !
-                      cvisc = cvisc + rsgn * vnu2d(ifacel) * hkum(ifacel,k) * lf * rdx * ( nx * ( uvc(icellr,k,1)- uvc(icelll,k,1) ) + &
-                                                                                           ny * ( uvc(icellr,k,2)- uvc(icelll,k,2) ) )
-                      !
-                   endif
+                   enddo
+                   !
+                   rhsu(iface,k) = rhsu(iface,k) + faca * cvisc / area / hkum(iface,k)
                    !
                 enddo
                 !
-                area = cell(icell)%attr(CELLAREA)
-                !
-                rhsu(iface,k) = rhsu(iface,k) + (1.-finp) * cvisc / area / hkum(iface,k)
-                !
-             endif
+             enddo
              !
-          enddo
+          endif
           !
        enddo
        !
@@ -1499,7 +1479,7 @@ subroutine SwashImpLayUflow
              else if ( wlimp(iface) ) then   ! described water level at boundary face
                 !
                 hf         = 0.5 * ( s0(icellb) + bcso(iface) ) + dps(icellb)
-                ctrs       = -fac * lf * hu(iface) * abs(rdx) * hf / hum(iface)
+                ctrs       = -pfac(iface) * fac * lf * hu(iface) * abs(rdx) * hf / hum(iface)
                 dbs        = bcs(iface) - bcso(iface)
                 rhs(icell) = rhs(icell) - ctrs * dbs
                 !
@@ -1587,7 +1567,7 @@ subroutine SwashImpLayUflow
              else if ( wlimp(iface) ) then   ! described water level at boundary face
                 !
                 hf          = 0.5 * ( s0(icellb) + bcso(iface) ) + dps(icellb)
-                ctrs        = -fac * lf * hu(iface) * abs(rdx) * hf / hum(iface)
+                ctrs        = -pfac(iface) * fac * lf * hu(iface) * abs(rdx) * hf / hum(iface)
                 dbs         = bcs(iface) - bcso(iface)
                 rhsn(icell) = rhsn(icell) - ctrs * dbs
                 !
@@ -1679,7 +1659,7 @@ subroutine SwashImpLayUflow
              !
              do k = 1, kmax
                 !
-                u1(iface,k) = u1(iface,k) - grav * theta2 * dt * rdx * hf * ( dbs - ds(icellb) ) / hum(iface)
+                u1(iface,k) = u1(iface,k) - pfac(iface) * grav * theta2 * dt * rdx * hf * ( dbs - ds(icellb) ) / hum(iface)
                 !
              enddo
              !
@@ -2797,6 +2777,22 @@ subroutine SwashImpLayUflow
        enddo
        !
     endif
+    !
+    ! compute the mass flux at faces
+    !
+    do iface = 1, nfaces
+       !
+       lf = face(iface)%attr(FACELEN)
+       !
+       do k = 1, kmax
+          !
+          u = theta*u1(iface,k) + (1.-theta)*u0(iface,k)
+          !
+          qn(iface,k) = lf * hku(iface,k) * u
+          !
+       enddo
+       !
+    enddo
     !
     ! compute the depth-averaged flow velocity
     !

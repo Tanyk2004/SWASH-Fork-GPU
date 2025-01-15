@@ -11,7 +11,7 @@ subroutine SwashCheckPrep
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -1558,7 +1558,7 @@ subroutine SwashCheckPrep
                    j = curbgp%bgp(1)
                    if ( j == indx ) then
                       nbgrpt = nbgrpt + 1
-                      bgridp(9*nbgrpt-8) = kgrpnt(ix-MXF+1,iy-MYF+1)
+                      bgridp(9*nbgrpt-8) = int(kgrpnt(ix-MXF+1,iy-MYF+1),8)
                       bgridp(9*nbgrpt-7) = curbgp%bgp(2)
                       bgridp(9*nbgrpt-6) = curbgp%bgp(3)
                       bgridp(9*nbgrpt-5) = curbgp%bgp(4)
@@ -1594,7 +1594,7 @@ subroutine SwashCheckPrep
     ! check whether Stokes waves are imposed at open boundaries
     !
     do i = 1, nbgrpt
-       itmp = bgridp(9*i-1)
+       itmp = int(bgridp(9*i-1),4)
        if ( itmp == -1 ) then
           if ( istok  < 0 ) istok = 0
        elseif ( itmp == -11 ) then
@@ -1724,7 +1724,7 @@ subroutine SwashCheckPrep
     !
     jlay = 0
     do i = 1, nbgrpt
-       if ( bgridp(9*i-1) > 0 ) jlay = jlay + bgridp(9*i-1)
+       if ( bgridp(9*i-1) > 0 ) jlay = jlay + int(bgridp(9*i-1),4)
     enddo
     sumlay = kmax*(kmax+1)/2
     if ( mod(jlay,sumlay) /= 0 ) then
@@ -2924,8 +2924,13 @@ subroutine SwashCheckPrep
        if ( istat == 0 .and. .not.allocated(hu ) ) allocate (hu (nfaces), stat = istat)
        if ( istat == 0 .and. .not.allocated(hum) ) allocate (hum(nfaces), stat = istat)
     endif
-    if ( istat == 0 .and. .not.allocated(humn) ) allocate (humn(mcgrd), stat = istat)
-    if ( istat == 0 .and. .not.allocated(humo) ) allocate (humo(mcgrd), stat = istat)
+    if ( optg /= 5 ) then
+       if ( istat == 0 .and. .not.allocated(humn) ) allocate (humn(mcgrd), stat = istat)
+       if ( istat == 0 .and. .not.allocated(humo) ) allocate (humo(mcgrd), stat = istat)
+    else
+       if ( istat == 0 .and. .not.allocated(humn) ) allocate (humn(nfaces), stat = istat)
+       if ( istat == 0 .and. .not.allocated(humo) ) allocate (humo(nfaces), stat = istat)
+    endif
     !
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(cfricu) ) allocate (cfricu(mcgrd), stat = istat)
@@ -3191,6 +3196,7 @@ subroutine SwashCheckPrep
     if ( istat == 0 .and. .not.allocated(up) ) allocate (up(mcgrd,kmax), stat = istat)
     !
     if ( optg == 5 ) then
+       if ( istat == 0 .and. .not.allocated(qn  ) ) allocate(qn  (nfaces,kmax  ), stat = istat)
        if ( istat == 0 .and. .not.allocated(quf ) ) allocate(quf (ncells,kmax,3), stat = istat)
        if ( istat == 0 .and. .not.allocated(uvc ) ) allocate(uvc (ncells,kmax,2), stat = istat)
        if ( istat == 0 .and. .not.allocated(divu) ) allocate(divu(ncells,kmax  ), stat = istat)
@@ -3422,6 +3428,19 @@ subroutine SwashCheckPrep
        !
     endif
     !
+    ! local time stepping (unstructured-mesh transport module)
+    !
+    if ( itrans /= 0 .and. optg == 5 ) then
+       !
+       if (                  .not.allocated(mcell) ) allocate (mcell(ncells                  ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(mlev ) ) allocate (mlev (ncells                  ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(dtc  ) ) allocate (dtc  (ncells                  ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(rp0  ) ) allocate (rp0  (ncells,kmax             ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(rp1  ) ) allocate (rp1  (ncells,kmax             ), stat = istat)
+       if ( istat == 0 .and. .not.allocated(rpi  ) ) allocate (rpi  (ncells,kmax,0:2**mtamx-1), stat = istat)
+       !
+    endif
+    !
     if ( icreep /= 0 ) then
        !
        if ( istat == 0 .and. .not.allocated(wrk ) ) allocate (wrk (mcgrd,  kmax), stat = istat)
@@ -3541,6 +3560,7 @@ subroutine SwashCheckPrep
     up = 0.
     !
     if ( optg == 5 ) then
+       qn   = 0.
        quf  = 0.
        uvc  = 0.
        divu = 0.
@@ -3629,6 +3649,17 @@ subroutine SwashCheckPrep
     endif
     !
     if ( itrans /= 0 ) rpo = 0.
+    !
+    if ( itrans /= 0 .and. optg == 5 ) then
+       !
+       mcell = 0
+       mlev  = 0
+       dtc   = 0.
+       rp0   = 0.
+       rp1   = 0.
+       rpi   = 0.
+       !
+    endif
     !
     if ( icreep /= 0 ) then
        wrk  = 0.
@@ -3774,7 +3805,7 @@ subroutine SwashCheckPrep
           if ( istat == 0 .and. .not.allocated(hkso  ) ) allocate (hkso  (ncells,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hku   ) ) allocate (hku   (nfaces,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hkum  ) ) allocate (hkum  (nfaces,  kmax), stat = istat)
-          if ( istat == 0 .and. .not.allocated(hkumn ) ) allocate (hkumn (     0,     0), stat = istat)
+          if ( istat == 0 .and. .not.allocated(hkumn ) ) allocate (hkumn (nfaces,  kmax), stat = istat)
        endif
        !
        if ( lsubg ) then
@@ -4031,6 +4062,7 @@ subroutine SwashCheckPrep
        !
        if ( .not.allocated(bcs) ) allocate(bcs(nfaces), stat = istat)
        if ( istat == 0 .and. .not.allocated(bcso) ) allocate(bcso(nfaces), stat = istat)
+       if ( istat == 0 .and. .not.allocated(pfac) ) allocate(pfac(nfaces), stat = istat)
        !
        if ( ltrans > 0 ) then
           !
@@ -4047,6 +4079,7 @@ subroutine SwashCheckPrep
        !
        bcs  = 0.
        bcso = 0.
+       pfac = 0.
        !
        if ( ltrans > 0 ) then
           !
@@ -5710,6 +5743,7 @@ subroutine SwashCheckPrep
        else
           call SwashUpdateUDepths ( udep )
        endif
+       humn = hum
     endif
 !TIMG    call SWTSTO(52)
     if (STPNOW()) return

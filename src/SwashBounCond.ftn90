@@ -11,7 +11,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -126,6 +126,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer                                      :: ndsd             ! unit reference number of file containing data
     integer                                      :: nfreq            ! number of components in Fourier series
     integer                                      :: nseed            ! number of seed integers
+    integer*8                                    :: ntsmo            ! enlarged smoothing period to store as integer
     integer                                      :: nump             ! number of boundary points of selected side
     integer                                      :: vm               ! boundary marker
     !
@@ -942,6 +943,13 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
           tsmo = 0.
        endif
        !
+       if ( tsmo < 0.25*86400. ) then
+          ntsmo = nint(1e5*tsmo)
+       else
+          ntsmo = nint(1e3*tsmo)
+          ntsmo = ntsmo*100
+       endif
+       !
        ! add bound waves (optionally)
        !
        call INKEYW ('STA',' ')
@@ -1378,7 +1386,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
              bgptmp%bgp(4) = nbvl
              bgptmp%bgp(5) = 0
              bgptmp%bgp(6) = 1
-             bgptmp%bgp(7) = nint(100000.*tsmo)
+             bgptmp%bgp(7) = ntsmo
              if ( blayk == -1 ) then
                 if ( istok == 0 ) then
                    blayk = -1
@@ -1865,7 +1873,7 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
                    bgptmp%bgp(4) = nbv1
                    bgptmp%bgp(5) = nint(1000.*(1.-fac))
                    bgptmp%bgp(6) = nbv2
-                   bgptmp%bgp(7) = nint(100000.*tsmo)
+                   bgptmp%bgp(7) = ntsmo
                    if ( blayk == -1 ) then
                       if ( istok == 0 ) then
                          blayk = -1

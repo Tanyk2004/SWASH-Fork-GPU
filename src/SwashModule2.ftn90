@@ -19,7 +19,7 @@ module outp_data
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -304,7 +304,7 @@ module m_bndspec
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -448,7 +448,7 @@ module m_bndspec
     logical, save               :: lbfs   = .false.           ! indicates whether linked list of Fourier series parameters is initialized or not
 
     type bgpdat
-       integer                :: bgp(9)                       ! array containing data w.r.t. boundary grid points
+       integer*8              :: bgp(9)                       ! array containing data w.r.t. boundary grid points
                                                               ! =1; grid point index
                                                               ! =2; boundary type
                                                               ! =3; weight factor belonging to start boundary value for interpolation
@@ -565,7 +565,7 @@ module m_genarr
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -609,7 +609,7 @@ module m_genarr
 !
 !   Module variables
 !
-    integer, dimension(:)  , save, allocatable :: bgridp      ! data concerning boundary grid points
+    integer*8, dimension(:), save, allocatable :: bgridp      ! data concerning boundary grid points
     integer, dimension(:)  , save, allocatable :: indlay      ! layer thickness indicator
                                                               ! =1; thickness in percentage
                                                               ! =2; thickness in meter

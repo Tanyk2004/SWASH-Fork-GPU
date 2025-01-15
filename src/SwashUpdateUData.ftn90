@@ -11,7 +11,7 @@ subroutine SwashUpdateUData ( it )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -295,8 +295,8 @@ subroutine SwashUpdateUData ( it )
        !
        do i = 1, nbgrpt-1
           !
-          indx  = bgridp(9*i-8)
-          indxn = bgridp(9*i+1)
+          indx  = int(bgridp(9*i-8),4)
+          indxn = int(bgridp(9*i+1),4)
           !
           ! search for corresponding boundary face and cell
           !
@@ -312,7 +312,7 @@ subroutine SwashUpdateUData ( it )
              endif
           enddo faceloop
           !
-          btype = bgridp(9*i-7)
+          btype = int(bgridp(9*i-7),4)
           btype = abs(btype)
           !
           face(indxf)%atti(FBTYPE) = btype
@@ -332,9 +332,9 @@ subroutine SwashUpdateUData ( it )
           ! obtain boundary value from interpolation in space
           !
           wf1 = 0.001 * real(bgridp(9*i-6))
-          k1  = bgridp(9*i-5)
+          k1  = int(bgridp(9*i-5),4)
           wf2 = 1. - wf1
-          k2  = bgridp(9*i-3)
+          k2  = int(bgridp(9*i-3),4)
           !
           bval = wf1 * bndval(k1,1) + wf2 * bndval(k2,1)
           !
@@ -356,7 +356,7 @@ subroutine SwashUpdateUData ( it )
           !
           ! get layer number and order of Stokes wave
           !
-          itmp  = bgridp(9*i-1)
+          itmp  = int(bgridp(9*i-1),4)
           if ( itmp < 0 ) then
              klay  = mod(itmp,10)
              istok = -itmp/10
@@ -397,7 +397,7 @@ subroutine SwashUpdateUData ( it )
           !
           ! indicator for addition of bound long wave or linearized Riemann invariant
           !
-          itmp = bgridp(9*i)
+          itmp = int(bgridp(9*i),4)
           if ( itmp /= 2 ) then
              ibnd  = itmp
              lriem = .false.
@@ -1257,13 +1257,22 @@ subroutine SwashUpdateUData ( it )
     !
     do j = 1, nfaces
        !
-       if ( face(j)%atti(FBTYPE) == 2 .or. face(j)%atti(FBTYPE) == 8 ) then
+       if ( face(j)%atti(FBTYPE) == 2 ) then
           !
           wlimp(j) = .true.
+          ! note: rdx in pressure gradient is reciprocal of the distance between boundary face and cell center
+          !       here we take twice the distance in case of water level boundary
+          pfac (j) = 0.5
+          !
+       else if ( face(j)%atti(FBTYPE) == 8 ) then
+          !
+          wlimp(j) = .true.
+          pfac (j) = 1.
           !
        else
           !
           wlimp(j) = .false.
+          pfac (j) = 0.
           !
        endif
        !

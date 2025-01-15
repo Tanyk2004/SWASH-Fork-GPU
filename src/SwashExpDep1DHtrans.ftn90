@@ -11,7 +11,7 @@ subroutine SwashExpDep1DHtrans ( rp, rpo, u1, qx, flux, ibl, ibr, kgrpnt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -86,7 +86,7 @@ subroutine SwashExpDep1DHtrans ( rp, rpo, u1, qx, flux, ibl, ibr, kgrpnt )
                                                               ! >1: active grid point
     !
     real   , dimension(mcgrd)       , intent(out)   :: flux   ! total flux at cell-faces
-    real   , dimension(mcgrd)       , intent(inout) :: qx     ! discharge in x-direction
+    real   , dimension(mcgrd)       , intent(inout) :: qx     ! mass flux in x-direction
     real   , dimension(mcgrd,ltrans), intent(inout) :: rp     ! concentration at current time level
     real   , dimension(mcgrd)       , intent(out)   :: rpo    ! concentration at previous time level
     real   , dimension(mcgrd)       , intent(in)    :: u1     ! u-velocity at current time level
@@ -144,7 +144,7 @@ subroutine SwashExpDep1DHtrans ( rp, rpo, u1, qx, flux, ibl, ibr, kgrpnt )
     !
     stabmx = 0.5 * dx * dx / dt
     !
-    ! if momentum equation has been skipped, compute the discharge
+    ! if momentum equation has been skipped, compute the mass flux
     !
     if ( momskip ) qx = hu * u1
     !

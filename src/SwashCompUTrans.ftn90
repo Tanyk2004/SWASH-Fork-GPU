@@ -11,7 +11,7 @@ subroutine SwashCompUTrans
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -67,7 +67,7 @@ subroutine SwashCompUTrans
        !
        ! solve depth-averaged transport equations
        !
-       call SwashExpDepUtrans ( rp(1,1,1), rpo(1,1), u1(1,1), u0(1,1), fluxt(1,1) )
+       call SwashExpDepUtrans ( rp(1,1,1), rpo(1,1), rp1(1,1), rp0(1,1), rpi(1,1,0), u1(1,1), qn(1,1), fluxt(1,1) )
        if (STPNOW()) return
        !
     else

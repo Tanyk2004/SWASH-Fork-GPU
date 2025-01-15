@@ -11,7 +11,7 @@ subroutine SwashUpdateUDepths ( u )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -164,6 +164,8 @@ subroutine SwashUpdateUDepths ( u )
     !
     ! compute the water depth at faces based on averaging
     !
+    humo = hum
+    !
     do iface = 1, nfaces
        !
        finp = face(iface)%attr(FACELINPF)
@@ -190,6 +192,10 @@ subroutine SwashUpdateUDepths ( u )
        hum(iface) = h
        !
     enddo
+    !
+    ! extrapolate water depth at midface in time to improve accuracy of momentum-conservative time integration
+    !
+    humn = 1.5*hum - 0.5*humo
     !
     ! compute the water depth at faces based on upwinding
     !

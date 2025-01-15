@@ -11,7 +11,7 @@ subroutine SwashBCspectrum ( bcfour, spparm )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2024  Delft University of Technology
+!     Copyright (C) 2010-2025  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -330,6 +330,7 @@ subroutine SwashBCspectrum ( bcfour, spparm )
        !
        ! pick a random number in distribution function and assign corresponding (interpolated) direction to each frequency
        !
+       call random_seed(put=seed)
        do j = 1, nfreq
           call random_number(rval)
           do i = 2, ndir
