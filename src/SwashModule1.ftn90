@@ -175,7 +175,7 @@ module SwashCommdata2
 !
 !   Module parameters
 !
-    integer, parameter                         :: numgrd = 22 ! maximum number of input grids
+    integer, parameter                         :: numgrd = 23 ! maximum number of input grids
     !
     real   , parameter                         :: NEAREST = -12345678. ! quantity outside input grid equals value nearest boundary of input grid
 !
@@ -301,6 +301,7 @@ module SwashCommdata3
 !   Module parameters
 !
     integer, parameter                         :: mbot  =  5  ! dimension of array pbot
+    integer, parameter                         :: mcor  =  5  ! dimension of array pcor
     integer, parameter                         :: miwg  = 10  ! dimension of array piwg
     integer, parameter                         :: mnums = 75  ! dimension of array pnums
     integer, parameter                         :: mpor  =  5  ! dimension of array ppor
@@ -346,6 +347,7 @@ module SwashCommdata3
     real                                       :: yclen       ! length of computational grid in y-direction
     real                                       :: ycp         ! =xpc*sinpc-ypc*cospc;
                                                               ! origin of user coordinates w.r.t. computational coordinates
+    real                                       :: ylatc       ! geographic latitude coordinate of model area
     real                                       :: yoffs       ! offset value in y-coordinate
                                                               ! (from user coordinate system to internal coordinate system)
     real                                       :: ypc         ! y-coordinate of origin of computational grid
@@ -518,6 +520,9 @@ module SwashCommdata3
     real, dimension(mbot)                      :: pbot        ! parameters for the bottom friction coefficient
                                                               ! =1; friction parameter (constant, Chezy, Manning or Colebrook-White)
                                                               ! =2; Nikuradse roughness height
+    real, dimension(mcor)                      :: pcor        ! parameters for the Coriolis force
+                                                              ! =1; constant Coriolis parameter
+                                                              ! =2; (small) parameter to modify the weights of AB2 scheme
     real, dimension(miwg)                      :: piwg        ! parameters for internal wave generation
                                                               ! =1; centre of gravity of the source area
                                                               ! =2; width of the source area
@@ -618,8 +623,9 @@ module SwashCommdata3
                                                               ! =1; pressure correction method
                                                               ! =2; classical projection method
     integer                                    :: jhk         ! starting index of the time integration loop for global continuity equation
-                                                              ! =1; second order Hancock scheme
-                                                              ! =2; first order Euler scheme
+                                                              ! =1; second order RK3 scheme
+                                                              ! =2; second order Hancock scheme
+                                                              ! =3; first order Euler scheme
     integer                                    :: mtimei      ! method of time integration
                                                               ! =1; explicit method
                                                               != 2; implicit method

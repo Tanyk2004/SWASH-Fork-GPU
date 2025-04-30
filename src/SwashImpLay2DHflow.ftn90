@@ -150,12 +150,14 @@ subroutine SwashImpLay2DHflow
     real                               :: dxl      ! local mesh size in x-direction
     real                               :: dyl      ! local mesh size in y-direction
     real                               :: ener     ! total energy of closed system
+    real                               :: epsab2   ! small amount to modify weights of AB2 scheme
     real                               :: epslin   ! required accuracy in the linear solver
     real                               :: fac      ! a factor
     real                               :: fac1     ! another factor
     real                               :: fac2     ! some other factor
     real                               :: fac3     ! auxiliary factor
     real                               :: fac4     ! auxiliary factor
+    real, dimension(5)                 :: fc       ! energy-conserved weighted interpolation factors for Coriolis force term
     real                               :: fluxlim  ! flux limiter
     real                               :: grad1    ! solution gradient
     real                               :: grad2    ! another solution gradient
@@ -1680,36 +1682,59 @@ subroutine SwashImpLay2DHflow
     !
     if ( coriolis ) then
        !
-       do k = 1, kmax
-          !
-          do n = nfu, nl
-             do m = msta(n), mend(n)
+       epsab2 = pcor(2)
+       !
+       do n = nfu, nl
+          do m = msta(n), mend(n)
+             !
+             mu = m + 1
+             nd = n - 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             ndm  = kgrpnt(m ,nd)
+             ndmu = kgrpnt(mu,nd)
+             !
+             if ( uwetp(nm) == 1 .and. fcor(nm,1) /= 0. ) then
                 !
-                mu = m + 1
-                nd = n - 1
+                ! for permanently dry neighbours, corresponding values will be mirrored
                 !
-                nm   = kgrpnt(m ,n )
-                nmu  = kgrpnt(mu,n )
-                ndm  = kgrpnt(m ,nd)
-                ndmu = kgrpnt(mu,nd)
+                if ( nmu  == 1 ) nmu  = nm
+                if ( ndm  == 1 ) ndm  = nm
+                if ( ndmu == 1 ) ndmu = ndm
                 !
-                if ( uwetp(nm) == 1 ) then
-                   !
-                   ! for permanently dry neighbours, corresponding values will be mirrored
-                   !
-                   if ( nmu  == 1 ) nmu  = nm
-                   if ( ndm  == 1 ) ndm  = nm
-                   if ( ndmu == 1 ) ndmu = ndm
-                   !
-                   v = 0.25 * ( v0(nm,k) + v0(nmu,k) + v0(ndm,k) + v0(ndmu,k) )
-                   !
-                   rhsu(nm,k) = rhsu(nm,k) + fcor(nm,1)*v
-                   !
-                endif
+                ! energy-conserved weighting factors according to Espelid et al. (2000)
                 !
-             enddo
+                fc(1) = sqrt(abs(fcor(nm  ,2))*dpv(nm  ))
+                fc(2) = sqrt(abs(fcor(nmu ,2))*dpv(nmu ))
+                fc(3) = sqrt(abs(fcor(ndm ,2))*dpv(ndm ))
+                fc(4) = sqrt(abs(fcor(ndmu,2))*dpv(ndmu))
+                fc(5) = 1. / (4.*sqrt(abs(fcor(nm,1))*dpu(nm)))
+                !
+                do k = 1, kmax
+                   !
+                   ! at time level n-1
+                   !
+                   ! --- modified quasi second order Adams-Bashforth scheme which is conditionally stable for the inviscid case (see Marshall et al., 1997)
+                   !
+                   rhsu(nm,k) = rhsu(nm,k) + (0.5+epsab2) * cfu(nm,k)
+                   !
+                   ! at time level n
+                   !
+                   ! --- interpolate v-velocity at u-point using energy-conserved weighting factors
+                   !
+                   v = fc(1) * v0(nm,k) + fc(2) * v0(nmu,k) + fc(3) * v0(ndm,k) + fc(4) * v0(ndmu,k)
+                   v = fc(5) * v
+                   !
+                   cfu(nm,k) = -fcor(nm,1) * v
+                   !
+                   rhsu(nm,k) = rhsu(nm,k) - (1.5+epsab2) * cfu(nm,k)
+                   !
+                enddo
+                !
+             endif
+             !
           enddo
-          !
        enddo
        !
     endif
@@ -3475,36 +3500,59 @@ subroutine SwashImpLay2DHflow
     !
     if ( coriolis ) then
        !
-       do k = 1, kmax
-          !
-          do m = mfu, ml
-             do n = nsta(m), nend(m)
+       epsab2 = pcor(2)
+       !
+       do m = mfu, ml
+          do n = nsta(m), nend(m)
+             !
+             nu = n + 1
+             md = m - 1
+             !
+             nm   = kgrpnt(m ,n )
+             num  = kgrpnt(m ,nu)
+             nmd  = kgrpnt(md,n )
+             numd = kgrpnt(md,nu)
+             !
+             if ( vwetp(nm) == 1 .and. fcor(nm,2) /= 0. ) then
                 !
-                nu = n + 1
-                md = m - 1
+                ! for permanently dry neighbours, corresponding values will be mirrored
                 !
-                nm   = kgrpnt(m ,n )
-                num  = kgrpnt(m ,nu)
-                nmd  = kgrpnt(md,n )
-                numd = kgrpnt(md,nu)
+                if ( num  == 1 ) num  = nm
+                if ( nmd  == 1 ) nmd  = nm
+                if ( numd == 1 ) numd = nmd
                 !
-                if ( vwetp(nm) == 1 ) then
-                   !
-                   ! for permanently dry neighbours, corresponding values will be mirrored
-                   !
-                   if ( num  == 1 ) num  = nm
-                   if ( nmd  == 1 ) nmd  = nm
-                   if ( numd == 1 ) numd = nmd
-                   !
-                   u = 0.25 * ( u0(nm,k) + u0(num,k) + u0(nmd,k) + u0(numd,k) )
-                   !
-                   rhsu(nm,k) = rhsu(nm,k) - fcor(nm,2)*u
-                   !
-                endif
+                ! energy-conserved weighting factors according to Espelid et al. (2000)
                 !
-             enddo
+                fc(1) = sqrt(abs(fcor(nm  ,1))*dpu(nm  ))
+                fc(2) = sqrt(abs(fcor(num ,1))*dpu(num ))
+                fc(3) = sqrt(abs(fcor(nmd ,1))*dpu(nmd ))
+                fc(4) = sqrt(abs(fcor(numd,1))*dpu(numd))
+                fc(5) = 1. / (4.*sqrt(abs(fcor(nm,2))*dpv(nm)))
+                !
+                do k = 1, kmax
+                   !
+                   ! at time level n-1
+                   !
+                   ! --- modified quasi second order Adams-Bashforth scheme which is conditionally stable for the inviscid case (see Marshall et al., 1997)
+                   !
+                   rhsu(nm,k) = rhsu(nm,k) + (0.5+epsab2) * cfv(nm,k)
+                   !
+                   ! at time level n
+                   !
+                   ! --- interpolate u-velocity at v-point using energy-conserved weighting factors
+                   !
+                   u = fc(1) * u0(nm,k) + fc(2) * u0(num,k) + fc(3) * u0(nmd,k) + fc(4) * u0(numd,k)
+                   u = fc(5) * u
+                   !
+                   cfv(nm,k) = fcor(nm,2) * u
+                   !
+                   rhsu(nm,k) = rhsu(nm,k) - (1.5+epsab2) * cfv(nm,k)
+                   !
+                enddo
+                !
+             endif
+             !
           enddo
-          !
        enddo
        !
     endif

@@ -164,10 +164,11 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     real                                       :: dxl      ! local mesh size in x-direction
     real                                       :: dyl      ! local mesh size in y-direction
     real                                       :: ener     ! total energy of closed system
+    real                                       :: epsab2   ! small amount to modify weights of AB2 scheme
     real                                       :: fac      ! a factor
     real                                       :: fac1     ! another factor
     real                                       :: fac2     ! some other factor
-    real                                       :: fh       ! factor for Hancock scheme
+    real                                       :: fh       ! factor for Hancock/RK3 scheme
     real                                       :: fluxlim  ! flux limiter
     real                                       :: grad1    ! solution gradient
     real                                       :: grad2    ! another solution gradient
@@ -964,6 +965,53 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     endif
     !
+    ! compute Coriolis force
+    !
+    if ( coriolis ) then
+       !
+       epsab2 = pcor(2)
+       !
+       do n = nfu, nl
+          do m = mf, ml
+             !
+             mu = m + 1
+             nd = n - 1
+             !
+             nm   = kgrpnt(m ,n )
+             nmu  = kgrpnt(mu,n )
+             ndm  = kgrpnt(m ,nd)
+             ndmu = kgrpnt(mu,nd)
+             !
+             if ( wetu(nm) == 1 .and. fcor(nm,1) /= 0. ) then
+                !
+                ! at time level n-1
+                !
+                ! --- modified quasi second order Adams-Bashforth scheme which is conditionally stable for the inviscid case (see Marshall et al., 1997)
+                !
+                corf(nm) = -(0.5+epsab2) * cfu(nm,1)
+                !
+                ! at time level n
+                !
+                ! --- interpolate v-velocity at u-point using energy-conserved weighting factors according to Espelid et al. (2000)
+                !
+                v = sqrt(abs(fcor(nm,2))*dpv(nm))*v0(nm) + sqrt(abs(fcor(nmu,2))*dpv(nmu))*v0(nmu) + sqrt(abs(fcor(ndm,2))*dpv(ndm))*v0(ndm) + sqrt(abs(fcor(ndmu,2))*dpv(ndmu))*v0(ndmu)
+                v = v / (4.*sqrt(abs(fcor(nm,1))*dpu(nm)))
+                !
+                cfu(nm,1) = -fcor(nm,1) * v
+                !
+                corf(nm) = corf(nm) + (1.5+epsab2) * cfu(nm,1)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+    else
+       !
+       corf = 0.
+       !
+    endif
+    !
     ! include effect of ambient current - first order approximation
     !
     if ( iamb == 1 ) then
@@ -1231,11 +1279,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
           msta = mf
           !
-          ! neglect wind and pressure gradients at water level boundary
+          ! neglect wind, pressure gradients and Coriolis force at water level boundary
           !
           windu (nmf) = 0.
           wndimp(nmf) = 0.
           pgrad (nmf) = 0.
+          corf  (nmf) = 0.
           !
        else
           !
@@ -1247,11 +1296,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
           mend = ml
           !
-          ! neglect wind and pressure gradients at water level boundary
+          ! neglect wind, pressure gradients and Coriolis force at water level boundary
           !
           windu (nml) = 0.
           wndimp(nml) = 0.
           pgrad (nml) = 0.
+          corf  (nml) = 0.
           !
        else if ( lreptx ) then    ! periodicity at right boundary point
           !
@@ -1301,7 +1351,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
              !
              ! compute total contributions of the momentum equation
              !
-             contrib = advecx(nm) + advecy(nm) + zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm)) - visc(nm) - fcor(nm,1)*v
+             contrib = advecx(nm) + advecy(nm) + zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm)) - visc(nm) + corf(nm)
              !
              denom = 1. + cvegu(nm,1,2) + cpomu(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
              !
@@ -2556,6 +2606,53 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
     endif
     !
+    ! compute Coriolis force
+    !
+    if ( coriolis ) then
+       !
+       epsab2 = pcor(2)
+       !
+       do m = mfu, ml
+          do n = nf, nl
+             !
+             nu = n + 1
+             md = m - 1
+             !
+             nm   = kgrpnt(m ,n )
+             num  = kgrpnt(m ,nu)
+             nmd  = kgrpnt(md,n )
+             numd = kgrpnt(md,nu)
+             !
+             if ( wetv(nm) == 1 .and. fcor(nm,2) /= 0. ) then
+                !
+                ! at time level n-1
+                !
+                ! --- modified quasi second order Adams-Bashforth scheme which is conditionally stable for the inviscid case (see Marshall et al., 1997)
+                !
+                corf(nm) = -(0.5+epsab2) * cfv(nm,1)
+                !
+                ! at time level n
+                !
+                ! --- interpolate u-velocity at v-point using energy-conserved weighting factors according to Espelid et al. (2000)
+                !
+                u = sqrt(abs(fcor(nm,1))*dpu(nm))*u0(nm) + sqrt(abs(fcor(num,1))*dpu(num))*u0(num) + sqrt(abs(fcor(nmd,1))*dpu(nmd))*u0(nmd) + sqrt(abs(fcor(numd,1))*dpu(numd))*u0(numd)
+                u = u / (4.*sqrt(abs(fcor(nm,2))*dpv(nm)))
+                !
+                cfv(nm,1) = fcor(nm,2) * u
+                !
+                corf(nm) = corf(nm) + (1.5+epsab2) * cfv(nm,1)
+                !
+             endif
+             !
+          enddo
+       enddo
+       !
+    else
+       !
+       corf = 0.
+       !
+    endif
+    !
     ! include effect of ambient current - first order approximation
     !
     if ( iamb == 1 ) then
@@ -2822,11 +2919,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
           nsta = nf
           !
-          ! neglect wind and pressure gradients at water level boundary
+          ! neglect wind, pressure gradients and Coriolis force at water level boundary
           !
           windv (nfm) = 0.
           wndimp(nfm) = 0.
           pgrad (nfm) = 0.
+          corf  (nfm) = 0.
           !
        else
           !
@@ -2838,11 +2936,12 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
           !
           nend = nl
           !
-          ! neglect wind and pressure gradients at water level boundary
+          ! neglect wind, pressure gradients and Coriolis force at water level boundary
           !
           windv (nlm) = 0.
           wndimp(nlm) = 0.
           pgrad (nlm) = 0.
+          corf  (nlm) = 0.
           !
        else if ( lrepty ) then    ! periodicity at upper boundary point
           !
@@ -2892,7 +2991,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
              !
              ! compute total contributions of the momentum equation
              !
-             contrib = advecx(nm) + advecy(nm) + zgrad + pgrad(nm) + qgrad(nm) - windv(nm)/max(1.e-3,hvm(nm)) - visc(nm) + fcor(nm,2)*u
+             contrib = advecx(nm) + advecy(nm) + zgrad + pgrad(nm) + qgrad(nm) - windv(nm)/max(1.e-3,hvm(nm)) - visc(nm) + corf(nm)
              !
              denom = 1. + cvegv(nm,1,2) + cpomv(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
              !
@@ -4229,13 +4328,13 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
     nend = nl - 1
     if ( LMYL ) nend = nl
     !
-    ! solve global continuity equation by means of the second order Hancock scheme
+    ! solve global continuity equation by means of the second order RK3 scheme
     !
-    do j = jhk, 2
+    do j = jhk, 3
        !
-       if ( j == 1 ) then
+       if ( j <= 2 ) then
           !
-          ! predictor phase
+          ! predictor phases
           !
           fh = 0.5
           !
@@ -4399,7 +4498,7 @@ subroutine SwashExpDep2DHflow ( u1, u0, ua, ua2, up, qx, qxm, v1, v0, qy, qym, q
        !
        ! correct the water depths for mass fluxes
        !
-       if ( j == 1 ) call SwashUpdDepu ( u1, v1 )
+       if ( j <= 2 ) call SwashUpdDepu ( u1, v1 )
        !
     enddo
     !

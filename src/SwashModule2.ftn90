@@ -634,6 +634,8 @@ module m_genarr
     real   , dimension(:,:), save, allocatable :: bndval      ! array containing boundary values at two time levels
     real   , dimension(:)  , save, allocatable :: bveg        ! stem diameter for each layer
     real   , dimension(:)  , save, allocatable :: cdveg       ! drag coefficient due to vegetation for each layer
+    real   , dimension(:)  , save, allocatable :: corp        ! user-defined input field of Coriolis parameter
+    real   , dimension(:)  , save, allocatable :: corpf       ! input field of Coriolis parameter mapped onto computational grid
     real   , dimension(:)  , save, allocatable :: depf        ! input field of depth w.r.t. still water level mapped onto computational grid
     real   , dimension(:)  , save, allocatable :: depth       ! user-defined input field of bottom level
     real   , dimension(:)  , save, allocatable :: flobj       ! user-defined input field of draft of floating object

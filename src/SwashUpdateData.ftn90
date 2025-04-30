@@ -137,6 +137,7 @@ subroutine SwashUpdateData ( it )
     real                  :: dx2      ! first component of covariant base vector a_(2)
     real                  :: dy1      ! second component of covariant base vector a_(1)
     real                  :: dy2      ! second component of covariant base vector a_(2)
+    real, save            :: epsab2   ! parameter to modify the weights of Adams-Bashforth scheme
     real                  :: fac      ! a factor
     real                  :: fac1     ! another factor
     real                  :: fac2     ! some other factor
@@ -270,6 +271,15 @@ subroutine SwashUpdateData ( it )
           ! extension mooring lines
           extml0 = extml1
           !
+       endif
+       !
+       if ( it == 1 ) then
+          epsab2 = pcor(2)
+          ! at first time step use explicit Euler scheme to Coriolis forcing term
+          pcor(2) = -0.5
+       else if ( it > 1 ) then
+          ! from second time step on use modified AB2 scheme to Coriolis forcing term
+          pcor(2) = epsab2
        endif
        !
     endif

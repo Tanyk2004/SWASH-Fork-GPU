@@ -83,6 +83,7 @@ subroutine SwashCheckPrep
 !   Local variables
 !
     integer                                     :: i           ! loop counter
+    integer                                     :: icell       ! loop counter over cells
     integer                                     :: icelll      ! left cell of present face
     integer                                     :: icellr      ! right cell of present face
     integer, save                               :: ient = 0    ! number of entries in this subroutine
@@ -113,9 +114,10 @@ subroutine SwashCheckPrep
     integer                                     :: nfreq       ! number of frequencies
     integer                                     :: nmli        ! number of mooring lines
     integer                                     :: sumlay      ! sum of layer numbers
+    integer, dimension(3)                       :: vc          ! vertices of present cell
     !
     real                                        :: altmp       ! an auxiliary real to temporarily store a direction
-    real                                        :: cf          ! local bottom friction coefficient
+    real                                        :: cf          ! local bottom friction coefficient / Coriolis parameter
     real                                        :: cosva       ! =cos(-alpg(20)),
                                                                ! cosine of angle of ambient velocity input grid w.r.t. computational grid
     real                                        :: dep         ! local bottom level
@@ -143,6 +145,7 @@ subroutine SwashCheckPrep
     real                                        :: wlvl        ! local water level
     real                                        :: xcl         ! length of computational domain in x-direction
     real                                        :: xp          ! x-coordinate of grid point
+    real                                        :: yc          ! y-coordinate of cell center
     real                                        :: ycl         ! length of computational domain in y-direction
     real                                        :: yp          ! y-coordinate of grid point
     !
@@ -163,6 +166,7 @@ subroutine SwashCheckPrep
     type(bgpdat), pointer                       :: curbgp      ! current item in list of boundary grid points
     type(ribdat), pointer                       :: currib      ! current item in list of rigid body parameters
     !
+    type(celltype), dimension(:), pointer       :: cell        ! datastructure for cells with their attributes
     type(facetype), dimension(:), pointer       :: face        ! datastructure for faces with their attributes
 !
 !   Structure
@@ -173,8 +177,9 @@ subroutine SwashCheckPrep
 !
     if (ltrace) call strace (ient,'SwashCheckPrep')
     !
-    ! point to face object
+    ! point to cell and face objects
     !
+    cell => gridobject%cell_grid
     face => gridobject%face_grid
     !
     if ( mxc <= 1   .and. optg /= 5   ) call msgerr (3, 'no valid computational grid; check command CGRID')
@@ -364,16 +369,24 @@ subroutine SwashCheckPrep
        ltur   = 0
     endif
     !
-    ! check consistencies with respect to the Coriolis force
+    ! check parameters with respect to the Coriolis force
     !
     if ( oned .and. coriolis ) then
        call msgerr (1, 'no Coriolis force in case of 1D computation')
        coriolis = .false.
     endif
     !
-    if ( kspher /= 1 .and. coriolis ) then
-       call msgerr (1, 'no Coriolis force in case of Cartesian coordinates')
+    if ( ( .not.pcor(1) /= 0. .or. .not.ylatc /= 0. ) .and. coriolis ) then
+       call msgerr (0, 'Coriolis force will not be included')
        coriolis = .false.
+    endif
+    !
+    if ( coriolis ) then
+       if ( kspher > 0 .and. leds(23) == 2 ) then
+          call msgerr (1, 'space varying Coriolis parameter has been read but will be ignored')
+          call msgerr (1, 'since the grid is spherical, this parameter will be calculated from the local latitude coordinates')
+          leds(23) = 0
+       endif
     endif
     !
     ! check smoothing of boundary conditions/internal wave generation in case of restarting
@@ -1443,7 +1456,7 @@ subroutine SwashCheckPrep
     !
     if ( linswe ) then
        !
-       jhk      = 2
+       jhk      = 3
        pnums(6) = 1.
        horwinc  = .false.
        verwinc  = .false.
@@ -1951,57 +1964,6 @@ subroutine SwashCheckPrep
        if ( .not.allocated(oparrk) ) allocate(oparrk(0,0,0))
     endif
     !
-    ! compute the Coriolis parameter, if appropriate
-    !
-    if ( .not.allocated(fcor) ) allocate(fcor(mcgrd,2))
-    fcor = 0.
-    !
-    if ( coriolis ) then
-       !
-       ! compute sine of latitude in u-points
-       !
-       do iy = 2, myc-1
-          do ix = 1, mxc-1
-             !
-             indx = kgrpnt(ix,iy)
-             !
-             if ( indx > 1 ) then
-                !
-                fcor(indx,1) = sin(degrad*(0.5*(ycgrid(ix,iy)+ycgrid(ix,iy-1)) + yoffs))
-                !
-             endif
-             !
-          enddo
-       enddo
-       !
-       call periodic ( fcor(1,1), kgrpnt, 1, 1 )
-       !
-       ! compute sine of latitude in v-points
-       !
-       do ix = 2, mxc-1
-          do iy = 1, myc-1
-             !
-             indx = kgrpnt(ix,iy)
-             !
-             if ( indx > 1 ) then
-                !
-                fcor(indx,2) = sin(degrad*(0.5*(ycgrid(ix,iy)+ycgrid(ix-1,iy)) + yoffs))
-                !
-             endif
-             !
-          enddo
-       enddo
-       !
-       call periodic ( fcor(1,2), kgrpnt, 1, 1 )
-       !
-       ! compute Coriolis parameter
-       !
-       omega = pi2 / ( 24. * 3600. )
-       !
-       fcor  = 2. * omega * fcor
-       !
-    endif
-    !
     if ( optg == 5 ) then
        !
        ! deallocate arrays kvertc and kvertf (we don't use them anymore!)
@@ -2252,6 +2214,21 @@ subroutine SwashCheckPrep
           !
           if ( .not.allocated(avxf) ) allocate ( avxf(0,0) )
           if ( .not.allocated(avyf) ) allocate ( avyf(0,0) )
+          !
+       endif
+       !
+    endif
+    !
+    if ( istat == 0 ) then
+       !
+       if ( leds(23) == 2 ) then
+          !
+          if ( .not.allocated(corpf) ) allocate ( corpf(mcgrd), stat = istat )
+          if ( istat == 0 ) corpf = 0.
+          !
+       else
+          !
+          if ( .not.allocated(corpf) ) allocate ( corpf(0) )
           !
        endif
        !
@@ -2579,6 +2556,17 @@ subroutine SwashCheckPrep
                    depf(indx) = depf(indx) + eamb
                 endif
                 !
+                ! retrieve space varying Coriolis factor and map to computational grid
+                !
+                if ( leds(23) == 2 ) then
+                   if ( lflgrd(23) ) then
+                      cf = corp((iygl-1)*mxg(23)+ixgl)
+                   else
+                      cf = SVALQI (xp, yp, 23, corp, NEAREST)
+                   endif
+                   corpf(indx) = cf
+                endif
+                !
              endif
              !
           enddo
@@ -2890,6 +2878,17 @@ subroutine SwashCheckPrep
              depf(indx) = depf(indx) + eamb
           endif
           !
+          ! retrieve space varying Coriolis factor and map to computational grid
+          !
+          if ( leds(23) == 2 ) then
+             if ( lflgrd(23) ) then
+                cf = corp(indx)
+             else
+                cf = SVALQI (xp, yp, 23, corp, NEAREST)
+             endif
+             corpf(indx) = cf
+          endif
+          !
        enddo
        !
     endif
@@ -3147,6 +3146,166 @@ subroutine SwashCheckPrep
     if ( optg /= 5 .and. ifloat /= 0 ) call SwashFloatObjects
     if (STPNOW()) return
     !
+    ! compute the Coriolis parameter, if appropriate
+    !
+    if ( coriolis ) then
+       !
+       if ( optg /= 5 ) then
+          if ( .not.allocated(fcor) ) allocate(fcor(mcgrd,2   ))
+          if ( .not.allocated(cfu ) ) allocate(cfu (mcgrd,kmax))
+          if ( .not.allocated(cfv ) ) allocate(cfv (mcgrd,kmax))
+       else
+          if ( .not.allocated(fcor) ) allocate(fcor(ncells,1))
+          if ( .not.allocated(cfu ) ) allocate(cfu (nfaces,kmax))
+       endif
+       fcor = 0.
+       cfu  = 0.
+       if ( optg /= 5 ) cfv  = 0.
+       !
+       if ( leds(23) /= 2 ) then
+          !
+          if ( pcor(1) /= -999. ) then
+             !
+             fcor = pcor(1)
+             !
+          else
+             !
+             if ( kspher == 0 ) then
+                !
+                ! Cartesian grid
+                !
+                fcor = sin(degrad*ylatc)
+                !
+             else
+                !
+                ! spherical grid
+                !
+                if ( optg /= 5 ) then
+                   !
+                   ! compute sine of latitude in u-points
+                   !
+                   do iy = 2, myc-1
+                      do ix = 1, mxc-1
+                         !
+                         indx = kgrpnt(ix,iy)
+                         !
+                         if ( indx > 1 ) then
+                            !
+                            fcor(indx,1) = sin(degrad*(0.5*(ycgrid(ix,iy)+ycgrid(ix,iy-1)) + yoffs))
+                            !
+                         endif
+                         !
+                      enddo
+                   enddo
+                   !
+                   call periodic ( fcor(1,1), kgrpnt, 1, 1 )
+                   !
+                   ! compute sine of latitude in v-points
+                   !
+                   do ix = 2, mxc-1
+                      do iy = 1, myc-1
+                         !
+                         indx = kgrpnt(ix,iy)
+                         !
+                         if ( indx > 1 ) then
+                            !
+                            fcor(indx,2) = sin(degrad*(0.5*(ycgrid(ix,iy)+ycgrid(ix-1,iy)) + yoffs))
+                            !
+                         endif
+                         !
+                      enddo
+                   enddo
+                   !
+                   call periodic ( fcor(1,2), kgrpnt, 1, 1 )
+                   !
+                else
+                   !
+                   ! compute sine of latitude in cells
+                   !
+                   do icell = 1, ncells
+                      !
+                      ! get y-coordinate of the cell center
+                      !
+                      yc = cell(icell)%attr(CELLCY)
+                      !
+                      fcor(icell,1) = sin(degrad*(yc + yoffs))
+                      !
+                   enddo
+                   !
+                endif
+                !
+             endif
+             !
+             ! compute Coriolis parameter
+             !
+             omega = pi2 / ( 24. * 3600. )
+             !
+             fcor  = 2. * omega * fcor
+             !
+          endif
+          !
+       else
+          !
+          if ( optg /= 5 ) then
+             !
+             ! interpolate Coriolis parameter from vertices to u-point
+             !
+             do iy = 2, myc-1
+                do ix = 1, mxc-1
+                   !
+                   indx  = kgrpnt(ix,iy  )
+                   indxu = kgrpnt(ix,iy-1)
+                   if ( indxu == 1 ) indxu = indx
+                   !
+                   if ( indx > 1 ) fcor(indx,1) = 0.5 * ( corpf(indx) + corpf(indxu) )
+                   !
+                enddo
+             enddo
+             !
+             call periodic ( fcor(1,1), kgrpnt, 1, 1 )
+             !
+             ! interpolate Coriolis parameter from vertices to v-point
+             !
+             do ix = 2, mxc-1
+                do iy = 1, myc-1
+                   !
+                   indx  = kgrpnt(ix  ,iy)
+                   indxr = kgrpnt(ix-1,iy)
+                   if ( indxr == 1 ) indxr = indx
+                   !
+                   if ( indx > 1 ) fcor(indx,2) = 0.5 * ( corpf(indx) + corpf(indxr) )
+                   !
+                enddo
+             enddo
+             !
+             call periodic ( fcor(1,2), kgrpnt, 1, 1 )
+             !
+          else
+             !
+             ! interpolate Coriolis parameter from vertices to cells
+             !
+             do icell = 1, ncells
+                !
+                ! get vertices of present cell
+                !
+                vc(1) = cell(icell)%atti(CELLV1)
+                vc(2) = cell(icell)%atti(CELLV2)
+                vc(3) = cell(icell)%atti(CELLV3)
+                !
+                fcor(icell,1) = ( corpf(vc(1)) + corpf(vc(2)) + corpf(vc(3)) )/ 3.
+                !
+             enddo
+             !
+          endif
+          !
+       endif
+       !
+    else
+       if ( .not.allocated(fcor) ) allocate (fcor(0,0))
+       if ( .not.allocated(cfu ) ) allocate (cfu (0,0))
+       if ( .not.allocated(cfv ) ) allocate (cfv (0,0))
+    endif
+    !
     ! allocate and initialize other flow data (discharges and some help arrays)
     !
     if ( .not.allocated(qx) ) allocate(qx(mcgrd,kmax), stat = istat)
@@ -3224,10 +3383,12 @@ subroutine SwashCheckPrep
           if ( istat == 0 .and. .not.allocated(cbot ) ) allocate (cbot (mcgrd), stat = istat)
           if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(mcgrd), stat = istat)
           if ( istat == 0 .and. .not.allocated(qgrad) ) allocate (qgrad(mcgrd), stat = istat)
+          if ( istat == 0 .and. .not.allocated(corf ) ) allocate (corf (mcgrd), stat = istat)
        else
           if ( istat == 0 .and. .not.allocated(cbot ) ) allocate (cbot (nfaces), stat = istat)
           if ( istat == 0 .and. .not.allocated(pgrad) ) allocate (pgrad(nfaces), stat = istat)
           if ( istat == 0 .and. .not.allocated(qgrad) ) allocate (qgrad(nfaces), stat = istat)
+          if ( istat == 0 .and. .not.allocated(corf ) ) allocate (corf (nfaces), stat = istat)
        endif
        !
     else
@@ -3581,6 +3742,7 @@ subroutine SwashCheckPrep
        cbot  = 0.
        pgrad = 0.
        qgrad = 0.
+       corf  = 0.
        !
     else
        !

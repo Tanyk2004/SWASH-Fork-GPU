@@ -78,7 +78,7 @@ subroutine SwashInit ( inerr )
     VERTXT = BLANK
     VERNUM = 11.01
     write (VERTXT, '(f5.2)') VERNUM
-    !call BUGFIX ('A')
+    call BUGFIX ('A')
     !call BUGFIX ('B')
     !
     call OCPINI ( 'swashinit', .true., inerr )
@@ -124,6 +124,7 @@ subroutine SwashInit ( inerr )
     swl    = 0.
     !
     dnorth = 90.
+    ylatc  = 52.
     bnaut  = .false.
     !
     myseed = 12345678
@@ -157,8 +158,6 @@ subroutine SwashInit ( inerr )
     kspher = 0
     rearth = 2.e7/pi
     lendeg = 2.e7/180.
-    !
-    coriolis = .false.
     !
     ! number of computational grid points
     !
@@ -301,6 +300,12 @@ subroutine SwashInit ( inerr )
     !
     svwp   = .false.
     prmean = -1.
+    !
+    ! parameters for Coriolis force
+    !
+    coriolis = .false.
+    pcor(1) = -999.
+    pcor(2) = 0.1
     !
     ! bottom friction coefficients
     !
