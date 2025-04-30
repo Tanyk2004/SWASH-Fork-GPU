@@ -95,8 +95,9 @@ subroutine SwashInputField ( logcom )
     !
     ! ==========================================================================
     !
-    ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/PORO/PSIZ/HSTRUC/ &
-    !          NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/ACURrent  &
+    ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/CORI/PORO/PSIZ/   &
+    !          HSTRUC/NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/   &
+    !          ACURrent                                                        &
     !
     !              | 'fname1'        |
     !      [fac]  <  SERIes 'fname2'  >  [idla] [nhedf] ([nhedt]) (nhedvec])   &
@@ -174,6 +175,9 @@ subroutine SwashInputField ( logcom )
     else if ( KEYWIS ('MWL') ) then
        igr1 = 22
        varea = .true.
+    else if ( KEYWIS ('CORI') ) then
+       igr1     = 23
+       coriolis = .true.
     else
        call WRNKEY
     endif
@@ -332,6 +336,11 @@ subroutine SwashInputField ( logcom )
           !
           if (.not.allocated(mwl)) allocate(mwl(mxg(igr1)*myg(igr1)))
           call SWCOPR( tarr, mwl, mxg(igr1)*myg(igr1) )
+          !
+       else if ( igr1 == 23 ) then
+          !
+          if (.not.allocated(corp)) allocate(corp(mxg(igr1)*myg(igr1)))
+          call SWCOPR( tarr, corp, mxg(igr1)*myg(igr1) )
           !
        endif
        !

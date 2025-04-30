@@ -170,7 +170,10 @@ module SwashFlowdata
     real  , dimension(:,:,:)  , save, allocatable :: cbndu        ! boundary condition of Dirichlet type for transport constituent at boundary of unstructured mesh
     real  , dimension(:)      , save, allocatable :: cfricu       ! friction coefficient in u-point
     real  , dimension(:)      , save, allocatable :: cfricv       ! friction coefficient in v-point
+    real  , dimension(:,:)    , save, allocatable :: cfu          ! stored Coriolis forcing in u-point for use at two time levels with AB2 scheme
+    real  , dimension(:,:)    , save, allocatable :: cfv          ! stored Coriolis forcing in v-point for use at two time levels with AB2 scheme
     real*8, dimension(:)      , save, allocatable :: cn           ! upper diagonal of tri-diagonal matrix of mildly nonlinear system
+    real  , dimension(:)      , save, allocatable :: corf         ! Coriolis force term
     real  , dimension(:,:)    , save, allocatable :: coutb        ! computed salinity at lower open boundary when tidal flow returns inward
     real  , dimension(:,:)    , save, allocatable :: coutl        ! computed salinity at left open boundary when tidal flow returns inward
     real  , dimension(:,:)    , save, allocatable :: coutr        ! computed salinity at right open boundary when tidal flow returns inward

@@ -127,6 +127,8 @@ subroutine SwashImpLayUflow
     real                                   :: ctrs     ! contribution to system of water level equations
     real                                   :: cvisc    ! contribution to viscosity term
     real                                   :: dbs      ! change in water level at boundary face over time
+    real                                   :: ener     ! total energy of closed system
+    real                                   :: epsab2   ! small amount to modify weights of AB2 scheme
     real                                   :: fac      ! a factor
     real                                   :: fac1     ! another factor
     real                                   :: fac2     ! some other factor
@@ -1209,6 +1211,112 @@ subroutine SwashImpLayUflow
                 endif
                 !
              endif
+             !
+          endif
+          !
+       enddo
+       !
+    endif
+    !
+    ! compute Coriolis force
+    !
+    if ( coriolis ) then
+       !
+       epsab2 = pcor(2)
+       !
+       do iface = 1, nfaces
+          !
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
+             !
+             finp = face(iface)%attr(FACELINPF)
+             !
+             nx = face(iface)%attr(FACENORMX)
+             ny = face(iface)%attr(FACENORMY)
+             !
+             ! at time level n-1
+             !
+             ! --- modified quasi second order Adams-Bashforth scheme which is conditionally stable for the inviscid case (see Marshall et al., 1997)
+             !
+             rhsu(iface,:) = rhsu(iface,:) + (0.5+epsab2) * cfu(iface,:) / hkum(iface,:)
+             !
+             ! at time level n
+             !
+             cfu(iface,:) = 0.
+             !
+             do l = 1, 2
+                !
+                if ( l == 1 ) then
+                   !
+                   ! left cell of current face
+                   !
+                   icell = face(iface)%atti(FACECL)
+                   faca  = finp
+                   !
+                else
+                   !
+                   ! right cell of current face
+                   !
+                   icell = face(iface)%atti(FACECR)
+                   faca  = 1. - finp
+                   !
+                endif
+                !
+                ! get coordinates of the cell circumcenter and cell area
+                !
+                xc = cell(icell)%attr(CELLCCX)
+                yc = cell(icell)%attr(CELLCCY)
+                !
+                area = cell(icell)%attr(CELLAREA)
+                !
+                ! compute cell-centered depth-integrated velocity components
+                !
+                do k = 1, kmax
+                   !
+                   ux = 0.
+                   uy = 0.
+                   !
+                   do jf = 1, cell(icell)%nof
+                      !
+                      ! local face
+                      !
+                      ifacel = cell(icell)%face(jf)%atti(FACEID)
+                      !
+                      ! get length of local face
+                      !
+                      lf = face(ifacel)%attr(FACELEN)
+                      !
+                      ! get coordinates of the midface
+                      !
+                      xf = face(ifacel)%attr(FACEMX)
+                      yf = face(ifacel)%attr(FACEMY)
+                      !
+                      ! consider left and right cells of local face
+                      !
+                      icelll = face(ifacel)%atti(FACECL)
+                      icellr = face(ifacel)%atti(FACECR)
+                      !
+                      ! take into account orientation of local face
+                      !
+                      if ( icell == icelll ) then
+                         rsgn =  1.
+                      else if ( icell == icellr ) then
+                         rsgn = -1.
+                      endif
+                      !
+                      ! compute the depth-integrated velocity vector at current cell using Perot's formula
+                      !
+                      ux = ux + rsgn * lf * ( xf - xc ) * hku(ifacel,k) * u0(ifacel,k)
+                      uy = uy + rsgn * lf * ( yf - yc ) * hku(ifacel,k) * u0(ifacel,k)
+                      !
+                   enddo
+                   !
+                   cfu(iface,k) = cfu(iface,k) + faca * fcor(icell,1) * ( ny * ux - nx * uy ) / area
+                   !
+                enddo
+                !
+             enddo
+             !
+             rhsu(iface,:) = rhsu(iface,:) - (1.5+epsab2) * cfu(iface,:) / hkum(iface,:)
              !
           endif
           !
@@ -2871,21 +2979,40 @@ subroutine SwashImpLayUflow
        !
     endif
     !
-    ! calculate total displaced volume of water (reference is at z = 0)
+    ! calculate total displaced volume of water (reference is at z = 0) and energy
     ! Note: this testing is appropriate for a closed domain with reflective boundaries
     !
     if ( ITEST >= 30 ) then
        !
-       vol = 0.
+       vol  = 0.
+       ener = 0.
        !
        do icell = 1, ncells
           !
           ! compute displaced volume in the cell center
           vol = vol + s1(icell)
           !
+          area = cell(icell)%attr(CELLAREA)
+          !
+          ! compute potential energy in the cell
+          ener = ener + 0.5 * grav * area * s1(icell) * s1(icell)
+          !
+       enddo
+       !
+       do iface = 1, nfaces
+          !
+          lf  = face(iface)%attr(FACELEN)
+          rdx = face(iface)%attr(FACEDISTC)
+          !
+          ! compute kinetic energy in the control volume of the face
+          ! note: the total erea of the control volumes is twice the domain area
+          !       which compensates the amount of velocity components (only half)
+          ener = ener + 0.5 * lf * hu(iface) * udep(iface) * udep(iface) / rdx
+          !
        enddo
        !
        write(PRINTF,102) vol
+       write(PRINTF,103) ener
        !
     endif
     !
@@ -3161,5 +3288,6 @@ subroutine SwashImpLayUflow
     !
  101 format (2x,'the net mass outflow is ',e14.8e2)
  102 format (2x,'the total displaced volume of water is ',e14.8e2)
+ 103 format (2x,'the total energy is ',e14.8e2)
     !
 end subroutine SwashImpLayUflow

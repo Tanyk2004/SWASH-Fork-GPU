@@ -90,6 +90,7 @@ subroutine SwashBCspectrum ( bcfour, spparm )
                                                 ! = 1; Pierson Moskowitz
                                                 ! = 2; Jonswap
                                                 ! = 3; TMA
+    integer, dimension(1)           :: tseed    ! seed to randomize spectral directions
     !
     real, dimension(ndir)           :: cdf      ! cumulative distribution function of directional spreading
     real                            :: cosdir   ! cosine of directions
@@ -328,9 +329,15 @@ subroutine SwashBCspectrum ( bcfour, spparm )
        enddo
        cdf = cdf/sum(dspr)
        !
-       ! pick a random number in distribution function and assign corresponding (interpolated) direction to each frequency
+       ! generate a new seed based on the provided seed to randomize spectral directions
        !
        call random_seed(put=seed)
+       call random_number(rval)
+       tseed(1) = int(rval * 99999999)
+       call random_seed(put=tseed)
+       !
+       ! pick a random number in distribution function and assign corresponding (interpolated) direction to each frequency
+       !
        do j = 1, nfreq
           call random_number(rval)
           do i = 2, ndir

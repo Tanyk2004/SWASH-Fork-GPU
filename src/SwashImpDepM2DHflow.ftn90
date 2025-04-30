@@ -646,7 +646,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
              !
              ! compute total contributions of the momentum equation (except advection)
              !
-             contrib = zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm)) - fcor(nm,1)*v
+             contrib = zgrad + pgrad(nm) + qgrad(nm) - windu(nm)/max(1.e-3,hum(nm))
              !
              denom = 1. + cvegu(nm,1,2) + cpomu(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
              !
@@ -1096,7 +1096,7 @@ subroutine SwashImpDepM2DHflow ( u1, u0, qx, qxm, v1, v0, qy, qym, q, dq, gmatu,
              !
              ! compute total contributions of the momentum equation
              !
-             contrib = zgrad + pgrad(nm) + qgrad(nm) - windv(nm)/max(1.e-3,hvm(nm)) + fcor(nm,2)*u
+             contrib = zgrad + pgrad(nm) + qgrad(nm) - windv(nm)/max(1.e-3,hvm(nm))
              !
              denom = 1. + cvegv(nm,1,2) + cpomv(nm,1) + dt * ( cbot(nm) + cporfr + cveg + wndimp(nm) )
              !

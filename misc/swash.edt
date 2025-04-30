@@ -5,8 +5,8 @@
 !
 !   SET [level] [nor] [depmin] [maxmes] [maxerr] [seed]                        &
 !       [grav] [rhowat] [temp] [salinity] [dynvis] [rhoair] [rhosed]           &
-!       [cdcap] [prmean] [backvisc] [kappa]                                    &
-!       CORIolis  CARTesian|NAUTical  [epshu]  CC                              &
+!       [cdcap] [prmean] [backvisc] [kappa] [latitude]                         &
+!       CARTesian|NAUTical  [epshu]  CC                                        &
 !       [printf]  [prtest]  [outlev]
 !
 !   MODE  DYNamic  / -> TWODimensional \  (SKIPMOMentum)  (LINear)
@@ -23,9 +23,9 @@
 !
 !   VERTical [kmax] < [thickness] M|PERC >
 !
-!   INPgrid  BOT|WLEV|CUR|VX|VY|FRic|WInd|WX|WY|PRessure|POROs|PSIZ|HSTRUC|    &
-!            NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment|MWL|ACUR|       &
-!            AVX|AVY                                                           &
+!   INPgrid  BOT|WLEV|CUR|VX|VY|FRic|WInd|WX|WY|PRessure|CORIolis|POROsity|    &
+!            PSIZ|HSTRUC|NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment|    &
+!            MWL|ACUR|AVX|AVY                                                  &
 !
 !      | REG [xpinp] [ypinp] [alpinp]  [mxinp] [myinp]  [dxinp] [dyinp] |
 !      |                                                                |
@@ -42,8 +42,9 @@
 !   READgrid UNSTRUCtured / -> TRIAngle \
 !                         \    EASYmesh / 'fname'
 !
-!   READinp   BOTtom|WLEVel|CURrent|FRic|WInd|PRessure|COOR|POROs|PSIZ|HSTRUC| &
-!             NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment|MWL|ACURrent   &
+!   READinp   BOTtom|WLEVel|CURrent|FRic|WInd|PRessure|COOR|CORIolis|POROsity| &
+!             PSIZ|HSTRUC|NPLAnts|DRAFt|LABel|SALinity|TEMPerature|SEDiment|   &
+!             MWL|ACURrent                                                     &
 !
 !                | 'fname1'        |
 !        [fac]  <  SERIes 'fname2'  >  [idla] [nhedf] ([nhedt]) (nhedvec])     &
@@ -75,20 +76,20 @@
 !
 !        ADDBoundwave | ADDIG                                                  &
 !
-!                   | FOURier     [azero] < [ampl] [omega] [phase] >
-!                   | REGular     [h] [per] [dir]
-!                   | BICHromatic [h1] [h2] [per1] [per2] [dir1] [dir2]
-!       | UNIForm  <  SPECTrum    [h] [per] [dir] [dd] [cycle] SEC|MIN|HR|DAY
-!       |           | SERIes      'fname' [itmopt]
-!       |           | SPECFile    'fname' [cycle] SEC|MIN|HR|DAY
-!      <                                                                       &
-!       |           | FOURier  < [len] [azero] < [ampl] [omega] [phase] > >
-!       |           | REGular  < [len] [h] [per] [dir] >
-!       |           | BICHrom  < [len] [h1] [h2] [per1] [per2] [dir1] [dir2] >
-!       | VARiable <  SPECTrum < [len] [h] [per] [dir] [dd] [cycle] S|MI|HR|DA >
-!                   | SERIes   < [len] 'fname' [itmopt] >
-!                   | SPECFile < [len] 'fname' [cycle] SEC|MIN|HR|DAY >
-!                   | SPECSwan 'fname' [cycle] SEC|MIN|HR|DAY
+!                | -> FOURier     [azero] < [ampl] [omega] [phase] >
+!                |    REGular     [h] [per] [dir]
+!                |    BICHromatic [h1] [h2] [per1] [per2] [dir1] [dir2]
+!    | UNIForm  <     SPECTrum    [h] [per] [dir] [dd] [cycle] SEC|MIN|HR|DAY
+!    |           |    SERIes      'fname' [itmopt]
+!    |           |    SPECFile    'fname' [cycle] SEC|MIN|HR|DAY
+!   <                                                                          &
+!    |           | -> FOURier  < [len] [azero] < [ampl] [omega] [phase] > >
+!    |           |    REGular  < [len] [h] [per] [dir] >
+!    |           |    BICHrom  < [len] [h1] [h2] [per1] [per2] [dir1] [dir2] >
+!    | VARiable <     SPECTrum < [len] [h] [per] [dir] [dd] [cycle] S|MI|HR|DA >
+!                |    SERIes   < [len] 'fname' [itmopt] >
+!                |    SPECFile < [len] 'fname' [cycle] SEC|MIN|HR|DAY >
+!                |    SPECSwan 'fname' [cycle] SEC|MIN|HR|DAY
 !
 !
 !   SOURce   X|Y | [k]   [centre] [width] [depth] [delta]                      &
@@ -182,6 +183,9 @@
 !   VEGEtation < [height] [diamtr] [nstems] [drag] > MASS [cm] POROsity Vertical
 !
 !
+!   CORIolis  [fpar] [epsab2]
+!
+!
 !                          | -> Sec |    | -> NONCohesive [size]            |
 !   TRANSP [diff] [retur] <     MIn  >  <                                    > &
 !                          |    HR  |    | COHesive [tauce] [taucd] [erate] |
@@ -266,7 +270,7 @@
 !   DPSopt  MIN|MEAN|MAX|SHIFt
 !
 !
-!               | EXPL [cfllow] [cflhig]  (EULer)               |
+!               | EXPL [cfllow] [cflhig]  (HANCock|EULer)       |
 !               |                                               |
 !   TIMEI METH <  IMPL [thetac] [thetas] &                       >             &
 !               |                                               |

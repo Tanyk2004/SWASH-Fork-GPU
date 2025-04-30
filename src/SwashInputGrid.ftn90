@@ -108,6 +108,8 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
     !            |          |
     !            | PRessure |
     !            |          |
+    !            | CORIolis |
+    !            |          |
     !            | POROsity |
     !            |          |
     !            | PSIZe    |
@@ -267,7 +269,8 @@ subroutine SwashInputGrid ( igrid1, igrid2, psname )
             igrid1 == 14 .or.                                     &
             igrid1 == 15 .or. igrid1 == 16 .or. igrid1 == 17 .or. &
             igrid1 == 19 .or.                                     &
-            igrid1 == 20 .or. igrid1 == 21 .or. igrid1 == 22      ) call msgerr (2, 'nonstationary input field not allowed in this case')
+            igrid1 == 20 .or. igrid1 == 21 .or. igrid1 == 22 .or. &
+            igrid1 == 23 ) call msgerr (2, 'nonstationary input field not allowed in this case')
        call INCTIM (ITMOPT,'TBEGINP',iflbeg(igrid1),'REQ',0d0)
        call INITVD ('DELTINP', iflint(igrid1), 'REQ', 0d0)
        call INCTIM (ITMOPT,'TENDINP',iflend(igrid1),'STA',1.d20)

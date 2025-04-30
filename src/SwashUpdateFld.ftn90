@@ -61,7 +61,7 @@ subroutine SwashUpdateFld ( igr1, igr2, arrx, arry, cosfc, sinfc, arrfx, arrfy, 
     real, dimension(mcgrd,3), intent(out)            :: arrfx    ! input field of scalar or x-component at three time levels mapped onto computational grid
     real, dimension(mcgrd,3), intent(out)            :: arrfy    ! input field of y-component at three time levels mapped onto computational grid
     real, dimension(mxg(igr1)*myg(igr1)), intent(in) :: arrx     ! user-defined input field of scalar or x-component
-    real, dimension(mxg(igr2)*myg(igr2)), intent(in) :: arry     ! user-defined input field of y-component
+    real, dimension(*), intent(in)                   :: arry     ! user-defined input field of y-component
     real, intent(in)                                 :: cosfc    ! cosine of angle between input grid and computational grid
     real, intent(in)                                 :: sinfc    ! sine of angle between input grid and computational grid
     real, dimension(mxc,myc)  , intent(in)           :: xcgrid   ! coordinates of computational grid in x-direction

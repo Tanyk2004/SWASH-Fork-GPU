@@ -157,7 +157,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
     real                            :: fac      ! a factor
     real                            :: fac1     ! another factor
     real                            :: fac2     ! some other factor
-    real                            :: fh       ! factor for Hancock scheme
+    real                            :: fh       ! factor for Hancock/RK3 scheme
     real                            :: fluxlim  ! flux limiter
     real                            :: grad1    ! solution gradient
     real                            :: grad2    ! another solution gradient
@@ -3306,13 +3306,13 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
     mend = ml - 1
     if ( LMXL ) mend = ml
     !
-    ! solve global continuity equation by means of the second order Hancock scheme
+    ! solve global continuity equation by means of the second order RK3 scheme
     !
-    do j = jhk, 2
+    do j = jhk, 3
        !
-       if ( j == 1 ) then
+       if ( j <= 2 ) then
           !
-          ! predictor phase
+          ! predictor phases
           !
           fh = 0.5
           !
@@ -3405,7 +3405,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
        if ( ibl == 10 ) s1(nmf ) = s1(nmfu) - dps(nmfu) + dps(nmfuu)
        if ( ibr == 10 ) s1(nmlu) = s1(nml ) - dps(nml ) + dps(nmld )
        !
-       if ( j == 1 ) then
+       if ( j <= 2 ) then
           !
           ! correct the water depth for mass flux
           !

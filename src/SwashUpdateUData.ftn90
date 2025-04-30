@@ -128,6 +128,7 @@ subroutine SwashUpdateUData ( it )
     real                  :: dcor     ! correction in depth integration to get zero mass outflow
     real                  :: dep      ! local water depth
     real                  :: dist     ! distance to boundary
+    real, save            :: epsab2   ! parameter to modify the weights of Adams-Bashforth scheme
     real                  :: fac      ! a factor
     real                  :: fac1     ! another factor
     real                  :: fac2     ! some other factor
@@ -237,6 +238,15 @@ subroutine SwashUpdateUData ( it )
        bcso  = bcs
        if ( kmax   > 1 ) hkso = hks
        if ( ltrans > 0 ) bcrpo = bcrp
+       !
+       if ( it == 1 ) then
+          epsab2 = pcor(2)
+          ! at first time step use explicit Euler scheme to Coriolis forcing term
+          pcor(2) = -0.5
+       else if ( it > 1 ) then
+          ! from second time step on use modified AB2 scheme to Coriolis forcing term
+          pcor(2) = epsab2
+       endif
        !
     endif
     !

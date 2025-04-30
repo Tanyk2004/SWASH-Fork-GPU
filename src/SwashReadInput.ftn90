@@ -512,7 +512,8 @@ subroutine SwashReadInput ( comput )
     ! SET  [level] [nor] [depmin] [maxmes] [maxerr] [seed]       &
     !      [grav] [rhowat] [temp] [salinity] [dynvis] [rhoair]   &
     !      [rhosed] [cdcap] [prmean] [backvisc] [kappa]          &
-    !      CORIolis  CARTesian/NAUTical                          &
+    !      [latitude]                                            &
+    !      CARTesian/NAUTical                                    &
     !      [epshu] (not documented)                              &
     !      CC (not documented)                                   &
     !      [printf]  [prtest] (not documented)                   &
@@ -540,9 +541,7 @@ subroutine SwashReadInput ( comput )
        call INREAL ('PRMEAN',   prmean, 'UNC', 0.)
        call INREAL ('BACKVISC', bvisc,  'UNC', 0.)
        call INREAL ('KAPPA',    vonkar, 'UNC', 0.)
-       !
-       call INKEYW ('STA',' ')
-       if ( KEYWIS ('CORI') ) coriolis = .true.
+       call INREAL ('LATITUDE', ylatc,  'UNC', 0.)
        !
        call INKEYW ('STA',' ')
        if ( KEYWIS ('NAUT') ) then
@@ -1376,6 +1375,19 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
+    ! CORIolis [fpar] [epsab2] (not documented)
+    !
+    ! ==========================================================================
+    !
+    if ( KEYWIS ('CORI') ) then
+       coriolis = .true.
+       call INREAL ('FPAR'  , pcor(1), 'UNC', 0. )
+       call INREAL ('EPSAB2', pcor(2), 'STA', 0.1)
+       goto 100
+    endif
+    !
+    ! ==========================================================================
+    !
     !                           | -> Sec |    | -> NONCohesive [size]            |
     ! TRANSPort [diff] [retur] <     MIn  >  <                                    > &
     !                           |    HR  |    | COHesive [tauce] [taucd] [erate] |
@@ -1833,7 +1845,7 @@ subroutine SwashReadInput ( comput )
     !
     !             | -> EXPL [cfllow] [cflhig] &                               |
     !             |                                                           |
-    !             |    EULer (not documented)                                 |
+    !             |    HANCock | EULer (not documented)                       |
     ! TIMEI METH <                                                             > &
     !             |    IMPL [thetac] [thetas] &                               |
     !             |                                                           |
@@ -1871,7 +1883,11 @@ subroutine SwashReadInput ( comput )
              call INREAL ('CFLHIG', pnums(3), 'STA', 0.8)
              !
              call INKEYW ('STA',' ')
-             if ( KEYWIS ('EUL') ) jhk = 2
+             if ( KEYWIS ('EUL') ) then
+                jhk = 3
+             else if ( KEYWIS ('HANC') ) then
+                jhk = 2
+             endif
           endif
        else
           call WRNKEY
@@ -2321,8 +2337,9 @@ subroutine SwashReadInput ( comput )
     ! ==========================================================================
     !
     ! INPgrid                                                                &
-    !    BOTtom/WLEVel/CURrent/VX/VY/FRic/WInd/WX/WY/PRes/PORO/PSIZ/HSTRUC/  &
-    !    NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/ACUR/AVX/AVY  &
+    !    BOTtom/WLEVel/CURrent/VX/VY/FRic/WInd/WX/WY/PRes/CORI/PORO/PSIZ/    &
+    !    HSTRUC/NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/ACUR/  &
+    !    AVX/AVY                                                             &
     !    | REG [xpinp] [ypinp] [alpinp]  [mxinp] [myinp]  [dxinp] [dyinp] |
     !   <  CURVilinear [stagrx] [stagry] [mxinp] [myinp]                   > &
     !    | UNSTRUCtured                                                   |
@@ -2412,6 +2429,9 @@ subroutine SwashReadInput ( comput )
        else if ( KEYWIS ('MWL') ) then
           igrd   = 22
           psname = 'MWLGRID '
+       else if ( KEYWIS ('CORI') ) then
+          igrd   = 23
+          psname = 'CORIGRID'
        else
           igrd   = 1
           psname = 'BOTTGRID'
@@ -2425,8 +2445,9 @@ subroutine SwashReadInput ( comput )
     !
     ! ==========================================================================
     !
-    ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/PORO/PSIZ/HSTRUC/ &
-    !          NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/ACURrent  &
+    ! READinp  BOTtom/WLevel/CURrent/FRiction/WInd/PRes/COOR/CORI/PORO/PSIZ/   &
+    !          HSTRUC/NPLAnts/DRAFt/LABel/SALinity/TEMPerature/SEDiment/MWL/   &
+    !          ACURrent                                                        &
     !      [fac]  / 'fname1'        \
     !             \ SERIES 'fname2' /  [idla] [nhedf] ([nhedt]) (nhedvec])     &
     !      FREE / FORMAT 'form' / [idfm] / UNFORMATTED

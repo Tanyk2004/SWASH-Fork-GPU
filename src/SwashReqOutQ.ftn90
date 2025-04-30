@@ -332,6 +332,10 @@ subroutine SwashReqOutQ ( found )
        !
  115   continue
        orqtmp%oqi(3) = nvar
+       if ( nvar == 0 ) then
+          allocate(orqtmp%ivtyp(0))
+          allocate(orqtmp%fac(0))
+       endif
        nullify(orqtmp%nextorq)
        if ( .not.lorq ) then
            forq = orqtmp
@@ -491,6 +495,10 @@ subroutine SwashReqOutQ ( found )
           enddo
        endif
        orqtmp%oqi(3) = nvar
+       if ( nvar == 0 ) then
+          allocate(orqtmp%ivtyp(0))
+          allocate(orqtmp%fac(0))
+       endif
        nullify(orqtmp%nextorq)
        if ( .not.lorq ) then
           forq = orqtmp
