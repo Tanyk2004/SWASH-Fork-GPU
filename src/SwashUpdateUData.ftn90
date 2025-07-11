@@ -450,8 +450,8 @@ subroutine SwashUpdateUData ( it )
                    if ( irough == 4 ) then
                       z1 = 0.5 * ( zks(indxs,kmax-1) - zks(indxs,kmax) )
                       z0 = z1 / exp( vonkar*logfrc(indxs,2) )
-                   else if ( cfricu(indxf) > 0. ) then
-                      z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxf)) + 1. )
+                   else if ( cfricu(indxs) > 0. ) then
+                      z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxs)) + 1. )
                    endif
                    fac = bval * hu(indxf) / ( hu(indxf)*(log(hu(indxf)/z0)-1.) + z0 )
                    do k = 1, kmax
@@ -757,8 +757,8 @@ subroutine SwashUpdateUData ( it )
                    if ( irough == 4 ) then
                       z1 = 0.5 * ( zks(indxs,kmax-1) - zks(indxs,kmax) )
                       z0 = z1 / exp( vonkar*logfrc(indxs,2) )
-                   else if ( cfricu(indxf) > 0. ) then
-                      z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxf)) + 1. )
+                   else if ( cfricu(indxs) > 0. ) then
+                      z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxs)) + 1. )
                    endif
                    fac = bval / ( hu(indxf)*(log(hu(indxf)/z0)-1.) + z0 )
                    do k = 1, kmax
@@ -810,8 +810,8 @@ subroutine SwashUpdateUData ( it )
                    if ( irough == 4 ) then
                       z1 = 0.5 * ( zks(indxs,kmax-1) - zks(indxs,kmax) )
                       z0 = z1 / exp( vonkar*logfrc(indxs,2) )
-                   else if ( cfricu(indxf) > 0. ) then
-                      z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxf)) + 1. )
+                   else if ( cfricu(indxs) > 0. ) then
+                      z0 = hu(indxf) / exp( vonkar/sqrt(cfricu(indxs)) + 1. )
                    endif
                    fac = rsgn * sqrt( grav / hu(indxf) ) * ( 2.*bval - s0(indxs) )
                    fac = fac * hu(indxf) / ( hu(indxf)*(log(hu(indxf)/z0)-1.) + z0 )

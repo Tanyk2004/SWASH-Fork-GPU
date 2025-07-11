@@ -2934,7 +2934,7 @@ subroutine SwashCheckPrep
     if ( optg /= 5 ) then
        if ( istat == 0 .and. .not.allocated(cfricu) ) allocate (cfricu(mcgrd), stat = istat)
     else
-       if ( istat == 0 .and. .not.allocated(cfricu) ) allocate (cfricu(nfaces), stat = istat)
+       if ( istat == 0 .and. .not.allocated(cfricu) ) allocate (cfricu(ncells), stat = istat)
     endif
     if ( istat == 0 .and. .not.allocated(apors ) ) allocate (apors (mcgrd), stat = istat)
     if ( istat == 0 .and. .not.allocated(bpors ) ) allocate (bpors (mcgrd), stat = istat)

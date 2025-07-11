@@ -313,9 +313,32 @@ subroutine SwashImpDepUflow ( u1, u0, uvc, qn, quf, q, dq, gmat, rho )
        !
        do iface = 1, nfaces
           !
-          if ( wetu(iface) == 1 ) then
+          ! consider left and right cells of current face
+          !
+          icelll = face(iface)%atti(FACECL)
+          icellr = face(iface)%atti(FACECR)
+          !
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
              !
-             cbot(iface) = cfricu(iface) / hum(iface)
+             finp = face(iface)%attr(FACELINPF)
+             !
+             cbot(iface) = ( finp * cfricu(icelll) + (1.-finp) * cfricu(icellr) ) / hum(iface)
+             !
+          elseif ( wetu(iface) == 1 ) then   ! wet boundary face
+             !
+             if ( icelll == 0 ) then
+                !
+                cbot(iface) = cfricu(icellr) / hum(iface)
+                !
+             elseif ( icellr == 0 ) then
+                !
+                cbot(iface) = cfricu(icelll) / hum(iface)
+                !
+             endif
+             !
+          else
+             !
+             cbot = 0.
              !
           endif
           !
@@ -327,41 +350,66 @@ subroutine SwashImpDepUflow ( u1, u0, uvc, qn, quf, q, dq, gmat, rho )
        !
        do iface = 1, nfaces
           !
-          if ( wetu(iface) == 1 ) then
+          if ( face(iface)%atti(FMARKER) == 0 .and. wetu(iface) == 1 ) then   ! internal wet face
              !
              finp = face(iface)%attr(FACELINPF)
              !
-             nx = face(iface)%attr(FACENORMX)
-             ny = face(iface)%attr(FACENORMY)
+             cbot(iface) = 0.
+             !
+             do l = 1, 2
+                !
+                if ( l == 1 ) then
+                   !
+                   ! left cell of current face
+                   !
+                   icell = face(iface)%atti(FACECL)
+                   faca  = finp
+                   !
+                else
+                   !
+                   ! right cell of current face
+                   !
+                   icell = face(iface)%atti(FACECR)
+                   faca  = 1. - finp
+                   !
+                endif
+                !
+                ! compute velocity magnitude
+                !
+                utot = sqrt( uvc(icell,1)*uvc(icell,1) + uvc(icell,2)*uvc(icell,2) )
+                !
+                cbot(iface) = cbot(iface) + faca * cfricu(icell) * utot / hum(iface)
+                !
+             enddo
+             !
+          elseif ( wetu(iface) == 1 ) then   ! wet boundary face
              !
              ! consider left and right cells of current face
              !
              icelll = face(iface)%atti(FACECL)
              icellr = face(iface)%atti(FACECR)
              !
-             ! compute tangential velocity component
-             !
-             if ( icelll /= 0 .and. icellr /= 0 ) then
+             if ( icelll == 0 ) then
                 !
-                ut = nx * ( finp * uvc(icelll,2) + (1.-finp) * uvc(icellr,2) ) - ny * ( finp * uvc(icelll,1) + (1.-finp) * uvc(icellr,1) )
+                ! compute velocity magnitude
                 !
-             else if ( icelll == 0 ) then
+                utot = sqrt( uvc(icellr,1)*uvc(icellr,1) + uvc(icellr,2)*uvc(icellr,2) )
                 !
-                ut = nx * uvc(icellr,2) - ny * uvc(icellr,1)
+                cbot(iface) = cfricu(icellr) * utot / hum(iface)
                 !
-             else
+             elseif ( icellr == 0 ) then
                 !
-                ut = nx * uvc(icelll,2) - ny * uvc(icelll,1)
+                ! compute velocity magnitude
+                !
+                utot = sqrt( uvc(icelll,1)*uvc(icelll,1) + uvc(icelll,2)*uvc(icelll,2) )
+                !
+                cbot(iface) = cfricu(icelll) * utot / hum(iface)
                 !
              endif
              !
-             ! compute velocity magnitude
+          else
              !
-             utot = sqrt( u0(iface)*u0(iface) + ut*ut )
-             !
-             ! compute contribution to bottom friction
-             !
-             cbot(iface) = cfricu(iface) * utot / hum(iface)
+             cbot = 0.
              !
           endif
           !

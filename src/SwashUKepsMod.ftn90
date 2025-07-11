@@ -492,21 +492,7 @@ subroutine SwashUKepsMod
                 !
                 if ( irough /= 4 ) then
                    !
-                   ustar2 = 0.
-                   !
-                   ! loop over faces of the cell
-                   !
-                   do jf = 1, cell(icell)%nof
-                      !
-                      ! face identifier
-                      !
-                      iface = cell(icell)%face(jf)%atti(FACEID)
-                      !
-                      ustar2 = ustar2 + cfricu(iface)
-                      !
-                   enddo
-                   !
-                   ustar2 = ustar2 * ( work(icell,1)*work(icell,1) + work(icell,2)*work(icell,2) ) / 3.
+                   ustar2 = cfricu(icell) * ( work(icell,1)*work(icell,1) + work(icell,2)*work(icell,2) )
                    !
                    amatt(icell,kmax,1) = 1.
                    rhst (icell,kmax  ) = ustar2 / sqrt(cmu)
