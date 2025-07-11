@@ -801,7 +801,11 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                    else if ( ihydro == 1 .or. ihydro == 2 ) then
                       !
                       oparrk(indx,0:kmax,12) = 0.5 * ( w1(indx,0:kmax) + w1(indxr,0:kmax) )
-                      oparrk(indx,1:kmax,13) = 0.5 * (  q(indx,1:kmax) +  q(indxr,1:kmax) )
+                      if ( .not.lsubg ) then
+                         oparrk(indx,1:kmax,13) = 0.5 * (  q(indx,1:kmax) +  q(indxr,1:kmax) )
+                      else
+                         oparrk(indx,1:kmax,13) = 0.5 * (  qv(indx,1:kmax) +  qv(indxr,1:kmax) )
+                      endif
                       !
                    endif
                    !
@@ -927,7 +931,11 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                    else if ( ihydro == 1 .or. ihydro == 2 ) then
                       !
                       oparrk(indx,0:kmax,12) = w1(indxr,0:kmax)
-                      oparrk(indx,1:kmax,13) =  q(indxr,1:kmax)
+                      if ( .not.lsubg ) then
+                         oparrk(indx,1:kmax,13) =  q(indxr,1:kmax)
+                      else
+                         oparrk(indx,1:kmax,13) =  qv(indxr,1:kmax)
+                      endif
                       !
                    endif
                    !
@@ -1377,7 +1385,11 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                       else if ( ihydro == 1 .or. ihydro == 2 ) then
                          !
                          oparrk(indx,0:kmax,12) = 0.25 * ( w1(indx,0:kmax) + w1(indxr,0:kmax) + w1(indxu,0:kmax) + w1(indxs,0:kmax) )
-                         oparrk(indx,1:kmax,13) = 0.25 * (  q(indx,1:kmax) +  q(indxr,1:kmax) +  q(indxu,1:kmax) +  q(indxs,1:kmax) )
+                         if ( .not.lsubg ) then
+                            oparrk(indx,1:kmax,13) = 0.25 * (  q(indx,1:kmax) +  q(indxr,1:kmax) +  q(indxu,1:kmax) +  q(indxs,1:kmax) )
+                         else
+                            oparrk(indx,1:kmax,13) = 0.25 * (  qv(indx,1:kmax) +  qv(indxr,1:kmax) +  qv(indxu,1:kmax) +  qv(indxs,1:kmax) )
+                         endif
                          !
                       endif
                       !
@@ -1725,7 +1737,11 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                       else if ( ihydro == 1 .or. ihydro == 2 ) then
                          !
                          oparrk(indx,0:kmax,12) = w1(indxs,0:kmax)
-                         oparrk(indx,1:kmax,13) =  q(indxs,1:kmax)
+                         if ( .not.lsubg ) then
+                            oparrk(indx,1:kmax,13) =  q(indxs,1:kmax)
+                         else
+                            oparrk(indx,1:kmax,13) =  qv(indxs,1:kmax)
+                         endif
                          !
                       endif
                       !
@@ -2047,12 +2063,6 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
           !
           if ( irough /= 4 .or. kmax == 1 ) then
              !
-             uwrk(:) = sqrt(cfricu(:)) * uwrk(:)
-             !
-             ! compute cell-based velocity vector
-             !
-             call perot ( uwrk, 1, 1 )
-             !
              if ( EQREAL(outpar(3),0.) ) then
                 !
                 do ivert = 1, nverts
@@ -2065,8 +2075,8 @@ subroutine SwashQuanOutp ( rtype, oqproc, mip, nvoqp, nvoqk, xc, yc, voqr, voq, 
                       !
                       area = cell(icell)%attr(CELLAREA)
                       !
-                      oparr(ivert,11) = oparr(ivert,11) + area * uvc(icell,1,1)
-                      oparr(ivert,12) = oparr(ivert,12) + area * uvc(icell,1,2)
+                      oparr(ivert,11) = oparr(ivert,11) + area * sqrt(cfricu(icell)) * uvc(icell,1,1)
+                      oparr(ivert,12) = oparr(ivert,12) + area * sqrt(cfricu(icell)) * uvc(icell,1,2)
                       !
                       totarea = totarea + area
                       !

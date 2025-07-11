@@ -267,18 +267,10 @@ subroutine SwashElemOutp ( oqproc, mip, nvoqp, nvoqk, voqr, voq, voqk )
     !
     if ( oqproc(32) ) then
        !
-       ! first, compute friction velocity
-       !
-       uwrk(:) = sqrt(cfricu(:)) * uwrk(:)
-       !
-       ! next, compute cell-based velocity vector
-       !
-       call perot ( uwrk, 1, 1 )
-       !
        jvx = voqr(32)
        jvy = jvx + 1
-       voq(:,jvx) = uvc(:,1,1)
-       voq(:,jvy) = uvc(:,1,2)
+       voq(:,jvx) = sqrt(cfricu(:)) * uvc(:,1,1)
+       voq(:,jvy) = sqrt(cfricu(:)) * uvc(:,1,2)
        do i = 1, mip
           rval1 = voq(i,jvx)
           rval2 = voq(i,jvy)

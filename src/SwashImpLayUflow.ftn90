@@ -1140,7 +1140,28 @@ subroutine SwashImpLayUflow
              !
              if ( wetu(iface) == 1 ) then
                 !
-                amatu(iface,kmax,1) = amatu(iface,kmax,1) + cfricu(iface) / hkum(iface,kmax)
+                finp = face(iface)%attr(FACELINPF)
+                !
+                ! consider left and right cells of current face
+                !
+                icelll = face(iface)%atti(FACECL)
+                icellr = face(iface)%atti(FACECR)
+                !
+                if ( icelll /= 0 .and. icellr /= 0 ) then
+                   !
+                   fac = finp * cfricu(icelll) + (1.-finp) * cfricu(icellr)
+                   !
+                else if ( icelll == 0 ) then
+                   !
+                   fac = cfricu(icellr)
+                   !
+                else
+                   !
+                   fac = cfricu(icelll)
+                   !
+                endif
+                !
+                amatu(iface,kmax,1) = amatu(iface,kmax,1) + fac / hkum(iface,kmax)
                 !
              endif
              !
@@ -1160,55 +1181,77 @@ subroutine SwashImpLayUflow
                 !
                 finp = face(iface)%attr(FACELINPF)
                 !
-                nx = face(iface)%attr(FACENORMX)
-                ny = face(iface)%attr(FACENORMY)
-                !
                 ! consider left and right cells of current face
                 !
                 icelll = face(iface)%atti(FACECL)
                 icellr = face(iface)%atti(FACECR)
                 !
-                ! compute tangential velocity component
-                !
-                if ( icelll /= 0 .and. icellr /= 0 ) then
-                   !
-                   ut = nx * ( finp * uvc(icelll,kmax,2) + (1.-finp) * uvc(icellr,kmax,2) ) - ny * ( finp * uvc(icelll,kmax,1) + (1.-finp) * uvc(icellr,kmax,1) )
-                   !
-                else if ( icelll == 0 ) then
-                   !
-                   ut = nx * uvc(icellr,kmax,2) - ny * uvc(icellr,kmax,1)
-                   !
-                else
-                   !
-                   ut = nx * uvc(icelll,kmax,2) - ny * uvc(icelll,kmax,1)
-                   !
-                endif
-                !
-                ! compute velocity magnitude
-                !
-                utot = sqrt( u0(iface,kmax)*u0(iface,kmax) + ut*ut )
-                !
-                if ( utot > 1.e-8 ) then
+                do l = 1, 2
                    !
                    if ( icelll /= 0 .and. icellr /= 0 ) then
                       !
-                      ut = nx * ( finp * work(icelll,2) + (1.-finp) * work(icellr,2) ) - ny * ( finp * work(icelll,1) + (1.-finp) * work(icellr,1) )
+                      if ( l == 1 ) then
+                         !
+                         ! left cell of current face
+                         !
+                         icell = icelll
+                         faca  = finp
+                         !
+                      else
+                         !
+                         ! right cell of current face
+                         !
+                         icell = icellr
+                         faca  = 1. - finp
+                         !
+                      endif
                       !
                    else if ( icelll == 0 ) then
                       !
-                      ut = nx * work(icellr,2) - ny * work(icellr,1)
+                      ! right cell of current face
+                      !
+                      icell = icellr
+                      !
+                      if ( l == 1 ) then
+                         !
+                         faca  = 0.
+                         !
+                      else
+                         faca  = 1.
+                         !
+                      endif
                       !
                    else
                       !
-                      ut = nx * work(icelll,2) - ny * work(icelll,1)
+                      ! left cell of current face
+                      !
+                      icell = icelll
+                      !
+                      if ( l == 1 ) then
+                         !
+                         faca  = 1.
+                         !
+                      else
+                         !
+                         faca  = 0.
+                         !
+                      endif
                       !
                    endif
                    !
-                   fac = udep(iface)*udep(iface) + ut*ut
+                   ! compute velocity magnitude
                    !
-                   amatu(iface,kmax,1) = amatu(iface,kmax,1) + cfricu(iface) * fac / ( utot * hkum(iface,kmax) )
+                   utot = sqrt( uvc(icell,kmax,1)*uvc(icell,kmax,1) + uvc(icell,kmax,2)*uvc(icell,kmax,2) )
                    !
-                endif
+                   if ( utot > 1.e-8 ) then
+                      !
+                      fac = work(icell,1)*work(icell,1) + work(icell,2)*work(icell,2)
+                      !
+                      amatu(iface,kmax,1) = amatu(iface,kmax,1) + faca * cfricu(icell) * fac / ( utot * hkum(iface,kmax) )
+                      !
+                   endif
+                   !
+                enddo
                 !
              endif
              !
