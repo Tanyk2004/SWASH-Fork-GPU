@@ -20,7 +20,7 @@ It is permitted to copy, reuse, adapt and distribute the SWASH source code provi
 #### prerequisites
 
 To install SWASH on your local system, CMake and Ninja (or GNU make) need to be installed first.
-We recommend to use [CMake 3.12+](https://cmake.org/) for building SWASH.
+We recommend to use [CMake 3.12+](https://cmake.org/) for building SWASH (check the version by typing `cmake --version`).
 CMake is a build system and makes use of scripts (or configuration files) that control the build process.
 There are installers available for Windows, Linux and macOS. See the
 [download](https://cmake.org/download/) page for CMake installation instructions.

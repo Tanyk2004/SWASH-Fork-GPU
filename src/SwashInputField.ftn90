@@ -46,6 +46,7 @@ subroutine SwashInputField ( logcom )
 !
 !   Modules used
 !
+    use ocpcomm2, only: LENFNM
     use ocpcomm4
     use SwashCommdata2
     use SwashCommdata3
@@ -82,7 +83,7 @@ subroutine SwashInputField ( logcom )
     logical                              :: STPNOW   ! indicates that program must stop
     logical                              :: vector   ! indicates whether parameter is a vector or not
     !
-    character(80)                        :: filenm   ! file name
+    character(LEN=LENFNM)                :: filenm   ! file name
     character(80)                        :: hedlin   ! heading line
 !
 !   Structure
