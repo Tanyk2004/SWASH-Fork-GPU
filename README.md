@@ -54,7 +54,7 @@ Currently, the build scripts support the following Fortran compilers:
 ##### 1. clone the repo and navigate to the top level source directory
 
 ```bash
-$ git clone https://gitlab.tudelft.nl/citg/wavemodels/swash.git && cd swash
+git clone https://gitlab.tudelft.nl/citg/wavemodels/swash.git && cd swash
 ```
 
 ##### 2. create the build directory
@@ -62,7 +62,7 @@ $ git clone https://gitlab.tudelft.nl/citg/wavemodels/swash.git && cd swash
 At the top of SWASH source directory execute the following commands
 
 ```bash
-$ mkdir build && cd build
+mkdir build && cd build
 ```
 
 This step is required to perform an out-of-source build with CMake, that is, build files will not be created in the `/swash/src` directory.
@@ -74,8 +74,8 @@ Two CMake configuration files are provided as required for the build. They are p
 The following two CMake commands should suffice to build SWASH
 
 ```bash
-$ cmake .. -G Ninja
-$ cmake --build .
+cmake .. -G Ninja
+cmake --build .
 ```
 
 The first command refers to the source directory where the main configuration file is invoked. The second command carries out the building in the build directory.
@@ -83,15 +83,15 @@ The first command refers to the source directory where the main configuration fi
 The package is actually built by invoking Ninja. An alternative would be to use GNU make, as follows
 
 ```bash
-$ cmake .. -G "Unix Makefiles"
-$ make
+cmake .. -G "Unix Makefiles"
+make
 ```
 
 or just (in case your OS is Unix-like)
 
 ```bash
-$ cmake ..
-$ make
+cmake ..
+make
 ```
 
 However, we recommend Ninja because it is faster than GNU make.
@@ -101,27 +101,27 @@ However, we recommend Ninja because it is faster than GNU make.
 To install SWASH, run either
 
 ```bash
-$ cmake --install .
+cmake --install .
 ```
 
 or with the GNU make
 
 ```bash
-$ make install
+make install
 ```
 
 The default install directory is `/usr/local/swash` (Unix-like operating systems, including macOS) or `C:\Program Files\swash` (Windows).
 Instead, you may install SWASH in any other user-defined directory, as follows
 
 ```bash
-$ cmake --install . --prefix /somewhere/else/other/than/default/directory
+cmake --install . --prefix /somewhere/else/other/than/default/directory
 ```
 
 or
 
 ```bash
-$ cmake .. -DCMAKE_INSTALL_PREFIX=/somewhere/else/other/than/default/directory
-$ make install
+cmake .. -DCMAKE_INSTALL_PREFIX=/somewhere/else/other/than/default/directory
+make install
 ```
 
 After installation a number of subdirectories are created.
@@ -136,7 +136,7 @@ Please note that the installation can be skipped (though not recommended). Execu
 The build can be (re)configured by passing one or more options to the CMake command with prefix `-D`. A typical command line looks like
 
 ```bash
-$ cmake .. -D<option>=<value>
+cmake .. -D<option>=<value>
 ```
 
 where `<value>` is a string or a boolean, depending on the specified option. The table below provides an overview of the non-required options that can be used.
@@ -151,8 +151,8 @@ where `<value>` is a string or a boolean, depending on the specified option. The
 For example, the following commands
 
 ```bash
-$ cmake .. -GNinja -DMPI=ON
-$ cmake --build .
+cmake .. -GNinja -DMPI=ON
+cmake --build .
 ```
 
 will configure SWASH to be built created by Ninja that supports parallel computing using the MPI paradigm.
@@ -161,13 +161,13 @@ Note that CMake will check the availability of MPI libraries within your environ
 The system default Fortran compiler (e.g., f77, g95) can be overwritten as follows
 
 ```bash
-$ cmake .. [options] -DCMAKE_Fortran_COMPILER=/path/to/the/desired/compiler/including/the/name/of/compiler
+cmake .. [options] -DCMAKE_Fortran_COMPILER=/path/to/the/desired/compiler/including/the/name/of/compiler
 ```
 
 Finally, if CMake fails to configure your project, then execute
 
 ```bash
-$ cmake .. [options] -DCMAKE_VERBOSE_MAKEFILE=ON
+cmake .. [options] -DCMAKE_VERBOSE_MAKEFILE=ON
 ```
 
 which will generate detailed information that may provide some indications to debug the build process.
@@ -177,7 +177,7 @@ which will generate detailed information that may provide some indications to de
 To remove the build directory and all files that have been created after running `cmake --build .`, run at the top level of your project the following command:
 
 ```bash
-$ cmake -P clobber.cmake
+cmake -P clobber.cmake
 ```
 
 (The `-P` argument passed to CMake will execute a script *\<filename\>.cmake*.)
@@ -206,7 +206,7 @@ The general run procedure is as follows:
 1. complete or modify your command file `INPUT`
 1. run the SWASH model:
    ```bash
-   $ ./swash.exe
+   ./swash.exe
    ```
 1. check the created `PRINT` file for warning and error messages
 1. repeat if needed
@@ -214,7 +214,7 @@ The general run procedure is as follows:
 For faster simulation on a cluster, replace the run command by
 
 ```bash
-$ mpirun -np <n> swash.exe
+mpirun -np <n> swash.exe
 ```
 
 with `<n>` the number of desired nodes.
@@ -239,4 +239,4 @@ See
 For bug reports please send to the [SourceForge mailing list](http://sourceforge.net/mail/?group_id=385225).
 
 
-<small>&copy; Copyright 2025  Marcel Zijlema</small>
+<small>&copy; Copyright 2026  Marcel Zijlema</small>
