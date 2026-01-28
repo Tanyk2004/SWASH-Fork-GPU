@@ -46,6 +46,7 @@ subroutine SwashBCspecfile ( filenm, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, t
     use SwashCommdata3
     use SwashCommdata4
     use m_bndspec
+    use m_parall
     use SwanGriddata
 !
     implicit none
@@ -142,6 +143,7 @@ subroutine SwashBCspecfile ( filenm, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, t
     real, dimension(:)  , allocatable            :: freq     ! uniformly distributed frequencies
     real, dimension(:)  , allocatable            :: spec1    ! auxiliary array to store 1D SWAN wave spectrum
     real, dimension(:)  , allocatable            :: spec2    ! auxiliary array to store 1D wave spectrum to be used for synthesizing time series
+    real, dimension(:)  , allocatable            :: tarr     ! temporary array to store random values
     real, dimension(:,:), allocatable            :: varden   ! variance density to be used for synthesizing time series
     real, dimension(:)  , allocatable            :: xbp      ! x-coordinates of locations on spectrum file
     real, dimension(:)  , allocatable            :: ybp      ! y-coordinates of locations on spectrum file
@@ -238,16 +240,31 @@ subroutine SwashBCspecfile ( filenm, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, t
           allocate(bfstmp%omega(nfreq))
           allocate(bfstmp%phase(nfreq))
           allocate(bfstmp%theta(nfreq))
-          call random_seed(put=seed)
+          !
+          ! generate random values for phase
+          allocate(tarr(nfreq))
+          if ( INODE == MASTER ) then
+             call random_seed(put=seedf)
+             do j = 1, nfreq
+                call random_number(rval)
+                tarr(j) = rval
+             enddo
+          endif
+          !
+          ! scatter array tarr to all nodes
+          !
+          call SWBROADC ( tarr, nfreq, SWREAL )
+          if (STPNOW()) return
+          !
           do j = 1, nfreq
              bfstmp%ampl (j) = currf%ampl * sqrt(df)
              bfstmp%omega(j) = currf%omega
-             call random_number(rval)
-             bfstmp%phase(j) = 2.*pi*rval
-             bfstmp%theta(j) = 0.          ! no directional spreading
+             bfstmp%phase(j) = 2.*pi*tarr(j)
+             bfstmp%theta(j) = 0.            ! no directional spreading
              currf => currf%nextfs
           enddo
           deallocate(tmpf)
+          deallocate(tarr)
           !
        endif
        !
@@ -559,9 +576,16 @@ subroutine SwashBCspecfile ( filenm, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, t
              ! calculate spreading coefficient
              !
              if ( switch(3) == 1 ) then
+                if ( dd > 23. ) then
+                   fac = 1.2
+                elseif ( dd > 17. ) then
+                   fac = 1.096
+                else
+                   fac = 1.01
+                endif
                 dwidth = pi * dd / 180.
                 if ( dwidth /= 0. ) then
-                   ms = max(dwidth**(-2) - 2., 1.)
+                   ms = max(fac*dwidth**(-2) - 2., 1.)
                 else
                    ms = 1000.
                 endif
@@ -705,17 +729,40 @@ subroutine SwashBCspecfile ( filenm, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, t
              allocate(bfstmp%phase(nfreq))
              allocate(bfstmp%theta(nfreq))
              !
-             call random_seed(put=seed)
+             ! phase at each frequency is randomly chosen between 0 and 2pi
+             !
+             allocate(tarr(nfreq))
+             if ( INODE == MASTER ) then
+                call random_seed(put=seedf)
+                do j = 1, nfreq
+                   call random_number(rval)
+                   tarr(j) = rval
+                enddo
+             endif
+             call SWBROADC ( tarr, nfreq, SWREAL )
+             if (STPNOW()) return
+             !
+             do j = 1, nfreq
+                bfstmp%omega(j) = freq(j)
+                bfstmp%phase(j) = 2.*pi*tarr(j)
+             enddo
+             !
+             ! pick a random number in distribution function and assign corresponding (interpolated) direction to each frequency
+             ! next, find the corresponding variance density and compute the amplitude
+             !
+             if ( INODE == MASTER ) then
+                call random_seed(put=seedt)
+                do j = 1, nfreq
+                   call random_number(rval)
+                   tarr(j) = rval
+                enddo
+             endif
+             call SWBROADC ( tarr, nfreq, SWREAL )
+             if (STPNOW()) return
              !
              m0 = 0.
              do j = 1, nfreq
-                bfstmp%omega(j) = freq(j)
-                ! phase at each frequency is randomly chosen between 0 and 2pi
-                call random_number(rval)
-                bfstmp%phase(j) = 2.*pi*rval
-                ! pick a random number in distribution function and assign corresponding (interpolated) direction to each frequency
-                ! next, find the corresponding variance density and compute the amplitude
-                call random_number(rval)
+                rval = tarr(j)
                 if ( rval <= cdf(1) ) then
                    bfstmp%theta(j) = bspdir(1)
                    rval2           = varden(1,j)
@@ -737,6 +784,8 @@ subroutine SwashBCspecfile ( filenm, nbps, bpix, bpiy, xcgrid, ycgrid, kgrpnt, t
              !
              ! correct amplitude spectrum for wave height
              bfstmp%ampl = hs * bfstmp%ampl / ( 4.*sqrt(m0) )
+             !
+             deallocate(tarr)
              !
           endif
           !

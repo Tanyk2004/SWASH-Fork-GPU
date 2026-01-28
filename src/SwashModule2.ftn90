@@ -363,7 +363,8 @@ module m_bndspec
     logical                  :: bcperx = .false.              ! indicates whether incident wave at boundary along x-direction must make periodic or not
     logical                  :: bcpery = .false.              ! indicates whether incident wave at boundary along y-direction must make periodic or not
     !
-    integer   , dimension(:)    , save, allocatable :: seed   ! seed used to generate pseudorandom phases
+    integer   , dimension(:)    , save, allocatable :: seedf  ! seed used to generate pseudorandom phases
+    integer   , dimension(:)    , save, allocatable :: seedt  ! seed used to generate pseudorandom spectral directions
     !
     real      , dimension(:,:)  , save, allocatable :: kwave  ! wave number of a Fourier component
     real      , dimension(:,:)  , save, allocatable :: comp1  ! first free wave component for synthesizing time series

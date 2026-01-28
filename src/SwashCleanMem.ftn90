@@ -515,7 +515,8 @@ subroutine SwashCleanMem
     if ( allocated(wphy  ) )  deallocate(wphy  )
     if ( allocated(oparr ) )  deallocate(oparr )
     if ( allocated(oparrk) )  deallocate(oparrk)
-    if ( allocated(seed  ) )  deallocate(seed  )
+    if ( allocated(seedf ) )  deallocate(seedf )
+    if ( allocated(seedt ) )  deallocate(seedt )
     !
     if ( allocated(setup ) )  deallocate(setup )
     if ( allocated(etavar) )  deallocate(etavar)

@@ -235,11 +235,13 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     ! initialize seed
     !
     if ( lseed ) then
+       if ( myseed < 1000 ) myseed = 1000*myseed
        call random_seed(size=nseed)
-       allocate(seed(nseed))
-       !call random_seed(get=seed)
+       allocate(seedf(nseed))
+       allocate(seedt(nseed))
        do i = 1, nseed
-          seed(i) = abs(myseed) + i - 1
+          seedf(i) = abs(myseed  ) +    i - 1
+          seedt(i) = abs(myseed*2) + 2*(i - 1)
        enddo
        lseed = .false.
     endif

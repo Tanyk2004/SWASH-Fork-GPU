@@ -61,68 +61,65 @@ subroutine SwashBCspectrum ( bcfour, spparm )
 !
 !   Argument variables
 !
-    real, dimension(5), intent(in)     :: spparm   ! parameters used for computation of incident spectrum and subsequent Fourier series
-                                                   ! =1; wave height (significant or rms)
-                                                   ! =2; wave period (peak or mean)
-                                                   ! =3; incident or peak wave direction w.r.t. normal on the boundary
-                                                   ! =4; directional distribution coefficient
-                                                   ! =5; cyclic period of time series
+    real, dimension(5), intent(in)  :: spparm   ! parameters used for computation of incident spectrum and subsequent Fourier series
+                                                ! =1; wave height (significant or rms)
+                                                ! =2; wave period (peak or mean)
+                                                ! =3; incident or peak wave direction w.r.t. normal on the boundary
+                                                ! =4; directional distribution coefficient
+                                                ! =5; cyclic period of time series
     !
-    type(bfsdat), intent(inout)        :: bcfour   ! list containing parameters for Fourier series
+    type(bfsdat), intent(inout)     :: bcfour   ! list containing parameters for Fourier series
 !
 !   Parameter variables
 !
-    integer, parameter                 :: maxnit = 10 ! maximum number of iterations
-    integer, parameter                 :: ndir = 51   ! number of directions
+    integer, parameter              :: maxnit = 10 ! maximum number of iterations
+    integer, parameter              :: ndir = 51   ! number of directions
     !
-    real   , parameter                 :: eps = 0.01  ! convergence criterion
+    real   , parameter              :: eps = 0.01  ! convergence criterion
 !
 !   Local variables
 !
-    integer                            :: i        ! loop counter
-    integer, save                      :: ient = 0 ! number of entries in this subroutine
-    integer                            :: j        ! loop counter
-    integer                            :: nfmax    ! maximum number of frequencies possible
-    integer                            :: nfp      ! nearest integer of peak frequency
-    integer                            :: nfreq    ! number of frequencies
-    integer                            :: nit      ! number of iterations
-    integer                            :: ns       ! size of array tseed for random_seed
-    integer                            :: shape    ! spectral shape
-                                                   ! = 1; Pierson Moskowitz
-                                                   ! = 2; Jonswap
-                                                   ! = 3; TMA
+    integer                         :: i        ! loop counter
+    integer, save                   :: ient = 0 ! number of entries in this subroutine
+    integer                         :: j        ! loop counter
+    integer                         :: nfmax    ! maximum number of frequencies possible
+    integer                         :: nfp      ! nearest integer of peak frequency
+    integer                         :: nfreq    ! number of frequencies
+    integer                         :: nit      ! number of iterations
+    integer                         :: shape    ! spectral shape
+                                                ! = 1; Pierson Moskowitz
+                                                ! = 2; Jonswap
+                                                ! = 3; TMA
     !
-    real, dimension(ndir)              :: cdf      ! cumulative distribution function of directional spreading
-    real                               :: cosdir   ! cosine of directions
-    real                               :: df       ! increment in frequency space
-    real, dimension(ndir)              :: dspr     ! directional spreading function
-    real                               :: dwidth   ! directional width
-    real                               :: f        ! frequency
-    real                               :: fac      ! a factor
-    real                               :: fmax     ! maximum frequency
-    real                               :: fmin     ! minimum frequency
-    real                               :: fnyq     ! Nyquist frequency
-    real                               :: fp       ! peak frequency
-    real                               :: hs       ! significant wave height
-    real                               :: m0       ! moment of zeroth order
-    real                               :: m1       ! moment of first order
-    real                               :: ms       ! spreading coefficient for cosine-power
-    real                               :: rval     ! auxiliary real
-    real                               :: sector   ! directional sector to be considered
-    real                               :: tcycl    ! cyclic period of time record
-    real, dimension(ndir)              :: theta    ! spectral directions
-    real                               :: tm       ! mean wave period
-    real                               :: tp       ! peak wave period
+    real, dimension(ndir)           :: cdf      ! cumulative distribution function of directional spreading
+    real                            :: cosdir   ! cosine of directions
+    real                            :: df       ! increment in frequency space
+    real, dimension(ndir)           :: dspr     ! directional spreading function
+    real                            :: dwidth   ! directional width
+    real                            :: f        ! frequency
+    real                            :: fac      ! a factor
+    real                            :: fmax     ! maximum frequency
+    real                            :: fmin     ! minimum frequency
+    real                            :: fnyq     ! Nyquist frequency
+    real                            :: fp       ! peak frequency
+    real                            :: hs       ! significant wave height
+    real                            :: m0       ! moment of zeroth order
+    real                            :: m1       ! moment of first order
+    real                            :: ms       ! spreading coefficient for cosine-power
+    real                            :: rval     ! auxiliary real
+    real                            :: sector   ! directional sector to be considered
+    real                            :: tcycl    ! cyclic period of time record
+    real, dimension(ndir)           :: theta    ! spectral directions
+    real                            :: tm       ! mean wave period
+    real                            :: tp       ! peak wave period
     !
-    character(80)                      :: msgstr   ! string to pass message
+    character(80)                   :: msgstr   ! string to pass message
     !
-    logical                            :: peak     ! indicates whether peak (.true.) or mean (.false.) period is given
-    logical                            :: STPNOW   ! indicates that program must stop
+    logical                         :: peak     ! indicates whether peak (.true.) or mean (.false.) period is given
+    logical                         :: STPNOW   ! indicates that program must stop
     !
-    integer, dimension(:), allocatable :: tseed    ! seed to randomize spectral directions
-    !
-    real, dimension(:), allocatable    :: phase    ! phase of wave components
-    real, dimension(:), allocatable    :: spec     ! nondimensional relative spectral density, equal to one at the peak
+    real, dimension(:), allocatable :: spec     ! nondimensional relative spectral density, equal to one at the peak
+    real, dimension(:), allocatable :: tarr     ! temporary array to store random values
 !
 !   Structure
 !
@@ -250,29 +247,31 @@ subroutine SwashBCspectrum ( bcfour, spparm )
        allocate(bcfour%phase(nfreq))
        allocate(bcfour%theta(nfreq))
        !
-       allocate(phase(nfreq))
+       ! generate random values for phase
+       allocate(tarr(nfreq))
        if ( INODE == MASTER ) then
-          call random_seed(put=seed)
+          call random_seed(put=seedf)
           do j = 1, nfreq
              call random_number(rval)
-             phase(j) = 2.*pi*rval
+             tarr(j) = rval
           enddo
        endif
        !
-       ! scatter array phase to all nodes
+       ! scatter array tarr to all nodes
        !
-       call SWBROADC ( phase, nfreq, SWREAL )
+       call SWBROADC ( tarr, nfreq, SWREAL )
        if (STPNOW()) return
        !
        f = fmin
        do j = 1, nfreq
           bcfour%ampl (j) = sqrt(2.*df*spec(j))
           bcfour%omega(j) = 2.*pi*f
-          bcfour%phase(j) = phase(j)
+          bcfour%phase(j) = 2.*pi*tarr(j)
           bcfour%theta(j) = 0.
           f = f + df
        enddo
-       deallocate(phase)
+       !
+       deallocate(tarr)
        !
     endif
     !
@@ -331,19 +330,21 @@ subroutine SwashBCspectrum ( bcfour, spparm )
        enddo
        cdf = cdf/sum(dspr)
        !
-       ! generate a new seed based on the provided seed to randomize spectral directions
-       !
-       call random_seed(put=seed)
-       call random_number(rval)
-       call random_seed(size=ns)
-       allocate(tseed(ns))
-       tseed(1) = int(rval * 99999999)
-       call random_seed(put=tseed)
-       !
        ! pick a random number in distribution function and assign corresponding (interpolated) direction to each frequency
        !
+       allocate(tarr(nfreq))
+       if ( INODE == MASTER ) then
+          call random_seed(put=seedt)
+          do j = 1, nfreq
+             call random_number(rval)
+             tarr(j) = rval
+          enddo
+       endif
+       call SWBROADC ( tarr, nfreq, SWREAL )
+       if (STPNOW()) return
+       !
        do j = 1, nfreq
-          call random_number(rval)
+          rval = tarr(j)
           do i = 2, ndir
              if ( rval > cdf(i-1) .and. rval <= cdf(i) ) then
                 bcfour%theta(j) = theta(i-1) + (theta(i)-theta(i-1))*(rval-cdf(i-1))/(cdf(i)-cdf(i-1))
@@ -351,7 +352,7 @@ subroutine SwashBCspectrum ( bcfour, spparm )
           enddo
        enddo
        !
-       deallocate(tseed)
+       deallocate(tarr)
        !
     endif
     !
