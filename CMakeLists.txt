@@ -2,14 +2,15 @@
 #
 # Copyright (C) 2026  Delft University of Technology
 
-# use of CMake version 3.12 or greater
-cmake_minimum_required( VERSION 3.12 )
+# use of CMake version 3.20 or greater
+cmake_minimum_required( VERSION 3.20 )
 
-# by default, the SWASH package will be installed in a default location
+# by default, the SWASH package will be installed in user's local or home folder
 if( WIN32 )
-  set( CMAKE_INSTALL_PREFIX "C:/Program Files/swash" CACHE STRING "" )
+  cmake_path( SET LOCALSWASH $ENV{LOCALAPPDATA}/Programs/wavemodels/swash )
+  set( CMAKE_INSTALL_PREFIX "${LOCALSWASH}" CACHE STRING "" )
 else()
-  set( CMAKE_INSTALL_PREFIX "/usr/local/swash" CACHE STRING "" )
+  set( CMAKE_INSTALL_PREFIX "$ENV{HOME}/wavemodels/swash" CACHE STRING "" )
 endif()
 
 # Fortran project for SWASH
