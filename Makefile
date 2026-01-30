@@ -3,8 +3,6 @@
 .PHONY: allclean build clobber config help install uninstall
 .SILENT:
 
-prefix = ${HOME}/wavemodels/swash
-
 CMAKE_FLAGS = -G Ninja
 ifneq ($(fc),)
     CMAKE_FLAGS += -DCMAKE_Fortran_COMPILER=$(fc)

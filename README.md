@@ -20,7 +20,7 @@ It is permitted to copy, reuse, adapt and distribute the SWASH source code provi
 #### prerequisites
 
 To install SWASH on your local system, CMake and Ninja (or GNU make) need to be installed first.
-We recommend to use [CMake 3.12+](https://cmake.org/) for building SWASH (check the version by typing `cmake --version`).
+We recommend to use [CMake 3.20+](https://cmake.org/) for building SWASH (check the version by typing `cmake --version`).
 CMake is a build system and makes use of scripts (or configuration files) that control the build process.
 There are installers available for Windows, Linux and macOS. See the
 [download](https://cmake.org/download/) page for CMake installation instructions.
@@ -110,8 +110,8 @@ or with the GNU make
 make install
 ```
 
-The default install directory is `/usr/local/swash` (Unix-like operating systems, including macOS) or `C:\Program Files\swash` (Windows).
-Instead, you may install SWASH in any other user-defined directory, as follows
+The default install directory is `$HOME/wavemodels/swash` (Unix-like operating systems, including macOS) or `%LocalAppData%\Programs\wavemodels\swash` (Windows).
+(These directories allow app installation without requiring administrator rights.) Instead, you may install SWASH in any other user-defined directory, as follows
 
 ```bash
 cmake --install . --prefix /somewhere/else/other/than/default/directory
@@ -143,7 +143,7 @@ where `<value>` is a string or a boolean, depending on the specified option. The
 
 |  option                  | value type |               description                 | default value           |
 |:------------------------:|:-----------|:------------------------------------------|:-----------------------:|
-| `CMAKE_INSTALL_PREFIX`   | string     | user-defined installation path            | `/usr/local/swash`      |
+| `CMAKE_INSTALL_PREFIX`   | string     | user-defined installation path            | `../wavemodels/swash`   |
 | `CMAKE_Fortran_COMPILER` | string     | full path to the Fortran compiler         | determined by CMake     |
 | `MPI`                    | boolean    | enable build with MPI                     | `OFF`                   |
 | `CMAKE_VERBOSE_MAKEFILE` | boolean    | provide verbose output of the build       | `OFF`                   |
