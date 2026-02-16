@@ -5,3 +5,4 @@
 # on the node.
 # The run procedure will cycle through this list until all the
 # requested processes are launched.
+localhost
