@@ -1,9 +1,10 @@
 # Welcome to the SWASH git repository
 
-[![release](https://img.shields.io/badge/release%20-%20v11.01%20-%20brightgreen?color=brightgreen)]()
-[![site](https://img.shields.io/badge/sourceforge%20-%20site%20-%20blue?logo=sourceforge&color=blue)](https://swash.sourceforge.io)
-[![doi](https://img.shields.io/badge/DOI%20-%2010.1016%2Fj.coastaleng.2011.05.015%20-%20red?color=blue)](https://doi.org/10.1016/j.coastaleng.2011.05.015)
-[![license](https://img.shields.io/badge/license%20-%20GPL_v3%20-%20yellow?color=yellow)](/LICENSE)
+[![release](https://img.shields.io/badge/release%20-%20v11.01%20-%20brightgreen?color=success)]()
+[![site](https://img.shields.io/badge/sourceforge%20-%20site%20-%20blue?logo=sourceforge&color=informational)](https://swash.sourceforge.io)
+[![Static Badge](https://img.shields.io/badge/delftwaves%2Fswash%20-%20image%20-%20blue?logo=docker&color=informational)](https://hub.docker.com/r/delftwaves/swash)
+[![doi](https://img.shields.io/badge/DOI%20-%2010.1016%2Fj.coastaleng.2011.05.015%20-%20blue?color=informational)](https://doi.org/10.1016/j.coastaleng.2011.05.015)
+[![license](https://img.shields.io/badge/license%20-%20GPL_v3%20-%20orange?color=important)](/LICENSE)
 
 ## introduction
 
