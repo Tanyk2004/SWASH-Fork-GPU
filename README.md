@@ -2,7 +2,8 @@
 
 [![release](https://img.shields.io/badge/release%20-%20v11.01%20-%20brightgreen?color=success)]()
 [![site](https://img.shields.io/badge/sourceforge%20-%20site%20-%20blue?logo=sourceforge&color=informational)](https://swash.sourceforge.io)
-[![Static Badge](https://img.shields.io/badge/delftwaves%2Fswash%20-%20image%20-%20blue?logo=docker&color=informational)](https://hub.docker.com/r/delftwaves/swash)
+[![image](https://img.shields.io/badge/delftwaves%2Fswash%20-%20image%20-%20blue?logo=docker&color=informational)](https://hub.docker.com/r/delftwaves/swash)
+[![docs](https://img.shields.io/badge/docs%20-%20GitHub%20pages%20-%20blue?logo=github&color=informational)](https://delftwaves.github.io/swash-docs/)
 [![doi](https://img.shields.io/badge/DOI%20-%2010.1016%2Fj.coastaleng.2011.05.015%20-%20blue?color=informational)](https://doi.org/10.1016/j.coastaleng.2011.05.015)
 [![license](https://img.shields.io/badge/license%20-%20GPL_v3%20-%20orange?color=important)](/LICENSE)
 
@@ -234,13 +235,12 @@ environment variable `PATH` has been adapted by including the path of the `/bin`
 
 For more details, consult the [Implementation manual](https://swash.sourceforge.io/online_doc/swashimp/node12.html).
 
-## documents
+## documentation
 
 See
-1. the [Implementation Manual](https://swash.sourceforge.io/online_doc/swashimp/swashimp.html) that describes in detail the installation and the usage of the SWASH model
-1. the [User Manual](https://swash.sourceforge.io/online_doc/swashuse/swashuse.html) that provides the specifications for the input of the SWASH model
-1. the [Scientific/technical documentation](https://swash.sourceforge.io/online_doc/swashtech/swashtech.html) that discusses the physical and mathematical details and the discretizations that have been implemented in the SWASH software
-1. a bunch of scientific documents that can be found [here](https://swash.sourceforge.io/online_doc/online_doc.htm)
+1. the [SWASH website](https://swash.sourceforge.io/) for general information
+1. the [SWASH documentation](https://delftwaves.github.io/swash-docs/) that provides the user manual, scientific/technical documentation and many more
+1. a bunch of scientific papers that can be found [here](https://swash.sourceforge.io/references/references.htm)
 
 ## bugs and questions
 
