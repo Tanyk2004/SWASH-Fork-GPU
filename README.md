@@ -7,6 +7,20 @@
 [![doi](https://img.shields.io/badge/DOI%20-%2010.1016%2Fj.coastaleng.2011.05.015%20-%20blue?color=informational)](https://doi.org/10.1016/j.coastaleng.2011.05.015)
 [![license](https://img.shields.io/badge/license%20-%20GPL_v3%20-%20orange?color=important)](/LICENSE)
 
+### table of contents
+
+- [introduction](#introduction)
+- [installation](#installation)
+  - [prerequisites](#prerequisites)
+  - [instructions](#instructions)
+  - [configuring the build](#configuring-the-build)
+  - [clean up the build files](#clean-up-the-build-files)
+- [getting started](#getting-started)
+  - [run modes](#run-modes)
+  - [how to run](#how-to-run)
+- [documentation](#documentation)
+- [bugs and questions](#bugs-and-questions)
+
 ## introduction
 
 SWASH is a general-purpose numerical tool for simulating unsteady, non-hydrostatic, free-surface, rotational flow and transport phenomena in coastal waters as driven by waves,
