@@ -7,7 +7,11 @@ endif()
 
 # include user-dependent switches
 if( MPI )
-  list( APPEND SWITCHES -impi -mpi )
+  if( CMAKE_Fortran_COMPILER_ID MATCHES "GNU" )
+    list( APPEND SWITCHES -mpi )
+  else()
+    list( APPEND SWITCHES -impi -mpi )
+  endif()
 endif()
 
 # set switches
