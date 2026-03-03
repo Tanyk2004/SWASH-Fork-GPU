@@ -90,8 +90,27 @@ subroutine SwashAverOutp ( iquan )
           !
           nwavoutp = nwavoutp + 1.
           !
-          setup  = setup  + s1
-          etavar = etavar + s1*s1
+          if ( optg /= 5 ) then
+             do nm = 1, mcgrd
+                if ( hs(nm) > epsdry ) then
+                   setup (nm) = setup (nm) + s1(nm)
+                   etavar(nm) = etavar(nm) + s1(nm)*s1(nm)
+                else
+                   setup (nm) = 0.
+                   etavar(nm) = 0.
+                endif
+             enddo
+          else
+             do icell = 1, ncells
+                if ( hs(icell) > epsdry ) then
+                   setup (icell) = setup (icell) + s1(icell)
+                   etavar(icell) = etavar(icell) + s1(icell)*s1(icell)
+                else
+                   setup (icell) = 0.
+                   etavar(icell) = 0.
+                endif
+             enddo
+          endif
           !
        endif
        !
@@ -100,16 +119,6 @@ subroutine SwashAverOutp ( iquan )
           setup = setup / nwavoutp
           !
           hsig = 4. * sqrt( max( etavar / (nwavoutp-1.) - setup*setup, 0. ) )
-          !
-          if ( optg /= 5 ) then
-             do nm = 1, mcgrd
-                if ( .not. hsig(nm) > 0. ) setup(nm) = 0.
-             enddo
-          else
-             do icell = 1, ncells
-                if ( .not. hsig(icell) > 0. ) setup(icell) = 0.
-             enddo
-          endif
           !
        endif
        !
