@@ -80,6 +80,7 @@ subroutine SwashInit ( inerr )
     write (VERTXT, '(f5.2)') VERNUM
     call BUGFIX ('A')
     call BUGFIX ('B')
+    call BUGFIX ('C')
     !
     call OCPINI ( 'swashinit', .true., inerr )
     if ( inerr > 0 ) return
