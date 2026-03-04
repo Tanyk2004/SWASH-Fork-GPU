@@ -381,7 +381,7 @@ subroutine SwashPrintSettings
        write (PRINTF, 252) spwidb, spwidt
     endif
     !
-    if ( ITMOPT /= 7 ) write (PRINTF, 253) DTTIWR(ITMOPT, 0.)
+    if ( ITMOPT /= 7 ) write (PRINTF, 253) DTTIWR(ITMOPT, 0d0)
     !
  201 format (/,                                                          &
      '----------------------------------------------------------------'  &
