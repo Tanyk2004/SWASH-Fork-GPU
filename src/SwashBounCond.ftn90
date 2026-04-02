@@ -240,8 +240,8 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
        allocate(seedf(nseed))
        allocate(seedt(nseed))
        do i = 1, nseed
-          seedf(i) = abs(myseed  ) +    i - 1
-          seedt(i) = abs(myseed*2) + 2*(i - 1)
+          seedf(i) = abs(myseed) +    i - 1
+          seedt(i) = abs(myseed) + 2*(i - 1)
        enddo
        lseed = .false.
     endif
