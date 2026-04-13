@@ -195,10 +195,6 @@ subroutine SwashBCshortwave ( bcfour, nfreq, xp, yp, ibgrpt, swd, wdir, rsgn, vd
           !
        endif
        !
-       ! store corrected wave direction in case of periodicity
-       !
-       if ( bcperx .or. bcpery ) bcfour%theta(j) = ( theta - wdir + alpc ) / s
-       !
        ! check this direction with respect to the normal of boundary
        ! (must be within -80 degrees to 80 degrees)
        !

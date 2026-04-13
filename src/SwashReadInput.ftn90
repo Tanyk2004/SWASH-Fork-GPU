@@ -1845,7 +1845,7 @@ subroutine SwashReadInput ( comput )
     !
     !             | -> EXPL [cfllow] [cflhig] &                               |
     !             |                                                           |
-    !             |    HANCock | EULer (not documented)                       |
+    !             |    RK3 | HANCock | EULer (not documented)                 |
     ! TIMEI METH <                                                             > &
     !             |    IMPL [thetac] [thetas] &                               |
     !             |                                                           |
@@ -1887,6 +1887,8 @@ subroutine SwashReadInput ( comput )
                 jhk = 3
              else if ( KEYWIS ('HANC') ) then
                 jhk = 2
+             else if ( KEYWIS ('RK3') ) then
+                jhk = 1
              endif
           endif
        else
@@ -2018,11 +2020,7 @@ subroutine SwashReadInput ( comput )
           endif
        endif
        !
-       if ( ieqn /= 1 ) then
-          call INKEYW ('STA','BDF')
-       else
-          call INKEYW ('STA',' ')
-       endif
+       call INKEYW ('STA',' ')
        if ( KEYWIS('NON') ) then
           propsc = 3
           kappa  = 1.
@@ -2077,6 +2075,8 @@ subroutine SwashReadInput ( comput )
              call INREAL ('KAPPA' , kappa , 'REQ', 0.)
              call INREAL ('MBOUND', mbound, 'REQ', 0.)
           endif
+       else
+          goto 100
        endif
        !
        if ( ieqn == 1 .and. iadv == 1 ) then
