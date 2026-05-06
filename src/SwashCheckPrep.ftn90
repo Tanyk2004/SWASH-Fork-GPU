@@ -11,7 +11,7 @@ subroutine SwashCheckPrep
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -1621,6 +1621,8 @@ subroutine SwashCheckPrep
           if ( istok == 0 ) bgridp(9*i-1) = -1
        endif
     enddo
+    !
+    if ( istok == 3 .and. lsubg ) call msgerr (3,'second order transfer functions not supported in case of subgrid approach')
     !
     ! allocate arrays for incident short and bound wave components, if appropriate
     !
@@ -3944,6 +3946,7 @@ subroutine SwashCheckPrep
           if ( istat == 0 .and. .not.allocated(zksnew) ) allocate (zksnew(mcgrd,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(zku   ) ) allocate (zku   (mcgrd,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(zkum  ) ) allocate (zkum  (mcgrd,0:kmax), stat = istat)
+          if ( istat == 0 .and. .not.allocated(zkuo  ) ) allocate (zkuo  (mcgrd,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hks   ) ) allocate (hks   (mcgrd,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hksnew) ) allocate (hksnew(mcgrd,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hkso  ) ) allocate (hkso  (mcgrd,  kmax), stat = istat)
@@ -3953,6 +3956,7 @@ subroutine SwashCheckPrep
           if ( .not.oned ) then
              if ( istat == 0 .and. .not.allocated(zkv  ) ) allocate (zkv  (mcgrd,0:kmax), stat = istat)
              if ( istat == 0 .and. .not.allocated(zkvm ) ) allocate (zkvm (mcgrd,0:kmax), stat = istat)
+             if ( istat == 0 .and. .not.allocated(zkvo ) ) allocate (zkvo (mcgrd,0:kmax), stat = istat)
              if ( istat == 0 .and. .not.allocated(hkv  ) ) allocate (hkv  (mcgrd,  kmax), stat = istat)
              if ( istat == 0 .and. .not.allocated(hkvm ) ) allocate (hkvm (mcgrd,  kmax), stat = istat)
              if ( istat == 0 .and. .not.allocated(hkvmn) ) allocate (hkvmn(mcgrd,  kmax), stat = istat)
@@ -3962,6 +3966,7 @@ subroutine SwashCheckPrep
           if ( istat == 0 .and. .not.allocated(zksnew) ) allocate (zksnew(ncells,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(zku   ) ) allocate (zku   (nfaces,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(zkum  ) ) allocate (zkum  (nfaces,0:kmax), stat = istat)
+          if ( istat == 0 .and. .not.allocated(zkuo  ) ) allocate (zkuo  (nfaces,0:kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hks   ) ) allocate (hks   (ncells,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hksnew) ) allocate (hksnew(ncells,  kmax), stat = istat)
           if ( istat == 0 .and. .not.allocated(hkso  ) ) allocate (hkso  (ncells,  kmax), stat = istat)
@@ -3986,8 +3991,10 @@ subroutine SwashCheckPrep
        if ( .not.allocated(zksnew) ) allocate (zksnew(0,0))
        if ( .not.allocated(zku   ) ) allocate (zku   (0,0))
        if ( .not.allocated(zkum  ) ) allocate (zkum  (0,0))
+       if ( .not.allocated(zkuo  ) ) allocate (zkuo  (0,0))
        if ( .not.allocated(zkv   ) ) allocate (zkv   (0,0))
        if ( .not.allocated(zkvm  ) ) allocate (zkvm  (0,0))
+       if ( .not.allocated(zkvo  ) ) allocate (zkvo  (0,0))
        if ( .not.allocated(hks   ) ) allocate (hks   (0,0))
        if ( .not.allocated(hksnew) ) allocate (hksnew(0,0))
        if ( .not.allocated(hkso  ) ) allocate (hkso  (0,0))
@@ -4017,6 +4024,7 @@ subroutine SwashCheckPrep
        zksnew = 0.
        zku    = 0.
        zkum   = 0.
+       zkuo   = 0.
        hks    = 0.
        hksnew = 0.
        hkso   = 0.
@@ -4026,6 +4034,7 @@ subroutine SwashCheckPrep
        if ( .not.oned .and. optg /= 5 ) then
           zkv   = 0.
           zkvm  = 0.
+          zkvo  = 0.
           hkv   = 0.
           hkvm  = 0.
           hkvmn = 0.

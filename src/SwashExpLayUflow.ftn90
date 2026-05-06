@@ -11,7 +11,7 @@ subroutine SwashExpLayUflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -78,7 +78,7 @@ subroutine SwashExpLayUflow
 !   Modules used
 !
     use ocpcomm4
-    use m_genarr, only: hlay, wlimp, work
+    use m_genarr, only: hlay, wlimp, work, uwrk
     use SwashCommdata3
     use SwashTimecomm
     use SwashFlowdata
@@ -2594,7 +2594,12 @@ subroutine SwashExpLayUflow
        !
     endif
     !
-    ! solve global continuity equation by means of the second order RK3 scheme
+    ! store layer interfaces in u-point
+    !
+    zkuo = zku
+    !
+    ! solve global continuity equation by means of a second order predictor-corrector scheme
+    ! (jhk = 1: RK3, jhk = 2: Hancock, jhk = 3: first order Euler)
     !
     do j = jhk, 3
        !
@@ -2626,27 +2631,43 @@ subroutine SwashExpLayUflow
           !
        enddo
        !
-       ! compute the depth-averaged flow velocity
+       ! compute the depth-integrated mass flux
        !
-       udep = 0.
+       uwrk = 0.
        !
        do iface = 1, nfaces
           !
           if ( wetu(iface) == 1 ) then
              !
-             lf = face(iface)%attr(FACELEN)
-             !
              do k = 1, kmax
                 !
-                udep(iface) = udep(iface) + qn(iface,k)
+                uwrk(iface) = uwrk(iface) + qn(iface,k)
                 !
              enddo
-             !
-             udep(iface) = udep(iface) / ( lf * hu(iface) )
              !
           endif
           !
        enddo
+       !
+       ! compute the depth-averaged flow velocity
+       !
+       if ( j == jhk ) then
+          !
+          udep = 0.
+          !
+          do iface = 1, nfaces
+             !
+             if ( wetu(iface) == 1 ) then
+                !
+                lf = face(iface)%attr(FACELEN)
+                !
+                udep(iface) = uwrk(iface) / ( lf * hu(iface) )
+                !
+             endif
+             !
+          enddo
+          !
+       endif
        !
        ! compute the water level
        !
@@ -2664,10 +2685,6 @@ subroutine SwashExpLayUflow
                 !
                 iface = cell(icell)%face(jf)%atti(FACEID)
                 !
-                ! get length of current face
-                !
-                lf = face(iface)%attr(FACELEN)
-                !
                 ! consider left and right cells of current face
                 !
                 icelll = face(iface)%atti(FACECL)
@@ -2683,7 +2700,7 @@ subroutine SwashExpLayUflow
                 !
                 ! compute mass flux at current face and add to other faces of the cell
                 !
-                qf = qf + rsgn * lf * hu(iface) * udep(iface)
+                qf = qf + rsgn * uwrk(iface)
                 !
              enddo
              !
@@ -2998,7 +3015,7 @@ subroutine SwashExpLayUflow
                       rsgn = -1.
                    endif
                    !
-                   qf = qf + rsgn * lf * zku(iface,k) * ( nx * u + ny * v )
+                   qf = qf + rsgn * lf * zkuo(iface,k) * ( nx * u + ny * v )
                    !
                 enddo
                 !

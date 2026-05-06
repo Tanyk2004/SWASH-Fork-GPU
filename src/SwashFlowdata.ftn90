@@ -11,7 +11,7 @@ module SwashFlowdata
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -362,8 +362,10 @@ module SwashFlowdata
     real  , dimension(:,:)    , save, allocatable :: zkso         ! layer interfaces in wl-point at old time level
     real  , dimension(:,:)    , save, allocatable :: zku          ! layer interfaces in u-point based on upwinding
     real  , dimension(:,:)    , save, allocatable :: zkum         ! layer interfaces in u-point based on averaging
+    real  , dimension(:,:)    , save, allocatable :: zkuo         ! layer interfaces in u-point at old time level
     real  , dimension(:,:)    , save, allocatable :: zkv          ! layer interfaces in v-point based on upwinding
     real  , dimension(:,:)    , save, allocatable :: zkvm         ! layer interfaces in v-point based on averaging
+    real  , dimension(:,:)    , save, allocatable :: zkvo         ! layer interfaces in v-point at old time level
     real  , dimension(:,:)    , save, allocatable :: zshear       ! magnitude of shear squared in case of vertical mixing
     !
     type sputype                                                  ! parameters sponge layer for flow velocity

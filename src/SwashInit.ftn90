@@ -11,7 +11,7 @@ subroutine SwashInit ( inerr )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -76,11 +76,11 @@ subroutine SwashInit ( inerr )
 !   Source text
 !
     VERTXT = BLANK
-    VERNUM = 11.01
+    VERNUM = 12.01
     write (VERTXT, '(f5.2)') VERNUM
-    call BUGFIX ('A')
-    call BUGFIX ('B')
-    call BUGFIX ('C')
+    !call BUGFIX ('A')
+    !call BUGFIX ('B')
+    !call BUGFIX ('C')
     !
     call OCPINI ( 'swashinit', .true., inerr )
     if ( inerr > 0 ) return
@@ -390,7 +390,7 @@ subroutine SwashInit ( inerr )
     ! discretization parameters
     !
     mtimei     = -1
-    jhk        =  1
+    jhk        =  1     ! RK3
     dpsopt     =  2
     corrdep    = .true.
     depcds     = .false.
