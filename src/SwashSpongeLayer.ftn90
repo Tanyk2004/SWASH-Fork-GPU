@@ -11,7 +11,7 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -58,10 +58,10 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
 !
 !   Argument variables
 !
-    real, dimension(MCGRDGL), intent(out) :: sponxl ! left sponge layer in x-direction in global domain
-    real, dimension(MCGRDGL), intent(out) :: sponxr ! right sponge layer in x-direction in global domain
-    real, dimension(MCGRDGL), intent(out) :: sponyb ! lower sponge layer in y-direction in global domain
-    real, dimension(MCGRDGL), intent(out) :: sponyt ! upper sponge layer in y-direction in global domain
+    real, dimension(MCGRDGL), intent(inout) :: sponxl ! left sponge layer in x-direction in global domain
+    real, dimension(MCGRDGL), intent(inout) :: sponxr ! right sponge layer in x-direction in global domain
+    real, dimension(MCGRDGL), intent(inout) :: sponyb ! lower sponge layer in y-direction in global domain
+    real, dimension(MCGRDGL), intent(inout) :: sponyt ! upper sponge layer in y-direction in global domain
 !
 !   Parameter variables
 !
@@ -171,23 +171,9 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
                 !
                 dist = 0.
                 !
-                do ix = 2, MXCGL-1
+                do ix = 1, MXCGL-1
                    !
                    indx = KGRPGL(ix,iy)
-                   !
-                   dxl = 0.5 * ( XGRDGL(ix,iy) + XGRDGL(ix,iy-1) - XGRDGL(ix-1,iy) - XGRDGL(ix-1,iy-1) )
-                   dyl = 0.5 * ( YGRDGL(ix,iy) + YGRDGL(ix,iy-1) - YGRDGL(ix-1,iy) - YGRDGL(ix-1,iy-1) )
-                   !
-                   if ( kspher > 0 ) then
-                      !
-                      coslat = cos(degrad*(0.25*(YGRDGL(ix,iy)+YGRDGL(ix,iy-1)+YGRDGL(ix-1,iy)+YGRDGL(ix-1,iy-1)) + yoffs))
-                      !
-                      dxl = lendeg * coslat * dxl
-                      dyl = lendeg * dyl
-                      !
-                   endif
-                   !
-                   dist = dist + sqrt( dxl*dxl + dyl*dyl )
                    !
                    if ( .not. dist > spwidl ) then
                       !
@@ -205,6 +191,20 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
                       !
                    endif
                    !
+                   dxl = 0.5 * ( XGRDGL(ix+1,iy) + XGRDGL(ix+1,iy-1) - XGRDGL(ix,iy) - XGRDGL(ix,iy-1) )
+                   dyl = 0.5 * ( YGRDGL(ix+1,iy) + YGRDGL(ix+1,iy-1) - YGRDGL(ix,iy) - YGRDGL(ix,iy-1) )
+                   !
+                   if ( kspher > 0 ) then
+                      !
+                      coslat = cos(degrad*(0.25*(YGRDGL(ix+1,iy)+YGRDGL(ix+1,iy-1)+YGRDGL(ix,iy)+YGRDGL(ix,iy-1)) + yoffs))
+                      !
+                      dxl = lendeg * coslat * dxl
+                      dyl = lendeg * dyl
+                      !
+                   endif
+                   !
+                   dist = dist + sqrt( dxl*dxl + dyl*dyl )
+                   !
                 enddo
                 !
              endif
@@ -216,20 +216,6 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
                 do ix = MXCGL-1, 2, -1
                    !
                    indx = KGRPGL(ix,iy)
-                   !
-                   dxl = 0.5 * ( XGRDGL(ix,iy) + XGRDGL(ix,iy-1) - XGRDGL(ix-1,iy) - XGRDGL(ix-1,iy-1) )
-                   dyl = 0.5 * ( YGRDGL(ix,iy) + YGRDGL(ix,iy-1) - YGRDGL(ix-1,iy) - YGRDGL(ix-1,iy-1) )
-                   !
-                   if ( kspher > 0 ) then
-                      !
-                      coslat = cos(degrad*(0.25*(YGRDGL(ix,iy)+YGRDGL(ix,iy-1)+YGRDGL(ix-1,iy)+YGRDGL(ix-1,iy-1)) + yoffs))
-                      !
-                      dxl = lendeg * coslat * dxl
-                      dyl = lendeg * dyl
-                      !
-                   endif
-                   !
-                   dist = dist + sqrt( dxl*dxl + dyl*dyl )
                    !
                    if ( .not. dist > spwidr ) then
                       !
@@ -246,6 +232,20 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
                       endif
                       !
                    endif
+                   !
+                   dxl = 0.5 * ( XGRDGL(ix,iy) + XGRDGL(ix,iy-1) - XGRDGL(ix-1,iy) - XGRDGL(ix-1,iy-1) )
+                   dyl = 0.5 * ( YGRDGL(ix,iy) + YGRDGL(ix,iy-1) - YGRDGL(ix-1,iy) - YGRDGL(ix-1,iy-1) )
+                   !
+                   if ( kspher > 0 ) then
+                      !
+                      coslat = cos(degrad*(0.25*(YGRDGL(ix,iy)+YGRDGL(ix,iy-1)+YGRDGL(ix-1,iy)+YGRDGL(ix-1,iy-1)) + yoffs))
+                      !
+                      dxl = lendeg * coslat * dxl
+                      dyl = lendeg * dyl
+                      !
+                   endif
+                   !
+                   dist = dist + sqrt( dxl*dxl + dyl*dyl )
                    !
                 enddo
                 !
@@ -267,23 +267,9 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
              !
              dist = 0.
              !
-             do iy = 2, MYCGL-1
+             do iy = 1, MYCGL-1
                 !
                 indx = KGRPGL(ix,iy)
-                !
-                dxl = 0.5 * ( XGRDGL(ix,iy) + XGRDGL(ix-1,iy) - XGRDGL(ix,iy-1) - XGRDGL(ix-1,iy-1) )
-                dyl = 0.5 * ( YGRDGL(ix,iy) + YGRDGL(ix-1,iy) - YGRDGL(ix,iy-1) - YGRDGL(ix-1,iy-1) )
-                !
-                if ( kspher > 0 ) then
-                   !
-                   coslat = cos(degrad*(0.25*(YGRDGL(ix,iy)+YGRDGL(ix,iy-1)+YGRDGL(ix-1,iy)+YGRDGL(ix-1,iy-1)) + yoffs))
-                   !
-                   dxl = lendeg * coslat * dxl
-                   dyl = lendeg * dyl
-                   !
-                endif
-                !
-                dist = dist + sqrt( dxl*dxl + dyl*dyl )
                 !
                 if ( .not. dist > spwidb ) then
                    !
@@ -301,6 +287,20 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
                    !
                 endif
                 !
+                dxl = 0.5 * ( XGRDGL(ix,iy+1) + XGRDGL(ix-1,iy+1) - XGRDGL(ix,iy) - XGRDGL(ix-1,iy) )
+                dyl = 0.5 * ( YGRDGL(ix,iy+1) + YGRDGL(ix-1,iy+1) - YGRDGL(ix,iy) - YGRDGL(ix-1,iy) )
+                !
+                if ( kspher > 0 ) then
+                   !
+                   coslat = cos(degrad*(0.25*(YGRDGL(ix,iy+1)+YGRDGL(ix,iy)+YGRDGL(ix-1,iy+1)+YGRDGL(ix-1,iy)) + yoffs))
+                   !
+                   dxl = lendeg * coslat * dxl
+                   dyl = lendeg * dyl
+                   !
+                endif
+                !
+                dist = dist + sqrt( dxl*dxl + dyl*dyl )
+                !
              enddo
              !
           endif
@@ -312,20 +312,6 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
              do iy = MYCGL-1, 2, -1
                 !
                 indx = KGRPGL(ix,iy)
-                !
-                dxl = 0.5 * ( XGRDGL(ix,iy) + XGRDGL(ix-1,iy) - XGRDGL(ix,iy-1) - XGRDGL(ix-1,iy-1) )
-                dyl = 0.5 * ( YGRDGL(ix,iy) + YGRDGL(ix-1,iy) - YGRDGL(ix,iy-1) - YGRDGL(ix-1,iy-1) )
-                !
-                if ( kspher > 0 ) then
-                   !
-                   coslat = cos(degrad*(0.25*(YGRDGL(ix,iy)+YGRDGL(ix,iy-1)+YGRDGL(ix-1,iy)+YGRDGL(ix-1,iy-1)) + yoffs))
-                   !
-                   dxl = lendeg * coslat * dxl
-                   dyl = lendeg * dyl
-                   !
-                endif
-                !
-                dist = dist + sqrt( dxl*dxl + dyl*dyl )
                 !
                 if ( .not. dist > spwidt ) then
                    !
@@ -342,6 +328,20 @@ subroutine SwashSpongeLayer ( sponxl, sponxr, sponyb, sponyt )
                    endif
                    !
                 endif
+                !
+                dxl = 0.5 * ( XGRDGL(ix,iy) + XGRDGL(ix-1,iy) - XGRDGL(ix,iy-1) - XGRDGL(ix-1,iy-1) )
+                dyl = 0.5 * ( YGRDGL(ix,iy) + YGRDGL(ix-1,iy) - YGRDGL(ix,iy-1) - YGRDGL(ix-1,iy-1) )
+                !
+                if ( kspher > 0 ) then
+                   !
+                   coslat = cos(degrad*(0.25*(YGRDGL(ix,iy)+YGRDGL(ix,iy-1)+YGRDGL(ix-1,iy)+YGRDGL(ix-1,iy-1)) + yoffs))
+                   !
+                   dxl = lendeg * coslat * dxl
+                   dyl = lendeg * dyl
+                   !
+                endif
+                !
+                dist = dist + sqrt( dxl*dxl + dyl*dyl )
                 !
              enddo
              !

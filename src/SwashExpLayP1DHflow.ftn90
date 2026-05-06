@@ -11,7 +11,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -3301,12 +3301,17 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
        !
     endif
     !
+    ! store layer interfaces in u-point
+    !
+    zkuo = zku
+    !
     ! not computed for end point ml at subdomain interface since, this end point is owned by the neighbouring subdomain
     !
     mend = ml - 1
     if ( LMXL ) mend = ml
     !
-    ! solve global continuity equation by means of the second order RK3 scheme
+    ! solve global continuity equation by means of a second order predictor-corrector scheme
+    ! (jhk = 1: RK3, jhk = 2: Hancock, jhk = 3: first order Euler)
     !
     do j = jhk, 3
        !
@@ -3342,7 +3347,6 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
        !
        if ( ihydro /= 3 ) then
           !
-          udep      = 0.
           work(:,1) = 0.
           !
           do m = mf, ml
@@ -3357,13 +3361,29 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
                    !
                 enddo
                 !
-                ! compute the depth-averaged u-velocity
-                !
-                udep(nm) = work(nm,1) / hu(nm)
-                !
              endif
              !
           enddo
+          !
+          ! compute the depth-averaged u-velocity
+          !
+          if ( j == jhk ) then
+             !
+             udep = 0.
+             !
+             do m = mf, ml
+                !
+                nm = kgrpnt(m)
+                !
+                if ( wetu(nm) == 1 ) then
+                   !
+                   udep(nm) = work(nm,1) / hu(nm)
+                   !
+                endif
+                !
+             enddo
+             !
+          endif
           !
        else
           !
@@ -3732,7 +3752,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
                 !
                 fac  = ( fac2 * hksc(nm,k) + fac1 * hksc(nm,k+1) ) / ( hksc(nm,k) + hksc(nm,k+1) )
                 !
-                womp(nm,k) = w1p(nm,k) - ( zksnew(nm,kup(k)) - zks(nm,kup(k)) ) / dt - fac * rdx *( zku(nm,kup(k)) - zku(nmd,kup(k)) )
+                womp(nm,k) = w1p(nm,k) - ( zksnew(nm,kup(k)) - zks(nm,kup(k)) ) / dt - fac * rdx *( zkuo(nm,kup(k)) - zkuo(nmd,kup(k)) )
                 !
              enddo
              !
@@ -3851,7 +3871,7 @@ subroutine SwashExpLayP1DHflow ( ibl, ibr, kgrpnt )
                       !
                       fac  = ( fac2 * hks(nm,k) + fac1 * hks(nm,k+1) ) / ( hks(nm,k) + hks(nm,k+1) )
                       !
-                      w1(nm,k) = wom(nm,k) + ( zksnew(nm,k) - zks(nm,k) ) / dt + fac * rdx *( zku(nm,k) - zku(nmd,k) )
+                      w1(nm,k) = wom(nm,k) + ( zksnew(nm,k) - zks(nm,k) ) / dt + fac * rdx *( zkuo(nm,k) - zkuo(nmd,k) )
                       !
                    endif
                    !

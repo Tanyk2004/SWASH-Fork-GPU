@@ -11,7 +11,7 @@ subroutine SwashCleanMem
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -162,8 +162,10 @@ subroutine SwashCleanMem
     if ( allocated(zkso  ) )  deallocate(zkso  )
     if ( allocated(zku   ) )  deallocate(zku   )
     if ( allocated(zkum  ) )  deallocate(zkum  )
+    if ( allocated(zkuo  ) )  deallocate(zkuo  )
     if ( allocated(zkv   ) )  deallocate(zkv   )
     if ( allocated(zkvm  ) )  deallocate(zkvm  )
+    if ( allocated(zkvo  ) )  deallocate(zkvo  )
     if ( allocated(hks   ) )  deallocate(hks   )
     if ( allocated(hksc  ) )  deallocate(hksc  )
     if ( allocated(hksnew) )  deallocate(hksnew)

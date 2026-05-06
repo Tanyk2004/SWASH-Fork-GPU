@@ -11,7 +11,7 @@ subroutine SwashExpLay2DHflow
 !
 !
 !     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
-!     Copyright (C) 2010-2025  Delft University of Technology
+!     Copyright (C) 2010-2026  Delft University of Technology
 !
 !     This program is free software: you can redistribute it and/or modify
 !     it under the terms of the GNU General Public License as published by
@@ -6533,6 +6533,11 @@ subroutine SwashExpLay2DHflow
        !
     endif
     !
+    ! store layer interfaces in velocity points
+    !
+    zkuo = zku
+    zkvo = zkv
+    !
     ! not computed for points ml and nl at subdomain interfaces since, these end points are owned by the neighbouring subdomains
     !
     mend(1) = ml - 1
@@ -6541,7 +6546,8 @@ subroutine SwashExpLay2DHflow
     nend(1) = nl - 1
     if ( LMYL ) nend(1) = nl
     !
-    ! solve global continuity equation by means of the second order RK3 scheme
+    ! solve global continuity equation by means of a second order predictor-corrector scheme
+    ! (jhk = 1: RK3, jhk = 2: Hancock, jhk = 3: first order Euler)
     !
     do j = jhk, 3
        !
@@ -6593,8 +6599,8 @@ subroutine SwashExpLay2DHflow
        !
        ! compute the depth-integrated mass fluxes
        !
-       udep      = 0.
        work(:,1) = 0.
+       work(:,2) = 0.
        !
        do n = nfu, nl
           do m = mf, ml
@@ -6609,17 +6615,10 @@ subroutine SwashExpLay2DHflow
                    !
                 enddo
                 !
-                ! compute the depth-averaged u-velocity
-                !
-                udep(nm) = work(nm,1) / ( hu(nm)*guu(nm) )
-                !
              endif
              !
           enddo
        enddo
-       !
-       vdep      = 0.
-       work(:,2) = 0.
        !
        do m = mfu, ml
           do n = nf, nl
@@ -6634,14 +6633,47 @@ subroutine SwashExpLay2DHflow
                    !
                 enddo
                 !
-                ! compute the depth-averaged v-velocity
-                !
-                vdep(nm) = work(nm,2) / ( hv(nm)*gvv(nm) )
-                !
              endif
              !
           enddo
        enddo
+       !
+       ! compute the depth-averaged velocities
+       !
+       if ( j == jhk ) then
+          !
+          udep = 0.
+          vdep = 0.
+          !
+          do n = nfu, nl
+             do m = mf, ml
+                !
+                nm = kgrpnt(m,n)
+                !
+                if ( uwetp(nm) == 1 ) then
+                   !
+                   udep(nm) = work(nm,1) / ( hu(nm)*guu(nm) )
+                   !
+                endif
+                !
+             enddo
+          enddo
+          !
+          do m = mfu, ml
+             do n = nf, nl
+                !
+                nm = kgrpnt(m,n)
+                !
+                if ( vwetp(nm) == 1 ) then
+                   !
+                   vdep(nm) = work(nm,2) / ( hv(nm)*gvv(nm) )
+                   !
+                endif
+                !
+             enddo
+          enddo
+          !
+       endif
        !
        ! compute the water level
        !
@@ -7363,7 +7395,7 @@ subroutine SwashExpLay2DHflow
                    !
                    v    = ( fac2 * hks(nm,k) + fac1 * hks(nm,k+1) ) / ( hks(nm,k) + hks(nm,k+1) )
                    !
-                   wom(nm,k) = w1(nm,k) - ( zksnew(nm,k) - zks(nm,k) ) / dt - u * ( zku(nm,k) - zku(nmd,k) ) / dxl - v * ( zkv(nm,k) - zkv(ndm,k) ) / dyl
+                   wom(nm,k) = w1(nm,k) - ( zksnew(nm,k) - zks(nm,k) ) / dt - u * ( zkuo(nm,k) - zkuo(nmd,k) ) / dxl - v * ( zkvo(nm,k) - zkvo(ndm,k) ) / dyl
                    !
                 enddo
                 !
