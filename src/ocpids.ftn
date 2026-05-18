@@ -508,6 +508,7 @@
       DATA MONC /'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL',
      &           'AUG', 'SEP', 'OCT', 'NOV', 'DEC'/
 !
+      DTTIME = 0
       IF (IOPT.EQ.1) THEN
         READ (TIMSTR, '(I4,I2,I2,1X,3I2)', ERR=98) (DTTIME(II), II=1,6)
       ELSE IF (IOPT.EQ.2) THEN
