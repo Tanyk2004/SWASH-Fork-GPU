@@ -3922,16 +3922,6 @@ subroutine SwashCheckPrep
        call SwashUSpongLayer
     endif
     !
-    ! initialize transport constituents and store boundary values
-    !
-    if ( itrans /= 0 ) then
-       if ( optg /= 5 ) then
-          call SwashInitBCtrans
-       else
-          call SwashInitBCUtrans
-       endif
-    endif
-    !
     ! determine ambient current (tide/wind surge)
     !
     if ( optg /= 5 .and. iamb /= 0 ) call SwashAmbCurrent
@@ -4259,6 +4249,16 @@ subroutine SwashCheckPrep
           !
        endif
        !
+    endif
+    !
+    ! initialize transport constituents and store boundary values
+    !
+    if ( itrans /= 0 ) then
+       if ( optg /= 5 ) then
+          call SwashInitBCtrans
+       else
+          call SwashInitBCUtrans
+       endif
     endif
     !
     ! allocate and initialize variables for non-hydrostatic computation
@@ -5976,7 +5976,7 @@ subroutine SwashCheckPrep
     !
     ! in case of subgrid approach initialize flow velocities on coarse (pressure) grid
     !
-    if ( lsubg ) then
+    if ( lsubg .and. ihydro /= 3 ) then
        !
        u1p = 0.
        if ( .not.oned ) v1p = 0.

@@ -125,7 +125,6 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     integer                                      :: nbvl             ! user-defined number of boundary values
     integer                                      :: ndsd             ! unit reference number of file containing data
     integer                                      :: nfreq            ! number of components in Fourier series
-    integer                                      :: nseed            ! number of seed integers
     integer*8                                    :: ntsmo            ! enlarged smoothing period to store as integer
     integer                                      :: nump             ! number of boundary points of selected side
     integer                                      :: vm               ! boundary marker
@@ -192,7 +191,6 @@ subroutine SwashBounCond ( xcgrid, ycgrid, kgrpnt )
     logical                                      :: lfrst4           ! just another logical indicates the start of a series of actions to be performed
     logical                                      :: locgri           ! indicates whether boundary point is given as pair of indices or location
     logical                                      :: lriem = .false.  ! indicates whether linearized Riemann invariant is imposed or not
-    logical, save                                :: lseed = .true.   ! indicates to initialize the seed or not
     logical                                      :: STPNOW           ! indicates that program must stop
     !
     character(80)                                :: msgstr           ! string to pass message
