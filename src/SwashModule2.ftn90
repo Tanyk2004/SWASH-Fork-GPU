@@ -345,6 +345,7 @@ module m_bndspec
 !   Module variables
 !
     integer                  :: ibound                        ! bound long wave is added (=1) or not added (=0)
+    integer                  :: nseed                         ! number of seed integers
     !
     integer, dimension(3)    :: spshape = 2                   ! =1; indicates option for value of given wave height concerning the incident spectrum
                                                               !     = 1; root-mean-square (rms) value of wave height
@@ -362,6 +363,7 @@ module m_bndspec
     logical                  :: alobnd                        ! if true, user has specified boundary conditions
     logical                  :: bcperx = .false.              ! indicates whether incident wave at boundary along x-direction must make periodic or not
     logical                  :: bcpery = .false.              ! indicates whether incident wave at boundary along y-direction must make periodic or not
+    logical, save            :: lseed  = .true.               ! indicates to initialize the seed or not
     !
     integer   , dimension(:)    , save, allocatable :: seedf  ! seed used to generate pseudorandom phases
     integer   , dimension(:)    , save, allocatable :: seedt  ! seed used to generate pseudorandom spectral directions
