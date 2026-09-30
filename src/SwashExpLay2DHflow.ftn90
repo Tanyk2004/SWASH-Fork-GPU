@@ -1859,7 +1859,7 @@ subroutine SwashExpLay2DHflow
     !
     ! [ACC region: vertical u-momentum] inputs to the device
     !
-    !$acc update device(amatu, rhsu, wom, hkum, u0, vnu3d, uwetp) if(acc_active)
+    !$acc update device(amatu, rhsu, wom, hkum, u0, u1, vnu3d, uwetp) if(acc_active)
     !
     do k = 1, kmax
        !
@@ -6604,7 +6604,7 @@ subroutine SwashExpLay2DHflow
        !
        ! [ACC region: continuity] inputs to the device
        !
-       !$acc update device(u1, v1, hku, hkv, hu, hv, s0, dpu, dpv, uwetp, vwetp, udep, vdep) if(acc_active)
+       !$acc update device(u1, v1, hku, hkv, hu, hv, s0, s1, dpu, dpv, uwetp, vwetp, udep, vdep, qx, qy, work) if(acc_active)
        !
        ! compute the mass flux per layer in x-direction
        ! (the dummy index 1 is skipped on purpose: its value is never used because uwetp(1) = 0)

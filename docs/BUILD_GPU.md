@@ -80,8 +80,10 @@ NV_ACC_NOTIFY=3 tests/run_case.sh build-nvhpc marina_lay2 --tier gpu 2>&1 | grep
 ```
 
 The second command counts data transfers; during the incremental port each
-ported region uploads its inputs and downloads its outputs on purpose (see
-`src/SwashAccData.ftn90`), so the count is large. It must drop to a handful per
+ported region uploads every array it reads or writes and downloads the ones it
+writes on purpose (see `src/SwashAccData.ftn90`; the upload of written arrays
+matters because kernels touch only interior points and `update host` copies
+whole arrays), so the count is large. It must drop to a handful per
 step once the residency is complete (Phase 1 done).
 
 CPU fallback of the same binary: run with `ACC_DEVICE_TYPE=host` (kernels on

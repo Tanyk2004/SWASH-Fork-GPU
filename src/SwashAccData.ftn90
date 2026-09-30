@@ -52,9 +52,14 @@ module SwashAccData
 !                          output, hot-file writing, engine field access)
 !
 !   During the incremental port each ported kernel region starts with
-!   "!$acc update device(...)" of its inputs and ends with
-!   "!$acc update host(...)" of its outputs, so the host copy is always the
-!   reference and unported host code between regions stays correct.  As the
+!   "!$acc update device(...)" of EVERY array it reads or writes and ends with
+!   "!$acc update host(...)" of the arrays it writes, so the host copy is
+!   always the reference and unported host code between regions stays correct.
+!   Uploading the written arrays too is essential: a kernel writes only the
+!   interior points, and "update host" copies the whole array back, so any
+!   entry the kernel does not write (virtual boundary cells, the dummy index 1,
+!   points outside msta..mend) must already hold the host value on the device.
+!   For the same reason the device copies are created with copyin.  As the
 !   port coverage grows these updates are removed and only the sync before
 !   output remains.
 !
@@ -91,79 +96,79 @@ contains
         !
         !$acc enter data copyin(kgrpnt, guu, gvv, gsqs, msta, mend, nsta, nend) if(acc_active)
         !
-        ! state and work arrays: created, filled by "update device" in the kernels
+        ! state and work arrays: copied in so that the device mirrors the host from the start
         !
         if ( allocated(s0)    ) then
-           !$acc enter data create(s0) if(acc_active)
+           !$acc enter data copyin(s0) if(acc_active)
         endif
         if ( allocated(s1)    ) then
-           !$acc enter data create(s1) if(acc_active)
+           !$acc enter data copyin(s1) if(acc_active)
         endif
         if ( allocated(dps)   ) then
-           !$acc enter data create(dps) if(acc_active)
+           !$acc enter data copyin(dps) if(acc_active)
         endif
         if ( allocated(dpu)   ) then
-           !$acc enter data create(dpu) if(acc_active)
+           !$acc enter data copyin(dpu) if(acc_active)
         endif
         if ( allocated(dpv)   ) then
-           !$acc enter data create(dpv) if(acc_active)
+           !$acc enter data copyin(dpv) if(acc_active)
         endif
         if ( allocated(hu)    ) then
-           !$acc enter data create(hu) if(acc_active)
+           !$acc enter data copyin(hu) if(acc_active)
         endif
         if ( allocated(hv)    ) then
-           !$acc enter data create(hv) if(acc_active)
+           !$acc enter data copyin(hv) if(acc_active)
         endif
         if ( allocated(u0)    ) then
-           !$acc enter data create(u0) if(acc_active)
+           !$acc enter data copyin(u0) if(acc_active)
         endif
         if ( allocated(u1)    ) then
-           !$acc enter data create(u1) if(acc_active)
+           !$acc enter data copyin(u1) if(acc_active)
         endif
         if ( allocated(v1)    ) then
-           !$acc enter data create(v1) if(acc_active)
+           !$acc enter data copyin(v1) if(acc_active)
         endif
         if ( allocated(udep)  ) then
-           !$acc enter data create(udep) if(acc_active)
+           !$acc enter data copyin(udep) if(acc_active)
         endif
         if ( allocated(vdep)  ) then
-           !$acc enter data create(vdep) if(acc_active)
+           !$acc enter data copyin(vdep) if(acc_active)
         endif
         if ( allocated(qx)    ) then
-           !$acc enter data create(qx) if(acc_active)
+           !$acc enter data copyin(qx) if(acc_active)
         endif
         if ( allocated(qy)    ) then
-           !$acc enter data create(qy) if(acc_active)
+           !$acc enter data copyin(qy) if(acc_active)
         endif
         if ( allocated(hku)   ) then
-           !$acc enter data create(hku) if(acc_active)
+           !$acc enter data copyin(hku) if(acc_active)
         endif
         if ( allocated(hkv)   ) then
-           !$acc enter data create(hkv) if(acc_active)
+           !$acc enter data copyin(hkv) if(acc_active)
         endif
         if ( allocated(hkum)  ) then
-           !$acc enter data create(hkum) if(acc_active)
+           !$acc enter data copyin(hkum) if(acc_active)
         endif
         if ( allocated(wom)   ) then
-           !$acc enter data create(wom) if(acc_active)
+           !$acc enter data copyin(wom) if(acc_active)
         endif
         if ( allocated(vnu3d) ) then
-           !$acc enter data create(vnu3d) if(acc_active)
+           !$acc enter data copyin(vnu3d) if(acc_active)
         endif
         if ( allocated(amatu) ) then
-           !$acc enter data create(amatu) if(acc_active)
+           !$acc enter data copyin(amatu) if(acc_active)
         endif
         if ( allocated(rhsu)  ) then
-           !$acc enter data create(rhsu) if(acc_active)
+           !$acc enter data copyin(rhsu) if(acc_active)
         endif
         if ( allocated(uwetp) ) then
-           !$acc enter data create(uwetp) if(acc_active)
+           !$acc enter data copyin(uwetp) if(acc_active)
         endif
         if ( allocated(vwetp) ) then
-           !$acc enter data create(vwetp) if(acc_active)
+           !$acc enter data copyin(vwetp) if(acc_active)
         endif
         if ( allocated(work)  ) then
-           !$acc enter data create(work) if(acc_active)
+           !$acc enter data copyin(work) if(acc_active)
         endif
         !
         acc_entered = .true.
