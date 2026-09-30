@@ -61,13 +61,13 @@ sw.finish()
 
 ```bash
 mkdir build-nvhpc && cd build-nvhpc
-cmake .. -G Ninja -DCMAKE_Fortran_COMPILER=nvfortran -DOPENACC=ON -DGPU_CC=89 -DTIMG=ON -DENGINE=ON
+cmake .. -G Ninja -DCMAKE_Fortran_COMPILER=nvfortran -DOPENACC=ON -DGPU_CC=120 -DTIMG=ON -DENGINE=ON
 cmake --build . 2>&1 | tee build.log
 cd ..
 ```
 
 `GPU_CC` is the compute capability: 80 (A100), 86 (RTX 30xx), 89 (RTX 40xx),
-90 (H100). Check `build.log` for the `-Minfo=accel` messages of
+90 (H100), 120 (RTX 50xx, Blackwell; needs HPC SDK 25.3 or newer and driver 570 or newer). Check `build.log` for the `-Minfo=accel` messages of
 `SwashExpLay2DHflow.f90`: every ported loop must report "Generating NVIDIA GPU
 code" and the collapsed loops "gang vector"; a "loop not parallelizable" line
 on one of them is a bug to fix before running.

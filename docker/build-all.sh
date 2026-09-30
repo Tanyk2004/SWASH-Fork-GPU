@@ -3,7 +3,7 @@
 #
 #   docker/build-all.sh cpu            gfortran build (build-gnu), goldens for the three cases, branch test
 #   docker/build-all.sh gpu [GPU_CC]   nvfortran/OpenACC build (build-nvhpc) and the GPU-tier regression
-#                                      GPU_CC: 80 A100, 86 RTX 30xx, 89 RTX 40xx, 90 H100 (default: native)
+#                                      GPU_CC: 80 A100, 86 RTX 30xx, 89 RTX 40xx, 90 H100, 120 RTX 50xx (Blackwell; default: native)
 set -euo pipefail
 target="${1:-cpu}"; cc="${2:-native}"
 cd "$(dirname "$0")/.."

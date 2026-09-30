@@ -19,6 +19,8 @@ One of these, none of which needs sudo at run time:
 
 For the GPU image the host needs an NVIDIA driver that supports the CUDA version in the image tag: 12.9 needs driver 525 or newer, 13.x needs 580 or newer. Pick the tag accordingly (see below).
 
+**RTX 50xx (Blackwell, compute capability 120):** supported by HPC SDK 25.3 and newer, so the default tag works; the host driver must be 570 or newer (the 5090 ships with such drivers). Build with `GPU_CC=120`.
+
 ## Build the images
 
 ```bash
@@ -33,7 +35,7 @@ The GPU base image is about 10 GB; the pull is the slow part. Available tags are
 
 ```bash
 docker/run.sh cpu docker/build-all.sh cpu        # gfortran build, goldens for the 3 cases, branch test
-docker/run.sh gpu docker/build-all.sh gpu 89     # OpenACC build for compute capability 89, GPU-tier regression
+docker/run.sh gpu docker/build-all.sh gpu 120    # OpenACC build for an RTX 5090 (compute capability 120), GPU-tier regression
 docker/run.sh gpu tests/run_case.sh build-nvhpc marina_lay2 --tier gpu
 docker/run.sh cpu                                # interactive shell in the container
 ```

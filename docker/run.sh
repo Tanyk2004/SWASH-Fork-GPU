@@ -5,7 +5,7 @@
 #
 # Examples
 #   docker/run.sh cpu docker/build-all.sh cpu            # gfortran build + goldens
-#   docker/run.sh gpu docker/build-all.sh gpu 89         # nvfortran/OpenACC build for an RTX 40xx (cc 89)
+#   docker/run.sh gpu docker/build-all.sh gpu 120        # nvfortran/OpenACC build for an RTX 50xx (cc 120); 89 for RTX 40xx
 #   docker/run.sh gpu tests/run_case.sh build-nvhpc marina_lay2 --tier gpu
 #   docker/run.sh cpu                                    # interactive shell
 #
