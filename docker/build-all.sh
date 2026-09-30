@@ -19,7 +19,15 @@ case "$target" in
     command -v nvfortran >/dev/null || { echo "nvfortran not found: use the gpu image" >&2; exit 1; }
     rm -rf build-nvhpc src/*.f90 src/*.f engine/*.f90
     cmake -S . -B build-nvhpc -G Ninja -DCMAKE_Fortran_COMPILER=nvfortran -DOPENACC=ON -DGPU_CC="$cc" -DTIMG=ON -DENGINE=ON
+    set +e
     cmake --build build-nvhpc 2>&1 | tee build-nvhpc/build.log
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [[ $rc -ne 0 ]]; then
+      echo "== BUILD FAILED; first compiler errors:"
+      grep -n 'NVFORTRAN-S\|NVFORTRAN-F\|Error\|error:' build-nvhpc/build.log | head -20
+      exit $rc
+    fi
     echo "== OpenACC report for the ported kernel:"
     grep -A2 'SwashExpLay2DHflow\|swashexplay2dhflow' build-nvhpc/build.log | grep -i 'gpu code\|not parallel\|gang' | head -40 || true
     [[ -d tests/golden/marina_lay2 ]] || { echo "no goldens yet: run docker/build-all.sh cpu first"; exit 1; }

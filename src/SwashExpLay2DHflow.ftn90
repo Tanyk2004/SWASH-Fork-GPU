@@ -151,6 +151,7 @@ subroutine SwashExpLay2DHflow
     !
     real                               :: bi       ! inverse of main diagonal of the matrix
     real                               :: cfl      ! CFL number
+    real                               :: cflloc   ! maximum CFL number (local reduction variable)
     real                               :: ctrkb    ! contribution of vertical terms below considered point
     real                               :: ctrkt    ! contribution of vertical terms above considered point
     real                               :: dep      ! local water depth
@@ -1872,9 +1873,12 @@ subroutine SwashExpLay2DHflow
        if ( k == 1    ) kwd = 0.
        if ( k == kmax ) kwu = 0.
        !
+       ! (rectangular loop with a row mask: OpenACC collapse needs bounds independent of n)
        !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
        do n = nfu, nl
-          do m = msta(n), mend(n)
+          do m = mf, ml
+             !
+             if ( m < msta(n) .or. m > mend(n) ) cycle
              !
              mu = m + 1
              !
@@ -1971,7 +1975,9 @@ subroutine SwashExpLay2DHflow
     !
     !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
     do n = nfu, nl
-       do m = msta(n), mend(n)
+       do m = mf, ml
+          !
+          if ( m < msta(n) .or. m > mend(n) ) cycle
           !
           nm = kgrpnt(m,n)
           !
@@ -7516,13 +7522,14 @@ subroutine SwashExpLay2DHflow
     !
     ! compute the maximum CFL number
     !
-    cflmax = -999.
+    cflloc = -999.
     !
     ! [ACC region: CFL] inputs to the device; the maximum is a reduction over all points and layers
+    ! (reduced into a local variable, then copied to the module variable cflmax)
     !
     !$acc update device(s1, dps, u1, v1) if(acc_active)
     !
-    !$acc parallel loop gang vector collapse(3) default(present) reduction(max:cflmax) if(acc_active)
+    !$acc parallel loop gang vector collapse(3) default(present) reduction(max:cflloc) if(acc_active)
     do k = 1, kmax
        !
        do n = nfu, nend(1)
@@ -7552,7 +7559,7 @@ subroutine SwashExpLay2DHflow
                 dyl = 0.5 * ( guu(nm) + guu(nmd) )
                 !
                 cfl = dt * ( sqrt(grav*dep) + utot ) * sqrt(1./(dxl*dxl) + 1./(dyl*dyl))
-                if ( cfl > cflmax ) cflmax = cfl
+                if ( cfl > cflloc ) cflloc = cfl
                 !
              endif
              !
@@ -7560,6 +7567,8 @@ subroutine SwashExpLay2DHflow
        enddo
        !
     enddo
+    !
+    cflmax = cflloc
     !
     ! find maximum of CFL number over all subdomains
     !

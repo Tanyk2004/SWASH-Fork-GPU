@@ -52,7 +52,7 @@ elseif( CMAKE_Fortran_COMPILER_ID MATCHES "Intel" )
   endif()
 elseif( CMAKE_Fortran_COMPILER_ID MATCHES "PGI|NVHPC" )
   # Portland Group / NVIDIA HPC SDK (nvfortran); the only compiler with OpenACC GPU offload support here
-  set( CMAKE_Fortran_FLAGS "-O2 -Mbackslash -Mnoopenmp" CACHE STRING "" FORCE )
+  set( CMAKE_Fortran_FLAGS "-O2 -Mbackslash" CACHE STRING "" FORCE )
   if( OPENACC )
     set( CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -acc=gpu -gpu=cc${GPU_CC} -Minfo=accel" )
   endif()
