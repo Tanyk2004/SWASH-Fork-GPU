@@ -28,8 +28,10 @@ case "$target" in
       grep -n 'NVFORTRAN-S\|NVFORTRAN-F\|Error\|error:' build-nvhpc/build.log | head -20
       exit $rc
     fi
-    echo "== OpenACC report for the ported kernel:"
-    grep -A2 'SwashExpLay2DHflow\|swashexplay2dhflow' build-nvhpc/build.log | grep -i 'gpu code\|not parallel\|gang' | head -40 || true
+    echo "== OpenACC report for the ported kernel (from -Minfo=accel):"
+    # the report is a block headed by the routine name; print its lines about GPU code generation and loop scheduling
+    awk 'tolower($0) ~ /^swashexplay2dhflow:/ {p=1; print; next} /^[a-z_0-9]+:$/ {p=0} p' build-nvhpc/build.log \
+      | grep -i 'generating\|gang\|vector\|seq\|not parallel\|reduction\|update' | head -60 || true
     [[ -d tests/golden/marina_lay2 ]] || { echo "no goldens yet: run docker/build-all.sh cpu first"; exit 1; }
     tests/run_case.sh build-nvhpc marina_lay2 --tier gpu
     ;;
