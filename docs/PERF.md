@@ -8,9 +8,15 @@ and the split from `tools/profile_timg.py`.
 
 | case | grid | steps | compute wall [s] | ms/step | flow solver % | ILU build % | BiCGSTAB % | notes |
 |---|---|---|---|---|---|---|---|---|
-| marina_lay2 | 200x150x2 | | | | | | | |
-| marina_float | 200x150x2 | | | | | | | implicit, ILU (icond=3) |
-| basin_da | 300x300x1 | | | | | | | SIP |
+| marina_lay2 | 200x150x2 | 1510 | 183 | 121 | 97.8 (of compute) | 15.9 | 25.2 | gfortran 13 `-O`, cloud container, 3 concurrent runs sharing 4 cores (timings inflated) |
+| marina_float | 200x150x2 | | | | | | | implicit, ILU (icond=3); not yet run |
+| basin_da | 300x300x1 | 1210 | 102 | 85 | 92.8 (of compute) | n/a | n/a | SIP; same conditions as above |
+
+Reading of the layered baseline: the pressure solve (ILU build + BiCGSTAB)
+takes 41 % of the flow solver, the explicit momentum / continuity / layer
+work the remaining 59 %. Output costs 4 %, boundary updates 3 %. This
+confirms the plan's ordering: port the momentum and continuity loops for the
+bulk of the time, and replace the ILU preconditioner for the rest.
 
 ## GPU (nvfortran, OpenACC)
 
