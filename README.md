@@ -47,7 +47,8 @@ per-section timers. The physics is unchanged. Start with
 [docs/BUILD_GPU.md](docs/BUILD_GPU.md) (how to build and validate) and
 [docs/PHYSICS_INVARIANTS.md](docs/PHYSICS_INVARIANTS.md) (what the port may and
 may not change). Extra CMake options: `OPENACC`, `GPU_CC`, `TIMG`, `ENGINE`
-(see `cmake/SwashOptions.cmake`).
+(see `cmake/SwashOptions.cmake`). Without sudo on your machine, use the
+container images in `docker/` ([docs/DOCKER.md](docs/DOCKER.md)).
 
 ## installation
 

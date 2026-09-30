@@ -1,0 +1,23 @@
+# docker compose -f docker/docker-compose.yml run --rm cpu docker/build-all.sh cpu
+# docker compose -f docker/docker-compose.yml run --rm gpu docker/build-all.sh gpu 89
+services:
+  cpu:
+    build: { context: .., dockerfile: docker/Dockerfile, target: cpu }
+    image: swash:cpu
+    volumes: [ "..:/work" ]
+    working_dir: /work
+    shm_size: 1g
+  gpu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: gpu
+      args: { NVHPC_TAG: "${NVHPC_TAG:-25.7-devel-cuda12.9-ubuntu24.04}" }
+    image: swash:gpu
+    volumes: [ "..:/work" ]
+    working_dir: /work
+    shm_size: 1g
+    deploy:
+      resources:
+        reservations:
+          devices: [ { driver: nvidia, count: all, capabilities: [ gpu ] } ]

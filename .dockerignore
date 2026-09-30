@@ -1,0 +1,8 @@
+.git
+build*/
+tests/work/
+tests/golden/
+runs/
+src/*.f90
+src/*.f
+engine/*.f90

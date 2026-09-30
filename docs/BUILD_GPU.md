@@ -1,7 +1,10 @@
 # Building and validating the GPU / engine fork
 
 Everything below runs on your CUDA workstation. The CPU reference build needs
-only gfortran; the GPU build needs the NVIDIA HPC SDK (`nvfortran`).
+only gfortran; the GPU build needs the NVIDIA HPC SDK (`nvfortran`). If you
+cannot install those (no sudo), run the same steps inside the container images
+of `docker/` (see `docs/DOCKER.md`); `docker/build-all.sh` runs sections 1 to 3
+in one go.
 
 ## Glossary
 
