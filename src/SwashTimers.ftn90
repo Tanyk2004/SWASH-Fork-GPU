@@ -1,0 +1,124 @@
+subroutine SwashPrintTimers
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmers: The SWASH team                               |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2026  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: GPU fork
+!
+!   Updates
+!
+!    1.00, September 2026: New subroutine
+!
+!   Purpose
+!
+!   Prints every timer section that accumulated time, with a readable name.
+!
+!   Method
+!
+!   The stock SWPRTI (swanser.ftn) only prints an aggregate table built from
+!   SWAN-era section ids, so the SWASH-specific sections (flow solver,
+!   preconditioner, Krylov solver, ...) never appear.  This routine lists all
+!   non-empty entries of dcumtm so that tools/profile_timg.py can rank them.
+!   Only compiled with the -timg switch; otherwise it is an empty routine.
+!
+!   Modules used
+!
+!TIMG    use ocpcomm4
+!TIMG    use SwashTimecomm
+!TIMG    use m_parall
+!
+    implicit none
+!
+!   Local variables
+!
+!TIMG    integer       :: i        ! loop counter
+!TIMG    character(36) :: sname    ! section name
+!
+!   Source text
+!
+!TIMG    write (PRINTF, 110) INODE
+!TIMG    write (PRINTF, 111) INODE
+!TIMG    write (PRINTF, 112) INODE
+!TIMG    do i = 1, nsectm
+!TIMG       if ( ncumtm(i) > 0 .and. dcumtm(i,2) > 0d0 ) then
+!TIMG          call SwashTimerName ( i, sname )
+!TIMG          write (PRINTF, 115) INODE, i, sname, ncumtm(i), dcumtm(i,1), dcumtm(i,2)
+!TIMG       endif
+!TIMG    enddo
+!TIMG    write (PRINTF, 110) INODE
+!TIMG    !
+!TIMG 110 format (i3,1x,'#')
+!TIMG 111 format (i3,' # Per-section timers (id, name, calls, cpu-time, wall-clock):')
+!TIMG 112 format (i3,1x,'#',3x,'id',1x,'section',30x,'calls',6x,'cpu-time',3x,'wall-clock')
+!TIMG 115 format (i3,1x,'#',1x,i4,1x,a36,i8,2f13.3)
+    !
+end subroutine SwashPrintTimers
+!
+subroutine SwashTimerName ( id, sname )
+!
+!   Purpose
+!
+!   Maps a timer section id to a name (see the SWTSTA calls in the sources).
+!
+    implicit none
+!
+    integer,       intent(in)  :: id    ! section id
+    character(36), intent(out) :: sname ! section name
+!
+    select case ( id )
+    case (  1 ); sname = 'total run'
+    case (  2 ); sname = 'SwashInit'
+    case (  3 ); sname = 'SwashReadInput'
+    case (  4 ); sname = 'SwashCheckPrep'
+    case (  7 ); sname = 'SwashUpdateData (bc + fields)'
+    case (  8 ); sname = 'compute (SwashComputStruc)'
+    case (  9 ); sname = 'output'
+    case ( 51 ); sname = 'flow solver (momentum+pressure)'
+    case ( 52 ); sname = 'update depths'
+    case ( 53 ); sname = 'layer interfaces'
+    case ( 54 ); sname = 'wet/dry + pressurised masks'
+    case ( 55 ); sname = 'bottom friction coefficient'
+    case ( 56 ); sname = 'wind stress'
+    case ( 57 ); sname = 'horizontal viscosity'
+    case ( 58 ); sname = 'vertical viscosity'
+    case ( 61 ); sname = 'rigid body: kinematic bc'
+    case ( 62 ); sname = 'rigid body: forces'
+    case ( 63 ); sname = 'rigid body: motion'
+    case (101 ); sname = 'transport'
+    case (102 ); sname = 'turbulence'
+    case (211 ); sname = 'domain decomposition'
+    case (212 ); sname = 'local grid copy'
+    case (213 ); sname = 'SIP solver (5-point)'
+    case (296 ); sname = 'ILU preconditioner build'
+    case (297 ); sname = 'BiCGSTAB pressure solve'
+    case default
+       write (sname, '(a,i4)') 'section ', id
+    end select
+    !
+end subroutine SwashTimerName

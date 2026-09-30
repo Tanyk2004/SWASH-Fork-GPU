@@ -1,0 +1,479 @@
+module SwashRun
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmers: The SWASH team                               |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2026  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: Marcel Zijlema
+!
+!   Updates
+!
+!    1.00, December 2009: New subroutine
+!
+!   Purpose
+!
+!   The simulation driver split into re-entrant phases so that it can be
+!   driven either by SwashMain (batch: identical behaviour to the original
+!   monolithic SwashMain) or by an external controller through the engine API
+!   (engine/swash_ctl.ftn90): prepare a COMPUTE block, step it one time step
+!   at a time, finish.
+!
+!   Phases (see SwashMain for the batch sequence):
+!
+!     SwashRunInit    ( ierr )     initialisation (SwashInit)
+!     SwashRunPrep    ( status )   read commands up to COMPUTE/STOP, check and prepare
+!     SwashRunStep    ( status )   one time step: update data, compute, output, advance time
+!     SwashRunEndComp              after the last step of a COMPUTE block
+!     SwashRunFinish               post processing: collect output, timings, clean up
+!
+!   status codes: 0 continue, 1 block finished / STOP read, 2 stop now (error)
+!
+!   Modules used
+!
+    use ocpcomm2
+    use ocpcomm4
+    use SwashCommdata1
+    use SwashCommdata3
+    use SwashTimeComm
+    use outp_data
+    use m_bndspec
+    use m_parall
+    use SwashExtData, only: SwashExtApply
+!
+    implicit none
+!
+!   Module variables (state of the batch loop, persistent between calls)
+!
+    integer, save       :: it     = 0      ! integration step counter
+    integer, save       :: it0    = 0      ! start counter for time integration
+    integer, save       :: istep  = 0      ! counted number of integration steps since the last doubling/halving of the time step
+    integer, save       :: inerr  = 0      ! number of the initialisation error
+    character(4), save  :: comput = '    ' ! determines the sort of computation to be performed by Swash
+                                           ! ='COMP'; computation requested
+                                           ! ='NOCO'; no computation but output requested
+                                           ! ='STOP'; make computation, output and stop
+    logical, save       :: lrunning = .false. ! a COMPUTE block is being stepped
+!
+contains
+!
+    subroutine SwashRunInit ( ierr )
+    !
+    !   initializes various data (timers, error level, SwashInit)
+    !
+        implicit none
+        integer, intent(out) :: ierr   ! initialisation error
+        logical              :: STPNOW ! indicates that program must stop
+        !
+!TIMG        dcumtm(:,1:2) = 0d0
+!TIMG        ncumtm(:)     = 0
+!TIMG        call SWTSTA(1)
+        !
+        LEVERR = 0
+        MAXERR = 1
+        ITRACE = 0
+        inerr  = 0
+        ierr   = 0
+        !
+!TIMG        call SWTSTA(2)
+        call SwashInit ( inerr )
+!TIMG        call SWTSTO(2)
+        ierr = inerr
+        if ( inerr > 0 ) return
+        if (STPNOW()) ierr = -1
+        !
+        comput = '    '
+        !
+    end subroutine SwashRunInit
+!
+    subroutine SwashRunPrep ( status )
+    !
+    !   reads and processes user commands up to the next COMPUTE (or STOP),
+    !   checks the input and prepares the computation
+    !
+    !   status = 0: a computation is ready to be stepped
+    !            1: STOP was read (norm_end written) or no computation because of errors
+    !            2: stop now (fatal error)
+    !
+        implicit none
+        integer, intent(out) :: status
+        integer              :: nds    ! file reference number
+        integer              :: iostat ! I/O status in call FOR
+        logical              :: STPNOW ! indicates that program must stop
+        !
+        status   = 0
+        lrunning = .false.
+        !
+        ! read and process user-defined commands
+        !
+!TIMG        call SWTSTA(3)
+        call SwashReadInput ( comput )
+!TIMG        call SWTSTO(3)
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        ! if last command was STOP then exit from repeat
+        !
+        if ( comput == 'STOP' ) then
+           nds    = 0
+           iostat = 0
+           FILENM = 'norm_end'
+           call FOR (nds, FILENM, 'UF', iostat)
+           write (nds, *) ' Normal end of run ', PROJNR
+           status = 1
+           return
+        endif
+        !
+        ! check consistencies and do some preparations before computation
+        !
+!TIMG        call SWTSTA(4)
+        call SwashCheckPrep
+!TIMG        call SWTSTO(4)
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        if ( LEVERR > MAXERR ) then
+           !
+           write (PRINTF, 201) LEVERR
+           if ( LEVERR < 4 ) write (PRINTF, 202)
+           status = 1
+           !
+        else
+           !
+           if ( ITEST >= 40 ) then
+              if ( nstatc == 1 ) then
+                 write (PRINTF, '(" Type of computation: dynamic")')
+              else
+                 if ( oned ) then
+                    write (PRINTF, '(" Type of computation: static 1D")')
+                 else
+                    write (PRINTF, '(" Type of computation: static 2D")')
+                 endif
+              endif
+           endif
+           !
+           ! show all the settings
+           !
+           if ( ITEST > 0 ) call SwashPrintSettings
+           !
+           ! synchronize nodes
+           !
+           call SWSYNC
+           if (STPNOW()) then
+              status = 2
+              return
+           endif
+           !
+           ! loop over time steps
+           !
+           if ( nstatc == 1 ) then
+              it0   = 0
+           else
+              it0   = 1
+           endif
+           !
+           it    = it0
+           istep = 0
+           lrunning = .true.
+           !
+        endif
+        !
+ 201    format (' ** no start of computation because of error level:', i3)
+ 202    format (' ** to ignore this error, change [maxerr] with the SET command')
+        !
+    end subroutine SwashRunPrep
+!
+    subroutine SwashRunStep ( status )
+    !
+    !   carries out one time step of the current COMPUTE block:
+    !   update boundary values and input fields, compute, output, advance time
+    !
+    !   status = 0: step done, more steps to do
+    !            1: end of the COMPUTE block reached (no step was taken) or error level exceeded
+    !            2: stop now (fatal error)
+    !
+        implicit none
+        integer, intent(out)        :: status
+        integer, dimension(2)       :: if     ! first character in string
+        integer, dimension(2)       :: il     ! last character in string
+        integer                     :: iprog  ! indicates the progress of the simulation
+        real*8                      :: fac    ! auxiliary factor
+        logical                     :: STPNOW ! indicates that program must stop
+        character(20), dimension(2) :: chars  ! string containing an integer
+        character(18)               :: DTTIWR ! to write a time string
+        character(20)               :: INTSTR ! converts integer to string
+        character(80)               :: msgstr ! string to pass message to call msgerr
+        !
+        status = 0
+        !
+        if ( .not.lrunning ) then
+           status = 1
+           return
+        endif
+        !
+        if ( real(timco) > real(tfinc) ) then
+           status = 1
+           return
+        endif
+        !
+        if ( LEVERR > MAXERR ) then
+           write (PRINTF, 203) LEVERR
+           if ( LEVERR < 4 ) write (PRINTF, 202)
+           status = 1
+           return
+        endif
+        !
+        ! apply pending changes made by an external controller (engine API)
+        !
+        call SwashExtApply
+        !
+        ! synchronize nodes
+        !
+        call SWSYNC
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        ! update boundary values and input fields
+        !
+!TIMG        call SWTSTA(7)
+        if ( optg /= 5 ) then
+           call SwashUpdateData ( it )
+        else
+           call SwashUpdateUData ( it )
+        endif
+!TIMG        call SWTSTO(7)
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        ! synchronize nodes
+        !
+        call SWSYNC
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        if ( comput /= 'NOCO' .and. it > 0 ) then
+           !
+           ! perform simulation at current time step
+           !
+!TIMG           call SWTSTA(8)
+           if ( optg /= 5 ) then
+              !
+              ! structured grid
+              !
+              call SwashComputStruc
+              !
+           else
+              !
+              ! unstructured grid
+              !
+              call SwashCompUnstruc
+              !
+           endif
+!TIMG           call SWTSTO(8)
+           if (STPNOW()) then
+              status = 2
+              return
+           endif
+           !
+        endif
+        !
+        ! synchronize nodes
+        !
+        call SWSYNC
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        ! carry out the output requests
+        !
+!TIMG        call SWTSTA(9)
+        call SwashOutput
+!TIMG        call SWTSTO(9)
+        if (STPNOW()) then
+           status = 2
+           return
+        endif
+        !
+        if ( errpts > 0 ) rewind ( errpts )
+        !
+        ! update time
+        !
+        if ( nstatc == 1 ) then
+           !
+           ! change time step in case of explicit time integration, if appropriate
+           !
+           if ( mtimei == 1 ) then
+              !
+              if ( cflmax > pnums(3) ) then
+                 !
+                 dt = 0.5*dt
+                 write (msgstr,'(a,f12.5,a)') 'time step is halved! New time step: ',dt, ' sec'
+                 call msgerr ( 1, trim(msgstr) )
+                 !
+                 istep = 0
+                 !
+              else if ( cflmax < pnums(2) ) then
+                 !
+                 if ( .not. istep < 20 ) then
+                    !
+                    ! only increase actual time step if the time step has been constant for the last 20 integration steps
+                    !
+                    dt = 2.0*dt
+                    write (msgstr,'(a,f12.5,a)') 'time step is doubled! New time step: ',dt,' sec'
+                    call msgerr ( 1, trim(msgstr) )
+                    !
+                    istep = 0
+                    !
+                 endif
+                 !
+              endif
+              !
+           endif
+           !
+           timco = timco + dt
+           chtime = DTTIWR(ITMOPT, timco)
+           if ( .not. real(timco) > real(tfinc) ) then
+              if ( ITEST >= 1 ) write (PRINTF, 204) chtime, timco
+              if (SCREEN /= PRINTF .and. INODE == MASTER ) then
+                 fac   = 100. * (timco-tinic) / (tfinc-tinic)
+                 iprog = nint(fac)
+                 chars(1) = INTSTR(iprog)
+                 call TXPBLA(chars(1),if(1),il(1))
+                 chars(2) = INTSTR(it+1)
+                 call TXPBLA(chars(2),if(2),il(2))
+                 write (SCREEN, 205) chars(1)(if(1):il(1)), chars(2)(if(2):il(2))
+              endif
+           endif
+           !
+        else
+           !
+           timco = timco + dt
+           !
+        endif
+        !
+        it    = it    + 1
+        istep = istep + 1
+        !
+ 202    format (' ** to ignore this error, change [maxerr] with the SET command')
+ 203    format (' ** no continuation of computation because of error level:',i3)
+ 204    format (' Time of simulation  ->  ',a18,' in sec:', f17.5)
+ 205    format ('[',a3,'%]   step ',a)
+        !
+    end subroutine SwashRunStep
+!
+    subroutine SwashRunEndComp
+    !
+    !   closes a COMPUTE block: delete linked list of Fourier series required for multiple COMPUTE
+    !
+        implicit none
+        !
+        lrunning = .false.
+        !
+        call delete ( fbfs )
+        nullify( cubfs )
+        lbfs = .false.
+        !
+    end subroutine SwashRunEndComp
+!
+    subroutine SwashRunFinish
+    !
+    !   post processing: finalize output files, collect parallel output, print timings, clean up
+    !
+        implicit none
+        integer                         :: i      ! loop counter
+        integer                         :: nds    ! file reference number
+        real, dimension(:), allocatable :: blknd  ! array giving node number per subdomain
+        real, dimension(:), allocatable :: blkndc ! auxiliary array for collecting the array blknd
+        logical                         :: lopen  ! indicates whether a file is open or not
+        logical                         :: STPNOW ! indicates that program must stop
+        !
+!TIMG        call SWTSTO(1)
+        !
+        ! finalize PVD collection files
+        !
+        do i = 1, max_outp_req
+           nds = upvdf(i)
+           if ( nds > 0 ) then
+              write (nds,'(a)') trim(pvdlin3)
+              write (nds,'(a)') trim(pvdlin4)
+           endif
+        enddo
+        !
+        ! close all open files except PRINT file
+        !
+        do i = 1, HIOPEN
+           inquire ( unit=i, opened=lopen )
+           if ( lopen .and. i /= PRINTF ) close (i)
+        enddo
+        !
+        ! collect contents of individual process files for output requests in case of parallel computation
+        !
+        call SWSYNC
+!TIMG        call SWTSTA(9)
+        if ( PARLL .AND. IMRGE.EQ.1 ) then
+           allocate (blknd(mxc*myc))
+           blknd = real(INODE)
+           if ( INODE == MASTER ) then
+              allocate(blkndc(MXCGL*MYCGL))
+              blkndc = 0.
+           endif
+           call SWCOLLECT ( blkndc, blknd )
+           if (STPNOW()) return
+           if ( INODE == MASTER ) then
+              call SWCOLOUT ( blkndc )
+              deallocate(blkndc)
+           endif
+        endif
+!TIMG        call SWTSTO(9)
+!
+!TIMG        call SWPRTI
+!TIMG        call SwashPrintTimers
+        !
+        ! close PRINT file
+        !
+        inquire ( unit=PRINTF, opened=lopen )
+        if ( lopen ) close (PRINTF)
+        !
+        ! deallocate all allocated arrays and linked lists
+        !
+        if ( allocated(blknd) ) deallocate(blknd)
+        call SwashCleanMem
+        !
+    end subroutine SwashRunFinish
+!
+end module SwashRun

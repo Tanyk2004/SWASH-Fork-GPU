@@ -38,6 +38,17 @@ In addition to the installation, a brief outline on how to run the model is give
 The SWASH software can be used freely under the terms of the [GNU General Public License](https://gitlab.tudelft.nl/citg/wavemodels/swash/-/blob/main/LICENSE).
 It is permitted to copy, reuse, adapt and distribute the SWASH source code provided that proper reference is made to the original work.
 
+## GPU / engine fork
+
+This fork adds GPU acceleration (OpenACC, NVIDIA HPC SDK), a C/Python control
+API for real-time coupling, in-memory checkpoints, a regression harness and
+per-section timers. The physics is unchanged. Start with
+[docs/FEASIBILITY.md](docs/FEASIBILITY.md) (what is possible and why),
+[docs/BUILD_GPU.md](docs/BUILD_GPU.md) (how to build and validate) and
+[docs/PHYSICS_INVARIANTS.md](docs/PHYSICS_INVARIANTS.md) (what the port may and
+may not change). Extra CMake options: `OPENACC`, `GPU_CC`, `TIMG`, `ENGINE`
+(see `cmake/SwashOptions.cmake`).
+
 ## installation
 
 #### prerequisites

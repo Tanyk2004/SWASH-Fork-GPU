@@ -9,8 +9,10 @@ $sgi = "FALSE";
 $imp = "FALSE";
 $cvi = "FALSE";
 $mv4 = "FALSE";
-while ( $ARGV[0]=~/-.*/ )
+$acc = "FALSE";
+while ( $ARGV[0]=~/^-/ )
    {
+   $nargs = @ARGV;
    if ($ARGV[0]=~/-timg/) {$tim="TRUE";shift;}
    if ($ARGV[0]=~/-mpi/) {$mpi="TRUE";shift;}
    if ($ARGV[0]=~/-f95/) {$f95="TRUE";shift;}
@@ -21,6 +23,8 @@ while ( $ARGV[0]=~/-.*/ )
    if ($ARGV[0]=~/-impi/) {$imp="TRUE";shift;}
    if ($ARGV[0]=~/-cvis/) {$cvi="TRUE";shift;}
    if ($ARGV[0]=~/-matl4/) {$mv4="TRUE";shift;}
+   if ($ARGV[0]=~/-acc/) {$acc="TRUE";shift;}
+   if ( @ARGV == $nargs ) { print STDERR "switch.pl: unknown switch $ARGV[0] ignored\n"; shift; }
    }
 
 # --- make a list of all files
@@ -63,6 +67,7 @@ foreach $file (@files)
       if ($sgi=~/TRUE/) {$newline=~s/^!\/SGI//;}
       if ($imp=~/TRUE/) {$newline=~s/^!\/impi//;}
       if ($cvi=~/TRUE/) {$newline=~s/^!CVIS//;}
+      if ($acc=~/TRUE/) {$newline=~s/^!ACC//;}
       if ($mv4=~/TRUE/) {$newline=~s/^!MatL4//;}
       else              {$newline=~s/^!MatL5//;}
       print OUTFILE $newline;

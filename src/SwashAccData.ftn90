@@ -1,0 +1,361 @@
+module SwashAccData
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmers: The SWASH team                               |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2026  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: GPU fork
+!
+!   Updates
+!
+!    1.00, September 2026: New module
+!
+!   Purpose
+!
+!   Device (GPU) residency of the flow arrays for the OpenACC port.
+!
+!   Method
+!
+!   All state lives in module allocatables that are allocated once per COMPUTE
+!   command (SwashCheckPrep) and freed in SwashCleanMem.  This module mirrors
+!   that lifetime on the device:
+!
+!      swash_acc_enter     called at the end of SwashCheckPrep: creates the
+!                          device copies (constant grid arrays are copied in)
+!      swash_acc_exit      called at the end of SwashCleanMem: deletes them
+!      swash_acc_sync_host copies the device state back to the host (before
+!                          output, hot-file writing, engine field access)
+!
+!   During the incremental port each ported kernel region starts with
+!   "!$acc update device(...)" of its inputs and ends with
+!   "!$acc update host(...)" of its outputs, so the host copy is always the
+!   reference and unported host code between regions stays correct.  As the
+!   port coverage grows these updates are removed and only the sync before
+!   output remains.
+!
+!   All directives carry "if(acc_active)": acc_active is true only in builds
+!   configured with OPENACC=ON (the -acc switch of switch.pl uncomments the
+!   line that sets it).  Without OpenACC the directives are plain comments.
+!
+!   Modules used
+!
+    use SwashFlowdata
+    use m_genarr
+!
+    implicit none
+!
+!   Module variables
+!
+    logical, save :: acc_active  = .false. ! true when running kernels on the accelerator
+    logical, save :: acc_entered = .false. ! device copies exist
+!
+contains
+!
+    subroutine swash_acc_enter
+    !
+    !   Creates the device copies of the arrays used by the ported kernels.
+    !   Arrays that are not allocated in the current configuration are skipped.
+    !
+        implicit none
+        !
+!ACC        acc_active = .true.
+        !
+        if ( .not.acc_active .or. acc_entered ) return
+        !
+        ! constant grid data: copied once
+        !
+        !$acc enter data copyin(kgrpnt, guu, gvv, gsqs, msta, mend, nsta, nend) if(acc_active)
+        !
+        ! state and work arrays: created, filled by "update device" in the kernels
+        !
+        if ( allocated(s0)    ) then
+           !$acc enter data create(s0) if(acc_active)
+        endif
+        if ( allocated(s1)    ) then
+           !$acc enter data create(s1) if(acc_active)
+        endif
+        if ( allocated(dps)   ) then
+           !$acc enter data create(dps) if(acc_active)
+        endif
+        if ( allocated(dpu)   ) then
+           !$acc enter data create(dpu) if(acc_active)
+        endif
+        if ( allocated(dpv)   ) then
+           !$acc enter data create(dpv) if(acc_active)
+        endif
+        if ( allocated(hu)    ) then
+           !$acc enter data create(hu) if(acc_active)
+        endif
+        if ( allocated(hv)    ) then
+           !$acc enter data create(hv) if(acc_active)
+        endif
+        if ( allocated(u0)    ) then
+           !$acc enter data create(u0) if(acc_active)
+        endif
+        if ( allocated(u1)    ) then
+           !$acc enter data create(u1) if(acc_active)
+        endif
+        if ( allocated(v1)    ) then
+           !$acc enter data create(v1) if(acc_active)
+        endif
+        if ( allocated(udep)  ) then
+           !$acc enter data create(udep) if(acc_active)
+        endif
+        if ( allocated(vdep)  ) then
+           !$acc enter data create(vdep) if(acc_active)
+        endif
+        if ( allocated(qx)    ) then
+           !$acc enter data create(qx) if(acc_active)
+        endif
+        if ( allocated(qy)    ) then
+           !$acc enter data create(qy) if(acc_active)
+        endif
+        if ( allocated(hku)   ) then
+           !$acc enter data create(hku) if(acc_active)
+        endif
+        if ( allocated(hkv)   ) then
+           !$acc enter data create(hkv) if(acc_active)
+        endif
+        if ( allocated(hkum)  ) then
+           !$acc enter data create(hkum) if(acc_active)
+        endif
+        if ( allocated(wom)   ) then
+           !$acc enter data create(wom) if(acc_active)
+        endif
+        if ( allocated(vnu3d) ) then
+           !$acc enter data create(vnu3d) if(acc_active)
+        endif
+        if ( allocated(amatu) ) then
+           !$acc enter data create(amatu) if(acc_active)
+        endif
+        if ( allocated(rhsu)  ) then
+           !$acc enter data create(rhsu) if(acc_active)
+        endif
+        if ( allocated(uwetp) ) then
+           !$acc enter data create(uwetp) if(acc_active)
+        endif
+        if ( allocated(vwetp) ) then
+           !$acc enter data create(vwetp) if(acc_active)
+        endif
+        if ( allocated(work)  ) then
+           !$acc enter data create(work) if(acc_active)
+        endif
+        !
+        acc_entered = .true.
+        !
+    end subroutine swash_acc_enter
+!
+    subroutine swash_acc_exit
+    !
+    !   Deletes the device copies (before the host arrays are deallocated).
+    !
+        implicit none
+        !
+        if ( .not.acc_entered ) return
+        !
+        !$acc exit data delete(kgrpnt, guu, gvv, gsqs, msta, mend, nsta, nend) if(acc_active)
+        if ( allocated(s0)    ) then
+           !$acc exit data delete(s0) if(acc_active)
+        endif
+        if ( allocated(s1)    ) then
+           !$acc exit data delete(s1) if(acc_active)
+        endif
+        if ( allocated(dps)   ) then
+           !$acc exit data delete(dps) if(acc_active)
+        endif
+        if ( allocated(dpu)   ) then
+           !$acc exit data delete(dpu) if(acc_active)
+        endif
+        if ( allocated(dpv)   ) then
+           !$acc exit data delete(dpv) if(acc_active)
+        endif
+        if ( allocated(hu)    ) then
+           !$acc exit data delete(hu) if(acc_active)
+        endif
+        if ( allocated(hv)    ) then
+           !$acc exit data delete(hv) if(acc_active)
+        endif
+        if ( allocated(u0)    ) then
+           !$acc exit data delete(u0) if(acc_active)
+        endif
+        if ( allocated(u1)    ) then
+           !$acc exit data delete(u1) if(acc_active)
+        endif
+        if ( allocated(v1)    ) then
+           !$acc exit data delete(v1) if(acc_active)
+        endif
+        if ( allocated(udep)  ) then
+           !$acc exit data delete(udep) if(acc_active)
+        endif
+        if ( allocated(vdep)  ) then
+           !$acc exit data delete(vdep) if(acc_active)
+        endif
+        if ( allocated(qx)    ) then
+           !$acc exit data delete(qx) if(acc_active)
+        endif
+        if ( allocated(qy)    ) then
+           !$acc exit data delete(qy) if(acc_active)
+        endif
+        if ( allocated(hku)   ) then
+           !$acc exit data delete(hku) if(acc_active)
+        endif
+        if ( allocated(hkv)   ) then
+           !$acc exit data delete(hkv) if(acc_active)
+        endif
+        if ( allocated(hkum)  ) then
+           !$acc exit data delete(hkum) if(acc_active)
+        endif
+        if ( allocated(wom)   ) then
+           !$acc exit data delete(wom) if(acc_active)
+        endif
+        if ( allocated(vnu3d) ) then
+           !$acc exit data delete(vnu3d) if(acc_active)
+        endif
+        if ( allocated(amatu) ) then
+           !$acc exit data delete(amatu) if(acc_active)
+        endif
+        if ( allocated(rhsu)  ) then
+           !$acc exit data delete(rhsu) if(acc_active)
+        endif
+        if ( allocated(uwetp) ) then
+           !$acc exit data delete(uwetp) if(acc_active)
+        endif
+        if ( allocated(vwetp) ) then
+           !$acc exit data delete(vwetp) if(acc_active)
+        endif
+        if ( allocated(work)  ) then
+           !$acc exit data delete(work) if(acc_active)
+        endif
+        !
+        acc_entered = .false.
+        !
+    end subroutine swash_acc_exit
+!
+    subroutine swash_acc_sync_host
+    !
+    !   Copies the device state back to the host.  With the incremental
+    !   "update at region boundaries" scheme the host is always current, so
+    !   this is a no-op for now; it becomes the single sync point (before
+    !   output) once the kernels keep the state resident.
+    !
+        implicit none
+        !
+        if ( .not.acc_entered ) return
+        !
+    end subroutine swash_acc_sync_host
+!
+end module SwashAccData
+!
+module SwashAccServices
+!
+!   Purpose
+!
+!   Device-callable versions of small service functions.
+!
+!   The stock fluxlim (SwashServices.ftn90) reads its scheme parameters from a
+!   module, counts entries for tracing and calls msgerr for an unknown scheme;
+!   none of that is allowed inside a GPU kernel.  fluxlim_dev implements the
+!   same formulas as a pure function with the parameters passed explicitly.
+!   The unknown-scheme case is checked once on the host (SwashCheckPrep).
+!
+    implicit none
+!
+contains
+!
+    pure real function fluxlim_dev ( a, b, propsc, kappa, mbound, phieby )
+    !$acc routine seq
+    !
+    !   Computes the flux limiter for higher order correction (see fluxlim)
+    !
+        implicit none
+        !
+        real   , intent(in) :: a      ! solution gradient as numerator
+        real   , intent(in) :: b      ! solution gradient as denominator
+        integer, intent(in) :: propsc ! advection scheme indicator
+        real   , intent(in) :: kappa  ! kappa parameter of the scheme
+        real   , intent(in) :: mbound ! upper bound of the PL-kappa limiter
+        real   , intent(in) :: phieby ! parameter of the Sweby limiter
+        !
+        real                :: fac    ! auxiliary factor
+        real                :: r      ! ratio of consecutive solution gradients
+        !
+        if ( abs(b) > 1.e-10 ) then
+           r = a / b
+        else
+           r = 0.
+        endif
+        !
+        if ( propsc == 3 ) then
+           !
+           ! linear higher order scheme (kappa-scheme)
+           !
+           fluxlim_dev = 0.5 * ( 1. + kappa ) * a + 0.5 * ( 1. - kappa ) * b
+           !
+        else if ( propsc == 4 ) then
+           !
+           ! Sweby Phi-limiter
+           !
+           fluxlim_dev = max( max( 0., min(phieby*r, 1.) ), min(r, phieby) ) * b
+           !
+        else if ( propsc == 5 ) then
+           !
+           ! R-kappa limiter
+           !
+           if ( r < 0. ) then
+              fluxlim_dev = 0.
+           else if ( kappa < 0. ) then
+              if ( r <= 1. ) then
+                 fluxlim_dev = 2.*r * ( -r*r + (3.+kappa)*r - kappa )/((1.+r)**2)
+              else
+                 fluxlim_dev = ( (2.+kappa)*r - kappa )/( 1.+r )
+              endif
+           else
+              fluxlim_dev = 2.*r * ( (1.+kappa)*r + 1. - kappa )/( (1.+r)**2 )
+           endif
+           !
+           fluxlim_dev = fluxlim_dev * b
+           !
+        else if ( propsc == 6 ) then
+           !
+           ! PL-kappa limiter
+           !
+           fac = min( mbound, 0.5 * ( 1. + kappa ) * r + 0.5 * (1. - kappa ) )
+           !
+           fluxlim_dev = max( 0., min( mbound*r, fac ) ) * b
+           !
+        else
+           !
+           ! unknown scheme: rejected on the host in SwashCheckPrep
+           !
+           fluxlim_dev = 0.
+           !
+        endif
+        !
+    end function fluxlim_dev
+!
+end module SwashAccServices

@@ -93,6 +93,7 @@ subroutine SwashImpLayM1DHflow ( ibl, ibr, kgrpnt )
     use SwashSolvedata, only: icond, iamout
     use SwashFlowdata, ibltmp => ibl, &
                        ibrtmp => ibr
+    use SwashExtData, only: lextp, lextm
 !
     implicit none
 !
@@ -871,7 +872,7 @@ subroutine SwashImpLayM1DHflow ( ibl, ibr, kgrpnt )
     !
     ! compute atmospheric pressure gradient at internal u-point
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do m = mf+1, ml-1
           !
@@ -1511,7 +1512,7 @@ subroutine SwashImpLayM1DHflow ( ibl, ibr, kgrpnt )
           !
           ! add mass source due to internal wave generation
           !
-          if ( iwvgen /= 0 ) then
+          if ( iwvgen /= 0 .or. lextm ) then
              !
              do m = mfu, ml
                 !
@@ -1629,7 +1630,7 @@ subroutine SwashImpLayM1DHflow ( ibl, ibr, kgrpnt )
           !
           ! add mass source due to internal wave generation
           !
-          if ( iwvgen /= 0 ) then
+          if ( iwvgen /= 0 .or. lextm ) then
              !
              do m = mfu, ml
                 !

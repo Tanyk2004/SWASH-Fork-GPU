@@ -50,6 +50,7 @@ subroutine SwashCleanMem
     use SwashFlowdata
     use SwashSolvedata
     use SwashRigBoddata
+    use SwashAccData, only: swash_acc_exit
 !
     implicit none
 !
@@ -59,6 +60,10 @@ subroutine SwashCleanMem
 !
 !   Source text
 !
+    ! delete the device (GPU) copies before the host arrays go away
+    !
+    call swash_acc_exit
+    !
     if ( allocated(bgridp) )  deallocate(bgridp)
     if ( allocated(kgrpnt) )  deallocate(kgrpnt)
     if ( allocated(xytst ) )  deallocate(xytst )

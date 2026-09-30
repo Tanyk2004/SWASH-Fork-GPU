@@ -81,6 +81,7 @@ subroutine SwashImpLayUflow
     use SwashCommdata3
     use SwashTimecomm
     use SwashFlowdata
+    use SwashExtData, only: lextp, lextm
     use SwanGriddata
     use SwanGridobjects
 !
@@ -946,7 +947,7 @@ subroutine SwashImpLayUflow
     !
     ! compute atmospheric pressure gradient
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do iface = 1, nfaces
           !
@@ -1666,7 +1667,7 @@ subroutine SwashImpLayUflow
        !
        ! add mass source due to internal wave generation
        !
-       if ( iwvgen /= 0 ) then
+       if ( iwvgen /= 0 .or. lextm ) then
           !
           do icell = 1, ncells
              !
@@ -1767,7 +1768,7 @@ subroutine SwashImpLayUflow
        !
        ! add mass source due to internal wave generation
        !
-       if ( iwvgen /= 0 ) then
+       if ( iwvgen /= 0 .or. lextm ) then
           !
           do icell = 1, ncells
              !

@@ -67,6 +67,7 @@ subroutine SwashCheckPrep
     use SwashFlowdata
     use SwashSolvedata
     use SwashRigBoddata
+    use SwashAccData, only: swash_acc_enter
     use m_genarr
     use outp_data
     use m_bndspec
@@ -6002,5 +6003,9 @@ subroutine SwashCheckPrep
        enddo
        !
     endif
+    !
+    ! create the device (GPU) copies of the flow arrays, if appropriate
+    !
+    call swash_acc_enter
     !
 end subroutine SwashCheckPrep

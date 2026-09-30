@@ -74,6 +74,7 @@ subroutine SwashExpDepUflow ( u1, u0, uvc, qn, quf, q, dq, gmat, rho )
                        qntmp  => qn , &
                        quftmp => quf, &
                        dqtmp  => dq
+    use SwashExtData, only: lextp, lextm
     use SwanGriddata
     use SwanGridobjects
 !
@@ -835,7 +836,7 @@ subroutine SwashExpDepUflow ( u1, u0, uvc, qn, quf, q, dq, gmat, rho )
     !
     ! compute atmospheric pressure gradient
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do iface = 1, nfaces
           !
@@ -1670,7 +1671,7 @@ subroutine SwashExpDepUflow ( u1, u0, uvc, qn, quf, q, dq, gmat, rho )
     !
     ! add mass source due to internal wave generation
     !
-    if ( iwvgen /= 0 ) then
+    if ( iwvgen /= 0 .or. lextm ) then
        !
        do icell = 1, ncells
           !

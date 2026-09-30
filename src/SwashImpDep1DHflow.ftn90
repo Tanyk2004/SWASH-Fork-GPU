@@ -81,6 +81,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
                        qtmp     => q    , &
                        dqtmp    => dq   , &
                        dqgrdtmp => dqgrd
+    use SwashExtData, only: lextp, lextm
 !
     implicit none
 !
@@ -611,7 +612,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
     !
     ! compute atmospheric pressure gradient
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do m = mf, ml
           !
@@ -902,7 +903,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
           !
           ! add mass source due to internal wave generation
           !
-          if ( iwvgen /= 0 ) then
+          if ( iwvgen /= 0 .or. lextm ) then
              !
              do m = mfu, ml
                 !
@@ -1013,7 +1014,7 @@ subroutine SwashImpDep1DHflow ( u1, u0, ua, up, qx, qm, q, dq, gmat, rho, ui, dq
           !
           ! add mass source due to internal wave generation
           !
-          if ( iwvgen /= 0 ) then
+          if ( iwvgen /= 0 .or. lextm ) then
              !
              do m = mfu, ml
                 !

@@ -9,7 +9,10 @@ ${SRC}/SwanCompdata.f90
 ${SRC}/SwashFlowdata.f90
 ${SRC}/SwashSolvedata.f90
 ${SRC}/SwashRigBoddata.f90
+${SRC}/SwashExtData.f90
+${SRC}/SwashAccData.f90
 ${SRC}/Swash.f90
+${SRC}/SwashRun.f90
 ${SRC}/SwashMain.f90
 ${SRC}/SwashInit.f90
 ${SRC}/SwashReadInput.f90
@@ -153,6 +156,7 @@ ${SRC}/SwashVTKWriteHeader.f90
 ${SRC}/SwashVTKWriteData.f90
 ${SRC}/SwashVTKPDataSets.f90
 ${SRC}/SwashCleanMem.f90
+${SRC}/SwashTimers.f90
 ${SRC}/ocpids.${EXTF}
 ${SRC}/ocpcre.${EXTF}
 ${SRC}/ocpmix.${EXTF}

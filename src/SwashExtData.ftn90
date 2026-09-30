@@ -1,0 +1,93 @@
+module SwashExtData
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmers: The SWASH team                               |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2026  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Authors
+!
+!    1.00: GPU fork
+!
+!   Updates
+!
+!    1.00, September 2026: New module
+!
+!   Purpose
+!
+!   Flags for forcing supplied by an external controller (the engine API in
+!   engine/swash_ctl.ftn90) instead of by input files.
+!
+!   Method
+!
+!   The flow kernels add the atmospheric pressure gradient only when the
+!   PRESSURE input field was read (svwp) and the mass source only when the
+!   internal wave generator is active (iwvgen /= 0).  The engine can fill the
+!   same arrays (patm, srcm) directly; the kernels then test
+!
+!      if ( svwp .or. lextp )            atmospheric / vessel pressure
+!      if ( iwvgen /= 0 .or. lextm )     mass source
+!
+!   The physics is unchanged: the same terms are added by the same code.
+!   The controller also flags a bathymetry change (lextb) so that the depths
+!   in velocity points are re-derived (SwashFlowDP) before the next step.
+!
+!   Modules used
+!
+!   none
+!
+    implicit none
+!
+!   Module variables
+!
+    logical, save :: lextp = .false. ! external (vessel) pressure field supplied in patm
+    logical, save :: lextm = .false. ! external mass source supplied in srcm
+    logical, save :: lextb = .false. ! bathymetry (dps) changed externally; velocity-point depths must be re-derived
+!
+!   Source text
+!
+contains
+!
+    subroutine SwashExtApply
+    !
+    !   Purpose
+    !
+    !   Applies pending external changes at the start of a time step.
+    !
+    !   Note: a bathymetry change made through the engine only re-derives the
+    !   depths in velocity points (as the preparation phase does); wet/dry
+    !   masks follow from the normal SwashUpdateDepths / SwashDryWet calls of
+    !   the step.  Points that become dry keep their (now irrelevant) velocity.
+    !
+        implicit none
+        !
+        if ( lextb ) then
+           call SwashFlowDP
+           lextb = .false.
+        endif
+        !
+    end subroutine SwashExtApply
+!
+end module SwashExtData

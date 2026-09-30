@@ -85,6 +85,7 @@ subroutine SwashImpLay2DHflow
     use m_parall
     use SwashSolvedata, only: icond, iamout
     use SwashFlowdata
+    use SwashExtData, only: lextp, lextm
 !
     implicit none
 !
@@ -1326,7 +1327,7 @@ subroutine SwashImpLay2DHflow
     !
     ! compute atmospheric pressure gradient at internal u-point
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do n = nfu, nl
           do m = mf+1, mlast
@@ -3144,7 +3145,7 @@ subroutine SwashImpLay2DHflow
     !
     ! compute atmospheric pressure gradient at internal v-point
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do m = mfu, ml
           do n = nf+1, nlast
@@ -4122,7 +4123,7 @@ subroutine SwashImpLay2DHflow
           !
           ! add mass source due to internal wave generation
           !
-          if ( iwvgen /= 0 ) then
+          if ( iwvgen /= 0 .or. lextm ) then
              !
              do n = nfu, nl
                 do m = mfu, ml
@@ -4365,7 +4366,7 @@ subroutine SwashImpLay2DHflow
           !
           ! add mass source due to internal wave generation
           !
-          if ( iwvgen /= 0 ) then
+          if ( iwvgen /= 0 .or. lextm ) then
              !
              do n = nfu, nl
                 do m = mfu, ml

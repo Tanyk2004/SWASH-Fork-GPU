@@ -1,0 +1,494 @@
+module swash_ctl
+!
+!   --|-----------------------------------------------------------|--
+!     | Delft University of Technology                            |
+!     | Faculty of Civil Engineering and Geosciences              |
+!     | Environmental Fluid Mechanics Section                     |
+!     | P.O. Box 5048, 2600 GA  Delft, The Netherlands            |
+!     |                                                           |
+!     | Programmers: The SWASH team                               |
+!   --|-----------------------------------------------------------|--
+!
+!
+!     SWASH (Simulating WAves till SHore); a non-hydrostatic wave-flow model
+!     Copyright (C) 2010-2026  Delft University of Technology
+!
+!     This program is free software: you can redistribute it and/or modify
+!     it under the terms of the GNU General Public License as published by
+!     the Free Software Foundation, either version 3 of the License, or
+!     (at your option) any later version.
+!
+!     This program is distributed in the hope that it will be useful,
+!     but WITHOUT ANY WARRANTY; without even the implied warranty of
+!     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+!     GNU General Public License for more details.
+!
+!     You should have received a copy of the GNU General Public License
+!     along with this program. If not, see <http://www.gnu.org/licenses/>.
+!
+!
+!   Purpose
+!
+!   C-callable control API ("engine") around the SWASH solver, see
+!   engine/swash_engine.h for the C prototypes and engine/python/swash_engine.py
+!   for the Python wrapper.  It drives the phases of module SwashRun one time
+!   step at a time and gives direct access to the flow arrays, so that an
+!   external process (the swash-bridge, a robotics simulator, a viewer) can
+!
+!     - step the model and read the water surface / velocities each step,
+!     - inject a pressure footprint (vessel hull) or a mass source,
+!     - change the bathymetry,
+!     - save the complete state in memory and branch from it later.
+!
+!   One SWASH instance per process (all state is global); the working
+!   directory must contain the INPUT command file.  MPI: single rank only.
+!
+!   Dense field layout: out(i + mxc*j) for i = 0..mxc-1 (m = i+1) and
+!   j = 0..myc-1 (n = j+1), i.e. C row-major [myc][mxc].  Inactive points
+!   carry the exception value -99.
+!
+    use iso_c_binding
+    use ocpcomm4
+    use SwashRun
+    use SwashCommdata3
+    use SwashTimecomm
+    use m_genarr, only: kgrpnt, xcgrid, ycgrid
+    use m_parall
+    use SwashFlowdata
+    use SwashExtData
+    use SwashAccData, only: acc_active, swash_acc_sync_host
+    use swash_state
+!
+    implicit none
+!
+    real, parameter    :: excval = -99.   ! exception value for inactive points
+    integer, save      :: run_status = -1 ! -1 not initialised, 0 stepping, 1 finished (STOP), 2 error
+    logical, save      :: initialised = .false.
+    type(c_funptr), save :: step_cb = c_null_funptr
+!
+    abstract interface
+       subroutine step_cb_t ( t ) bind(C)
+          import :: c_double
+          real(c_double), value :: t
+       end subroutine step_cb_t
+    end interface
+!
+    interface
+       integer(c_int) function c_chdir ( path ) bind(C, name='chdir')
+          import :: c_int, c_char
+          character(kind=c_char), dimension(*) :: path
+       end function c_chdir
+    end interface
+!
+contains
+!
+!   ---------------------------------------------------------------- helpers
+!
+    function c_to_f_string ( cstr ) result ( fstr )
+       character(kind=c_char), dimension(*), intent(in) :: cstr
+       character(len=:), allocatable :: fstr
+       integer :: n
+       n = 0
+       do
+          if ( cstr(n+1) == c_null_char ) exit
+          n = n + 1
+          if ( n >= 4096 ) exit
+       enddo
+       allocate(character(len=n) :: fstr)
+       fstr = transfer(cstr(1:n), fstr)
+    end function c_to_f_string
+!
+    subroutine gather_r ( fld, out )
+       ! scatter a compressed 1D field to the dense (mxc,myc) C array
+       real, dimension(:), intent(in) :: fld
+       real(c_float), dimension(*), intent(out) :: out
+       integer :: m, n, nm
+       do n = 1, myc
+          do m = 1, mxc
+             nm = kgrpnt(m,n)
+             if ( nm > 1 ) then
+                out(m + mxc*(n-1)) = real(fld(nm), c_float)
+             else
+                out(m + mxc*(n-1)) = real(excval, c_float)
+             endif
+          enddo
+       enddo
+    end subroutine gather_r
+!
+    subroutine gather_i ( fld, out )
+       integer, dimension(:), intent(in) :: fld
+       real(c_float), dimension(*), intent(out) :: out
+       integer :: m, n, nm
+       do n = 1, myc
+          do m = 1, mxc
+             nm = kgrpnt(m,n)
+             if ( nm > 1 ) then
+                out(m + mxc*(n-1)) = real(fld(nm), c_float)
+             else
+                out(m + mxc*(n-1)) = real(excval, c_float)
+             endif
+          enddo
+       enddo
+    end subroutine gather_i
+!
+    subroutine scatter_r ( in, fld )
+       ! dense (mxc,myc) C array to a compressed 1D field; inactive points ignored
+       real(c_float), dimension(*), intent(in) :: in
+       real, dimension(:), intent(inout) :: fld
+       integer :: m, n, nm
+       do n = 1, myc
+          do m = 1, mxc
+             nm = kgrpnt(m,n)
+             if ( nm > 1 ) fld(nm) = real(in(m + mxc*(n-1)))
+          enddo
+       enddo
+       fld(1) = 0.
+    end subroutine scatter_r
+!
+    subroutine next_block
+       ! after a COMPUTE block finished: close it and prepare the next one (if any);
+       ! blocks without computation (errors, NOCO) are skipped
+       integer :: status
+       do
+          call SwashRunEndComp
+          if ( LEVERR > MAXERR ) then
+             run_status = 2
+             return
+          endif
+          call SwashRunPrep ( status )
+          if ( status == 0 ) then
+             run_status = 0
+             return
+          else if ( status == 1 ) then
+             if ( comput == 'STOP' ) then
+                run_status = 1
+                return
+             endif
+          else
+             run_status = 2
+             return
+          endif
+       enddo
+    end subroutine next_block
+!
+!   ---------------------------------------------------------------- lifecycle
+!
+    integer(c_int) function swash_init ( workdir ) bind(C, name='swash_init')
+       ! change to workdir (INPUT must be there), initialise, read up to the first COMPUTE
+       character(kind=c_char), dimension(*), intent(in) :: workdir
+       integer :: ierr, status
+       logical :: STPNOW
+       !
+       swash_init = 0
+       if ( initialised ) then
+          swash_init = -1
+          return
+       endif
+       if ( workdir(1) /= c_null_char ) then
+          if ( c_chdir(workdir) /= 0 ) then
+             swash_init = -2
+             return
+          endif
+       endif
+       !
+       call SWINITMPI
+       if (STPNOW()) then
+          swash_init = -3
+          return
+       endif
+       call SwashRunInit ( ierr )
+       if ( ierr /= 0 ) then
+          swash_init = -4
+          return
+       endif
+       initialised = .true.
+       !
+       call SwashRunPrep ( status )
+       if ( status == 0 ) then
+          run_status = 0
+       else if ( status == 1 ) then
+          run_status = 1
+          if ( comput /= 'STOP' ) call next_block
+       else
+          run_status = 2
+       endif
+       swash_init = run_status
+    end function swash_init
+!
+    integer(c_int) function swash_step ( nsteps ) bind(C, name='swash_step')
+       ! take up to nsteps time steps; returns the number taken (0 when finished), negative on error
+       integer(c_int), value :: nsteps
+       integer :: i, status
+       procedure(step_cb_t), pointer :: cb
+       !
+       swash_step = 0
+       if ( .not.initialised .or. run_status /= 0 ) then
+          if ( run_status == 2 ) swash_step = -1
+          return
+       endif
+       do i = 1, nsteps
+          call SwashRunStep ( status )
+          if ( status == 0 ) then
+             swash_step = swash_step + 1
+             if ( c_associated(step_cb) ) then
+                call c_f_procpointer ( step_cb, cb )
+                call cb ( real(timco, c_double) )
+             endif
+          else if ( status == 1 ) then
+             call next_block
+             if ( run_status /= 0 ) exit
+          else
+             run_status = 2
+             swash_step = -1
+             exit
+          endif
+       enddo
+    end function swash_step
+!
+    integer(c_int) function swash_status () bind(C, name='swash_status')
+       swash_status = run_status
+    end function swash_status
+!
+    integer(c_int) function swash_finish () bind(C, name='swash_finish')
+       ! post-processing (collect output, timings, deallocate) and MPI shutdown
+       swash_finish = 0
+       if ( .not.initialised ) then
+          swash_finish = -1
+          return
+       endif
+       if ( run_status == 0 ) call SwashRunEndComp
+       call SwashRunFinish
+       call SWEXITMPI
+       initialised = .false.
+       run_status  = -1
+    end function swash_finish
+!
+    subroutine swash_set_step_callback ( fn ) bind(C, name='swash_set_step_callback')
+       type(c_funptr), value :: fn
+       step_cb = fn
+    end subroutine swash_set_step_callback
+!
+!   ---------------------------------------------------------------- queries
+!
+    real(c_double) function swash_time () bind(C, name='swash_time')
+       swash_time = real(timco, c_double)
+    end function swash_time
+!
+    real(c_double) function swash_dt () bind(C, name='swash_dt')
+       swash_dt = real(dt, c_double)
+    end function swash_dt
+!
+    real(c_double) function swash_end_time () bind(C, name='swash_end_time')
+       swash_end_time = real(tfinc, c_double)
+    end function swash_end_time
+!
+    subroutine swash_grid_info ( nx, ny, nk, npts, x0, y0, dx, dy ) bind(C, name='swash_grid_info')
+       ! dense field dimensions (including virtual cells), number of layers, number of active points,
+       ! origin and spacing of the computational grid (regular grids)
+       integer(c_int), intent(out) :: nx, ny, nk, npts
+       real(c_double), intent(out) :: x0, y0, dx, dy
+       nx   = mxc
+       ny   = myc
+       nk   = kmax
+       npts = mcgrd
+       x0 = 0d0; y0 = 0d0; dx = 0d0; dy = 0d0
+       if ( allocated(xcgrid) ) then
+          x0 = real(xcgrid(1,1), c_double)
+          y0 = real(ycgrid(1,1), c_double)
+          if ( mxc > 1 ) dx = real(xcgrid(2,1) - xcgrid(1,1), c_double)
+          if ( myc > 1 ) dy = real(ycgrid(1,2) - ycgrid(1,1), c_double)
+       endif
+    end subroutine swash_grid_info
+!
+    integer(c_int) function swash_get_field ( name, out, k ) bind(C, name='swash_get_field')
+       ! copy a field into the dense array out[ny][nx]; k selects the layer for layered quantities
+       ! names: WATL BOTL DEP HS U V W Q HK ZK WETS WETU WETV PATM SRCM XP YP BRKS PRESP
+       character(kind=c_char), dimension(*), intent(in) :: name
+       real(c_float), dimension(*), intent(out) :: out
+       integer(c_int), value :: k
+       character(len=:), allocatable :: qname
+       real, dimension(:), allocatable :: tmp
+       integer :: m, n
+       !
+       swash_get_field = 0
+       if ( .not.initialised ) then
+          swash_get_field = -1
+          return
+       endif
+       call swash_acc_sync_host
+       qname = c_to_f_string(name)
+       select case ( trim(qname) )
+       case ('WATL')
+          if ( .not.allocated(s1) ) goto 900
+          call gather_r ( s1, out )
+       case ('BOTL')
+          if ( .not.allocated(dps) ) goto 900
+          allocate(tmp(size(dps))); tmp = -dps
+          call gather_r ( tmp, out )
+       case ('DEP')
+          if ( .not.allocated(dps) .or. .not.allocated(s1) ) goto 900
+          allocate(tmp(size(dps))); tmp = s1 + dps
+          call gather_r ( tmp, out )
+       case ('HS')
+          if ( .not.allocated(hs) ) goto 900
+          call gather_r ( hs, out )
+       case ('U')
+          if ( .not.allocated(u1) ) goto 900
+          if ( k < 1 .or. k > ubound(u1,2) ) goto 901
+          call gather_r ( u1(:,k), out )
+       case ('V')
+          if ( .not.allocated(v1) ) goto 900
+          if ( k < 1 .or. k > ubound(v1,2) ) goto 901
+          call gather_r ( v1(:,k), out )
+       case ('W')
+          if ( .not.allocated(w1) ) goto 900
+          if ( k < lbound(w1,2) .or. k > ubound(w1,2) ) goto 901
+          call gather_r ( w1(:,k), out )
+       case ('Q')
+          if ( .not.allocated(q) ) goto 900
+          if ( k < 1 .or. k > ubound(q,2) ) goto 901
+          call gather_r ( q(:,k), out )
+       case ('HK')
+          if ( .not.allocated(hks) ) goto 900
+          if ( k < 1 .or. k > ubound(hks,2) ) goto 901
+          call gather_r ( hks(:,k), out )
+       case ('ZK')
+          if ( .not.allocated(zks) ) goto 900
+          if ( k < lbound(zks,2) .or. k > ubound(zks,2) ) goto 901
+          call gather_r ( zks(:,k), out )
+       case ('WETS')
+          if ( .not.allocated(wets) ) goto 900
+          call gather_i ( wets, out )
+       case ('WETU')
+          if ( .not.allocated(wetu) ) goto 900
+          call gather_i ( wetu, out )
+       case ('WETV')
+          if ( .not.allocated(wetv) ) goto 900
+          call gather_i ( wetv, out )
+       case ('BRKS')
+          if ( .not.allocated(brks) ) goto 900
+          call gather_i ( brks, out )
+       case ('PRESP')
+          if ( .not.allocated(presp) ) goto 900
+          call gather_i ( presp, out )
+       case ('PATM')
+          if ( .not.allocated(patm) ) goto 900
+          call gather_r ( patm, out )
+       case ('SRCM')
+          if ( .not.allocated(srcm) ) goto 900
+          call gather_r ( srcm, out )
+       case ('XP')
+          if ( .not.allocated(xcgrid) ) goto 900
+          do n = 1, myc
+             do m = 1, mxc
+                out(m + mxc*(n-1)) = real(xcgrid(m,n), c_float)
+             enddo
+          enddo
+       case ('YP')
+          if ( .not.allocated(ycgrid) ) goto 900
+          do n = 1, myc
+             do m = 1, mxc
+                out(m + mxc*(n-1)) = real(ycgrid(m,n), c_float)
+             enddo
+          enddo
+       case default
+          swash_get_field = -2
+       end select
+       return
+ 900   swash_get_field = -3   ! not allocated in this configuration
+       return
+ 901   swash_get_field = -4   ! layer index out of range
+    end function swash_get_field
+!
+!   ---------------------------------------------------------------- forcing
+!
+    integer(c_int) function swash_set_pressure_field ( in ) bind(C, name='swash_set_pressure_field')
+       ! surface pressure [Pa] in wl-points (dense layout); a vessel hull is rho*g*draft over its footprint.
+       ! The gradient enters the momentum equations exactly like the PRESSURE input field.
+       real(c_float), dimension(*), intent(in) :: in
+       logical :: STPNOW
+       swash_set_pressure_field = 0
+       if ( .not.initialised ) then
+          swash_set_pressure_field = -1
+          return
+       endif
+       if ( .not.allocated(patm) ) then
+          allocate(patm(mcgrd))
+          patm = 0.
+       endif
+       call scatter_r ( in, patm )
+       call SWEXCHG ( patm, kgrpnt, 1, 1 )
+       if (STPNOW()) swash_set_pressure_field = -5
+       lextp = .true.
+    end function swash_set_pressure_field
+!
+    integer(c_int) function swash_clear_pressure_field () bind(C, name='swash_clear_pressure_field')
+       swash_clear_pressure_field = 0
+       if ( allocated(patm) .and. lextp ) patm = 0.
+       lextp = .false.
+    end function swash_clear_pressure_field
+!
+    integer(c_int) function swash_set_mass_source ( in ) bind(C, name='swash_set_mass_source')
+       ! mass source [m/s] in wl-points: the water level is raised by dt*srcm each step
+       ! (same term as the internal wave generator)
+       real(c_float), dimension(*), intent(in) :: in
+       swash_set_mass_source = 0
+       if ( .not.initialised ) then
+          swash_set_mass_source = -1
+          return
+       endif
+       if ( .not.allocated(srcm) ) then
+          allocate(srcm(mcgrd))
+          srcm = 0.
+       endif
+       call scatter_r ( in, srcm )
+       lextm = .true.
+    end function swash_set_mass_source
+!
+    integer(c_int) function swash_set_bathymetry ( in ) bind(C, name='swash_set_bathymetry')
+       ! bottom level as depth below the still water level, positive downward [m], dense layout.
+       ! Velocity-point depths are re-derived before the next step (SwashFlowDP).
+       real(c_float), dimension(*), intent(in) :: in
+       swash_set_bathymetry = 0
+       if ( .not.initialised .or. .not.allocated(dps) ) then
+          swash_set_bathymetry = -1
+          return
+       endif
+       call scatter_r ( in, dps )
+       lextb = .true.
+    end function swash_set_bathymetry
+!
+!   ---------------------------------------------------------------- checkpoints
+!
+    integer(c_int) function swash_save_state ( islot ) bind(C, name='swash_save_state')
+       integer(c_int), value :: islot
+       swash_save_state = 0
+       if ( .not.initialised .or. islot < 1 .or. islot > max_slots ) then
+          swash_save_state = -1
+          return
+       endif
+       call swash_acc_sync_host
+       call state_save ( islot )
+    end function swash_save_state
+!
+    integer(c_int) function swash_restore_state ( islot ) bind(C, name='swash_restore_state')
+       integer(c_int), value :: islot
+       swash_restore_state = 0
+       if ( .not.initialised .or. islot < 1 .or. islot > max_slots ) then
+          swash_restore_state = -1
+          return
+       endif
+       if ( .not.state_used(islot) ) then
+          swash_restore_state = -2
+          return
+       endif
+       call state_restore ( islot )
+       ! the host copy is the reference: ported kernels re-upload their inputs
+    end function swash_restore_state
+!
+    integer(c_int) function swash_acc_enabled () bind(C, name='swash_acc_enabled')
+       swash_acc_enabled = 0
+       if ( acc_active ) swash_acc_enabled = 1
+    end function swash_acc_enabled
+!
+end module swash_ctl

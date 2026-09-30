@@ -38,6 +38,7 @@ endif()
 
 # extra build options for the user
 option( MPI "" OFF )
+include( ${CMAKE_SOURCE_DIR}/cmake/SwashOptions.cmake )
 
 # define bin/lib//mod/src directories
 set( BIN ${CMAKE_BINARY_DIR}/bin )

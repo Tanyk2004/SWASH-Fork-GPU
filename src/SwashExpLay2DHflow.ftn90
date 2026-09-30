@@ -91,6 +91,9 @@ subroutine SwashExpLay2DHflow
     use m_parall
     use SwashSolvedata, only: icond
     use SwashFlowdata
+    use SwashExtData, only: lextp, lextm
+    use SwashAccData, only: acc_active
+    use SwashAccServices, only: fluxlim_dev
 !
     implicit none
 !
@@ -194,6 +197,14 @@ subroutine SwashExpLay2DHflow
     !
     logical                            :: lmask    ! masks points for including curvature stress terms
     logical                            :: STPNOW   ! indicates that program must stop
+    !
+    ! host copies of module scalars used inside OpenACC kernels
+    !
+    integer                            :: iprop    ! = propsc
+    integer                            :: itrb     ! = iturb
+    real                               :: rkap     ! = kappa
+    real                               :: rmb      ! = mbound
+    real                               :: rphi     ! = phieby
     !
     character(90)                      :: msgstr   ! string to pass message
 !
@@ -1130,7 +1141,7 @@ subroutine SwashExpLay2DHflow
     !
     ! compute atmospheric pressure gradient at internal u-point
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do n = nfu, nl
           do m = mf+1, mlast
@@ -1837,6 +1848,18 @@ subroutine SwashExpLay2DHflow
     mbound = pnums(38)
     phieby = pnums(39)
     !
+    ! host copies for the accelerator kernels
+    !
+    iprop = propsc
+    rkap  = kappa
+    rmb   = mbound
+    rphi  = phieby
+    itrb  = iturb
+    !
+    ! [ACC region: vertical u-momentum] inputs to the device
+    !
+    !$acc update device(amatu, rhsu, wom, hkum, u0, vnu3d, uwetp) if(acc_active)
+    !
     do k = 1, kmax
        !
        kd  = max(k-1,1   )
@@ -1849,6 +1872,7 @@ subroutine SwashExpLay2DHflow
        if ( k == 1    ) kwd = 0.
        if ( k == kmax ) kwu = 0.
        !
+       !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
        do n = nfu, nl
           do m = msta(n), mend(n)
              !
@@ -1861,7 +1885,7 @@ subroutine SwashExpLay2DHflow
                 !
                 ! advection term
                 !
-                if ( propsc == 3 .and. kappa == 1. ) then
+                if ( iprop == 3 .and. rkap == 1. ) then
                    !
                    ! central differences
                    !
@@ -1885,21 +1909,21 @@ subroutine SwashExpLay2DHflow
                    !
                    ! add higher order (flux-limited) correction, if appropriate
                    !
-                   if ( propsc /= 1 ) then
+                   if ( iprop /= 1 ) then
                       !
                       if ( ctrkt > 0. ) then
                          !
                          grad1 = u0(nm,kd) - u0(nm,k )
                          grad2 = u0(nm,k ) - u0(nm,ku)
                          !
-                         rhsu(nm,k) = rhsu(nm,k) - 0.5 * ctrkt * fluxlim(grad1,grad2)
+                         rhsu(nm,k) = rhsu(nm,k) - 0.5 * ctrkt * fluxlim_dev(grad1,grad2,iprop,rkap,rmb,rphi)
                          !
                       else if ( ctrkt < 0. ) then
                          !
                          grad1 = u0(nm,kd ) - u0(nm,k )
                          grad2 = u0(nm,kdd) - u0(nm,kd)
                          !
-                         rhsu(nm,k) = rhsu(nm,k) + 0.5 * ctrkt * fluxlim(grad1,grad2)
+                         rhsu(nm,k) = rhsu(nm,k) + 0.5 * ctrkt * fluxlim_dev(grad1,grad2,iprop,rkap,rmb,rphi)
                          !
                       endif
                       !
@@ -1908,14 +1932,14 @@ subroutine SwashExpLay2DHflow
                          grad1 = u0(nm,k ) - u0(nm,ku )
                          grad2 = u0(nm,ku) - u0(nm,kuu)
                          !
-                         rhsu(nm,k) = rhsu(nm,k) + 0.5 * ctrkb * fluxlim(grad1,grad2)
+                         rhsu(nm,k) = rhsu(nm,k) + 0.5 * ctrkb * fluxlim_dev(grad1,grad2,iprop,rkap,rmb,rphi)
                          !
                       else if ( ctrkb < 0. ) then
                          !
                          grad1 = u0(nm,k ) - u0(nm,ku)
                          grad2 = u0(nm,kd) - u0(nm,k )
                          !
-                         rhsu(nm,k) = rhsu(nm,k) - 0.5 * ctrkb * fluxlim(grad1,grad2)
+                         rhsu(nm,k) = rhsu(nm,k) - 0.5 * ctrkb * fluxlim_dev(grad1,grad2,iprop,rkap,rmb,rphi)
                          !
                       endif
                       !
@@ -1925,7 +1949,7 @@ subroutine SwashExpLay2DHflow
                 !
                 ! viscosity term
                 !
-                if ( iturb < 2 ) then
+                if ( itrb < 2 ) then
                    !
                    ctrkt = ( vnu3d(nm,k-1) + vnu3d(nmu,k-1) ) / ( hkum(nm,k)*( hkum(nm,kd) + hkum(nm,k ) ) )
                    ctrkb = ( vnu3d(nm,k  ) + vnu3d(nmu,k  ) ) / ( hkum(nm,k)*( hkum(nm,k ) + hkum(nm,ku) ) )
@@ -1943,8 +1967,9 @@ subroutine SwashExpLay2DHflow
        !
     enddo
     !
-    ! solve the u-momentum equation
+    ! solve the u-momentum equation (one independent tridiagonal system per water column)
     !
+    !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
     do n = nfu, nl
        do m = msta(n), mend(n)
           !
@@ -1956,6 +1981,7 @@ subroutine SwashExpLay2DHflow
           amatu(nm,1,3) = amatu(nm,1,3)*bi
           rhsu (nm,1  ) = rhsu (nm,1  )*bi
           !
+          !$acc loop seq
           do k = 2, kmax
              !
              bi = 1./(amatu(nm,k,1) - amatu(nm,k,2)*amatu(nm,k-1,3))
@@ -1966,12 +1992,17 @@ subroutine SwashExpLay2DHflow
           enddo
           !
           u1(nm,kmax) = rhsu(nm,kmax)
+          !$acc loop seq
           do k = kmax-1, 1, -1
              u1(nm,k) = rhsu(nm,k) - amatu(nm,k,3)*u1(nm,k+1)
           enddo
           !
        enddo
     enddo
+    !
+    ! [ACC region: vertical u-momentum] outputs back to the host
+    !
+    !$acc update host(u1, amatu, rhsu) if(acc_active)
     !
     ! re-update the solution in case of thetau <> 1
     !
@@ -3451,7 +3482,7 @@ subroutine SwashExpLay2DHflow
     !
     ! compute atmospheric pressure gradient at internal v-point
     !
-    if ( svwp ) then
+    if ( svwp .or. lextp ) then
        !
        do m = mfu, ml
           do n = nf+1, nlast
@@ -6565,8 +6596,14 @@ subroutine SwashExpLay2DHflow
           !
        endif
        !
-       ! compute the mass flux per layer in x-direction
+       ! [ACC region: continuity] inputs to the device
        !
+       !$acc update device(u1, v1, hku, hkv, hu, hv, s0, dpu, dpv, uwetp, vwetp, udep, vdep) if(acc_active)
+       !
+       ! compute the mass flux per layer in x-direction
+       ! (the dummy index 1 is skipped on purpose: its value is never used because uwetp(1) = 0)
+       !
+       !$acc parallel loop gang vector collapse(3) default(present) if(acc_active)
        do k = 1, kmax
           !
           do n = nfu, nl
@@ -6574,7 +6611,7 @@ subroutine SwashExpLay2DHflow
                 !
                 nm = kgrpnt(m,n)
                 !
-                qx(nm,k) = hku(nm,k)*guu(nm)*u1(nm,k)
+                if ( nm > 1 ) qx(nm,k) = hku(nm,k)*guu(nm)*u1(nm,k)
                 !
              enddo
           enddo
@@ -6583,6 +6620,7 @@ subroutine SwashExpLay2DHflow
        !
        ! compute the mass flux per layer in y-direction
        !
+       !$acc parallel loop gang vector collapse(3) default(present) if(acc_active)
        do k = 1, kmax
           !
           do n = nf, nl
@@ -6590,7 +6628,7 @@ subroutine SwashExpLay2DHflow
                 !
                 nm = kgrpnt(m,n)
                 !
-                qy(nm,k) = hkv(nm,k)*gvv(nm)*v1(nm,k)
+                if ( nm > 1 ) qy(nm,k) = hkv(nm,k)*gvv(nm)*v1(nm,k)
                 !
              enddo
           enddo
@@ -6599,9 +6637,12 @@ subroutine SwashExpLay2DHflow
        !
        ! compute the depth-integrated mass fluxes
        !
+       !$acc kernels default(present) if(acc_active)
        work(:,1) = 0.
        work(:,2) = 0.
+       !$acc end kernels
        !
+       !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
        do n = nfu, nl
           do m = mf, ml
              !
@@ -6609,6 +6650,7 @@ subroutine SwashExpLay2DHflow
              !
              if ( uwetp(nm) == 1 ) then
                 !
+                !$acc loop seq
                 do k = 1, kmax
                    !
                    work(nm,1) = work(nm,1) + qx(nm,k)
@@ -6620,6 +6662,7 @@ subroutine SwashExpLay2DHflow
           enddo
        enddo
        !
+       !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
        do m = mfu, ml
           do n = nf, nl
              !
@@ -6627,6 +6670,7 @@ subroutine SwashExpLay2DHflow
              !
              if ( vwetp(nm) == 1 ) then
                 !
+                !$acc loop seq
                 do k = 1, kmax
                    !
                    work(nm,2) = work(nm,2) + qy(nm,k)
@@ -6642,9 +6686,12 @@ subroutine SwashExpLay2DHflow
        !
        if ( j == jhk ) then
           !
+          !$acc kernels default(present) if(acc_active)
           udep = 0.
           vdep = 0.
+          !$acc end kernels
           !
+          !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
           do n = nfu, nl
              do m = mf, ml
                 !
@@ -6659,6 +6706,7 @@ subroutine SwashExpLay2DHflow
              enddo
           enddo
           !
+          !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
           do m = mfu, ml
              do n = nf, nl
                 !
@@ -6679,6 +6727,7 @@ subroutine SwashExpLay2DHflow
        !
        if ( .not.linswe ) then
           !
+          !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
           do n = nfu, nend(1)
              do m = mfu, mend(1)
                 !
@@ -6689,13 +6738,14 @@ subroutine SwashExpLay2DHflow
                 nmd = kgrpnt(md,n )
                 ndm = kgrpnt(m ,nd)
                 !
-                s1(nm) = s0(nm) - fh * dt * ( work(nm,1) - work(nmd,1) + work(nm,2) - work(ndm,2) ) / gsqs(nm)
+                if ( nm > 1 ) s1(nm) = s0(nm) - fh * dt * ( work(nm,1) - work(nmd,1) + work(nm,2) - work(ndm,2) ) / gsqs(nm)
                 !
              enddo
           enddo
           !
        else
           !
+          !$acc parallel loop gang vector collapse(2) default(present) if(acc_active)
           do n = nfu, nend(1)
              do m = mfu, mend(1)
                 !
@@ -6706,12 +6756,16 @@ subroutine SwashExpLay2DHflow
                 nmd = kgrpnt(md,n )
                 ndm = kgrpnt(m ,nd)
                 !
-                s1(nm) = s0(nm) - fh * dt * ( dpu(nm)*guu(nm)*udep(nm) - dpu(nmd)*guu(nmd)*udep(nmd) + dpv(nm)*gvv(nm)*vdep(nm) - dpv(ndm)*gvv(ndm)*vdep(ndm) ) / gsqs(nm)
+                if ( nm > 1 ) s1(nm) = s0(nm) - fh * dt * ( dpu(nm)*guu(nm)*udep(nm) - dpu(nmd)*guu(nmd)*udep(nmd) + dpv(nm)*gvv(nm)*vdep(nm) - dpv(ndm)*gvv(ndm)*vdep(ndm) ) / gsqs(nm)
                 !
              enddo
           enddo
           !
        endif
+       !
+       ! [ACC region: continuity] outputs back to the host
+       !
+       !$acc update host(qx, qy, work, udep, vdep, s1) if(acc_active)
        !
        ! set to zero for permanently dry points
        !
@@ -6818,7 +6872,7 @@ subroutine SwashExpLay2DHflow
     !
     ! add mass source due to internal wave generation
     !
-    if ( iwvgen /= 0 ) then
+    if ( iwvgen /= 0 .or. lextm ) then
        !
        do n = nfu, nend(1)
           do m = mfu, mend(1)
@@ -7464,6 +7518,11 @@ subroutine SwashExpLay2DHflow
     !
     cflmax = -999.
     !
+    ! [ACC region: CFL] inputs to the device; the maximum is a reduction over all points and layers
+    !
+    !$acc update device(s1, dps, u1, v1) if(acc_active)
+    !
+    !$acc parallel loop gang vector collapse(3) default(present) reduction(max:cflmax) if(acc_active)
     do k = 1, kmax
        !
        do n = nfu, nend(1)
