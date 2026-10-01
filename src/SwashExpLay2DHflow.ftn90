@@ -152,6 +152,8 @@ subroutine SwashExpLay2DHflow
     real                               :: bi       ! inverse of main diagonal of the matrix
     real                               :: cfl      ! CFL number
     real                               :: cflloc   ! maximum CFL number (local reduction variable)
+    real*8                             :: dtl      ! local copy of the time step for the CFL kernel
+    real                               :: gravl    ! local copy of the gravitational acceleration for the CFL kernel
     real                               :: ctrkb    ! contribution of vertical terms below considered point
     real                               :: ctrkt    ! contribution of vertical terms above considered point
     real                               :: dep      ! local water depth
@@ -1859,7 +1861,8 @@ subroutine SwashExpLay2DHflow
     !
     ! [ACC region: vertical u-momentum] inputs to the device
     !
-    !$acc update device(amatu, rhsu, wom, hkum, u0, u1, vnu3d, uwetp) if(acc_active)
+    ! (msta/mend are rewritten on the host every step and read inside the kernels, so they go up too)
+    !$acc update device(amatu, rhsu, wom, hkum, u0, u1, vnu3d, uwetp, msta, mend) if(acc_active)
     !
     do k = 1, kmax
        !
@@ -7523,9 +7526,12 @@ subroutine SwashExpLay2DHflow
     ! compute the maximum CFL number
     !
     cflloc = -999.
+    dtl    = dt
+    gravl  = grav
     !
     ! [ACC region: CFL] inputs to the device; the maximum is a reduction over all points and layers
-    ! (reduced into a local variable, then copied to the module variable cflmax)
+    ! (reduced into a local variable, then copied to the module variable cflmax; module scalars
+    !  dt and grav are passed through local copies)
     !
     !$acc update device(s1, dps, u1, v1) if(acc_active)
     !
@@ -7558,7 +7564,7 @@ subroutine SwashExpLay2DHflow
                 dxl = 0.5 * ( gvv(nm) + gvv(ndm) )
                 dyl = 0.5 * ( guu(nm) + guu(nmd) )
                 !
-                cfl = dt * ( sqrt(grav*dep) + utot ) * sqrt(1./(dxl*dxl) + 1./(dyl*dyl))
+                cfl = dtl * ( sqrt(gravl*dep) + utot ) * sqrt(1./(dxl*dxl) + 1./(dyl*dyl))
                 if ( cfl > cflloc ) cflloc = cfl
                 !
              endif

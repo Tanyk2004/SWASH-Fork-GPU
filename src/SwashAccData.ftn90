@@ -59,9 +59,12 @@ module SwashAccData
 !   interior points, and "update host" copies the whole array back, so any
 !   entry the kernel does not write (virtual boundary cells, the dummy index 1,
 !   points outside msta..mend) must already hold the host value on the device.
-!   For the same reason the device copies are created with copyin.  As the
-!   port coverage grows these updates are removed and only the sync before
-!   output remains.
+!   For the same reason the device copies are created with copyin.  The same
+!   applies to small helper arrays the host rewrites between regions (the row
+!   masks msta/mend and nsta/nend are reset at the start of every step):
+!   whatever a kernel reads must be uploaded first.  Module scalars (dt, grav,
+!   propsc, ...) are passed through local copies.  As the port coverage grows
+!   these updates are removed and only the sync before output remains.
 !
 !   All directives carry "if(acc_active)": acc_active is true only in builds
 !   configured with OPENACC=ON (the -acc switch of switch.pl uncomments the
