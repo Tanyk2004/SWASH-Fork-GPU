@@ -12,6 +12,11 @@ Compared:
     from a Welch spectrum per gauge (physics-level check);
   * loads.tbl if present (floating-object forces).
 
+Baseline rule: compare runs of the SAME compiler (e.g. nvfortran GPU vs nvfortran
+CPU). SWASH draws its random wave phases with the intrinsic random_number, which
+differs between compilers, so gfortran and nvfortran runs are different wave
+realisations and only their gauge statistics are comparable.
+
 Tiers (defaults, override with --atol/--rtol):
   cpu  : CPU-vs-CPU builds/compilers  atol 1e-4, rtol 1e-4, Hm0 0.5 %, Tp 1 %
   gpu  : GPU-vs-CPU "physics" tier    atol 1e-3, rtol 1e-3, Hm0 1 %,   Tp 2 %
@@ -37,6 +42,7 @@ TIERS = {
     "gpu": dict(atol=1e-3, rtol=1e-3, hm0=0.01, tp=0.02),
 }
 EXC = -99.0  # SWASH exception value for dry / undefined points
+MAX_FRAME_LINES = 5  # per quantity, failing frames listed individually
 
 
 def load_fields(path):
@@ -123,10 +129,15 @@ def main():
         if len(gl) != len(rl):
             print(f"{q}: {len(gl)} frames in golden vs {len(rl)} in run"); failures += 1
         worst = (0.0, "")
+        nfail_q = 0
         for (tg, ag), (tr, ar) in zip(gl, rl):
             ok, msg = compare_arrays(f"{q}@{tg}", ag, ar, tol["atol"], tol["rtol"])
             if not ok:
-                failures += 1; print(msg)
+                failures += 1; nfail_q += 1
+                if nfail_q <= MAX_FRAME_LINES:
+                    print(msg)
+                elif nfail_q == MAX_FRAME_LINES + 1:
+                    print(f"  ... further failing frames of {q} not listed")
             d = float(re.search(r"max\|diff\|=\s*([0-9.e+-]+)", msg).group(1)) if "max|diff|" in msg else 0.0
             if d >= worst[0]:
                 worst = (d, msg)

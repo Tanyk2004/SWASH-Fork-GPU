@@ -42,7 +42,7 @@ that is checked.
 |---|---|---|
 | Refactor of the driver (`SwashRun`) | `tests/run_case.sh` on the pristine and the forked build | bitwise identical outputs |
 | CPU compilers / flags | `tests/regress.py --tier cpu` | `atol 1e-4 m`, `rtol 1e-4`; gauge Hm0 within 0.5 %, Tp within 1 % |
-| GPU vs CPU | `tests/regress.py --tier gpu` | `atol 1e-3 m`, `rtol 1e-3`; Hm0 within 1 %, Tp within 2 % |
+| GPU vs CPU, same compiler (nvfortran CPU build as baseline; cross-compiler runs are different random wave realisations because of the intrinsic `random_number`, so only their gauge statistics are comparable) | `tests/regress.py --tier gpu` | `atol 1e-3 m`, `rtol 1e-3`; Hm0 within 1 %, Tp within 2 % |
 | GPU preconditioner | same case with `RHSACCUR 1e-6` on both | water level within `1e-5 m` |
 | Volume conservation | `sum(gsqs * (s1 + dps))` drift per run, both builds | relative drift below `1e-6` |
 | Checkpoint completeness | `tests/test_branch.py` | bitwise identical after save/restore |

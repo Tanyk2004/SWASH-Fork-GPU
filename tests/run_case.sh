@@ -6,6 +6,10 @@
 #   <build-dir>   directory holding bin/swash.exe (e.g. build-gnu, build-nvhpc)
 #   <case>        name under tests/cases/
 #   --golden      copy the outputs into tests/golden/<case>/ (creates the reference)
+#   --golden-dir D  destination for --golden (default tests/golden/<case>); use a per-compiler
+#                 directory such as tests/golden-nvhpc/<case>, because SWASH draws its random
+#                 wave phases with the Fortran intrinsic random_number, which differs between
+#                 compilers: a GPU run is only comparable with the same compiler's CPU run
 #   --compare D   run tests/regress.py against golden directory D (default tests/golden/<case>)
 #   --tier        tolerance tier for the comparison (cpu = CPU-vs-CPU, gpu = physics tier)
 #   --np N        run under mpirun -np N (build must have MPI=ON)
@@ -17,10 +21,11 @@ root="$(cd "$here/.." && pwd)"
 
 build="$1"; shift
 case_name="$1"; shift
-golden=0; compare=""; tier="cpu"; np=0
+golden=0; compare=""; tier="cpu"; np=0; gdir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --golden) golden=1;;
+    --golden-dir) gdir="$2"; shift;;
     --compare) compare="$2"; shift;;
     --tier) tier="$2"; shift;;
     --np) np="$2"; shift;;
@@ -58,7 +63,7 @@ if grep -q '# Details on timings' "$work/PRINT"; then
 fi
 
 if [[ "$golden" -eq 1 ]]; then
-  dest="$here/golden/$case_name"
+  dest="${gdir:-$here/golden/$case_name}"
   mkdir -p "$dest"
   cp "$work"/*.mat "$work"/*.tbl "$dest"/ 2>/dev/null || true
   cp "$work/PRINT" "$dest/PRINT"

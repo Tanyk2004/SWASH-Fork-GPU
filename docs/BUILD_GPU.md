@@ -72,10 +72,17 @@ cd ..
 code" and the collapsed loops "gang vector"; a "loop not parallelizable" line
 on one of them is a bug to fix before running.
 
-Validate against the goldens with the physics tier:
+Validate against a baseline **from the same compiler**. SWASH draws the random
+JONSWAP phases with Fortran's intrinsic `random_number`, which gfortran and
+nvfortran implement differently, so a gfortran reference and an nvfortran run
+simulate different wave trains from the first step. `docker/build-all.sh gpu`
+therefore also builds nvfortran without OpenACC (`build-nvhpc-cpu`), stores its
+outputs in `tests/golden-nvhpc/`, and compares the GPU run against those. By hand:
 
 ```bash
-tests/run_case.sh build-nvhpc marina_lay2 --tier gpu
+cmake -S . -B build-nvhpc-cpu -G Ninja -DCMAKE_Fortran_COMPILER=nvfortran -DOPENACC=OFF -DTIMG=ON && cmake --build build-nvhpc-cpu
+tests/run_case.sh build-nvhpc-cpu marina_lay2 --golden --golden-dir tests/golden-nvhpc/marina_lay2
+tests/run_case.sh build-nvhpc marina_lay2 --compare tests/golden-nvhpc/marina_lay2 --tier gpu
 NV_ACC_NOTIFY=3 tests/run_case.sh build-nvhpc marina_lay2 --tier gpu 2>&1 | grep -c 'upload\|download'
 ```
 
